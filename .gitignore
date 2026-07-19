@@ -1,0 +1,48 @@
+# Local orchestration and code indexes
+/.catpaw/
+/.codegraph/
+/.codex/
+/.claude/
+/.agents/
+/.dependencies/
+
+# Build and test output
+/build/
+/bin/
+/obj/
+/TestResults/
+/coverage/
+/artifacts/
+*.trx
+*.coverage
+*.coveragexml
+
+# IDE state
+/.vs/
+/.vscode/
+/.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pfx
+*.snk
+*.key
+*.pem
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*~
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+Desktop.ini

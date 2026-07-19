@@ -1,0 +1,29 @@
+name: 功能建议
+description: 提议一个明确的用户场景或能力改进
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 请描述当前工作流中的真实困难，而不只是期望的按钮或实现。
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 期望结果
+      description: 完成后用户能够做到什么？
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 当前替代方案
+      description: 目前如何绕过这个问题？
+  - type: textarea
+    id: scope
+    attributes:
+      label: 范围与边界
+      description: 哪些行为不应该被这个功能改变？

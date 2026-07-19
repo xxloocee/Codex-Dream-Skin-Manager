@@ -1,0 +1,40 @@
+name: Build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out manager
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Check out Codex Dream Skin dependency
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: Fei-Away/Codex-Dream-Skin
+          ref: 3af1d6d62f3a0388cc640d2f497ac3100998938e
+          path: .dependencies/Codex-Dream-Skin
+
+      - name: Test and build runnable package
+        shell: powershell
+        run: |
+          .\build.ps1 `
+            -SkillRoot (Join-Path $PWD '.dependencies\Codex-Dream-Skin\windows')
+
+      - name: Upload runnable package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: CodexDreamSkinManager-windows
+          path: build/CodexDreamSkinManager/
+          if-no-files-found: error
+          retention-days: 14

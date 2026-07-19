@@ -1,0 +1,53 @@
+name: Bug 报告
+description: 报告可复现的功能、构建或界面问题
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: 安全漏洞请使用仓库的私密漏洞报告入口，不要填写此模板。
+  - type: input
+    id: version
+    attributes:
+      label: 管理器版本
+      placeholder: 例如 1.0.0
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境
+      description: Windows、Codex、Node.js 版本，以及是否使用微软商店版 Codex。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: 请给出最短、稳定的操作步骤。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或截图
+      description: 提交前请移除账号、个人路径、API Key 和对话内容。
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交确认
+      options:
+        - label: 我确认这不是安全漏洞，且内容中不包含敏感信息。
+          required: true
