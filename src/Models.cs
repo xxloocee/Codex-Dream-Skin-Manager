@@ -128,6 +128,7 @@ namespace CodexDreamSkinManager
         public bool CanApplyTheme;
         public bool CanSaveTheme;
         public bool CanSaveApply;
+        public bool RestartAfterApply;
         public string EnableLabel = "启用皮肤";
         public string PauseLabel = "暂停皮肤";
 
@@ -137,21 +138,24 @@ namespace CodexDreamSkinManager
             status = status ?? new DreamSkinStatus();
             string kind = string.IsNullOrWhiteSpace(status.StatusKind)
                 ? (status.IsRunning ? "running" : "stopped") : status.StatusKind;
-            bool unsafeState = string.Equals(kind, "stale", StringComparison.OrdinalIgnoreCase) ||
+            bool recoveryState = string.Equals(kind, "stale", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(kind, "mismatch", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(kind, "uninspectable", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(kind, "error", StringComparison.OrdinalIgnoreCase);
+            bool stopped = string.Equals(kind, "stopped", StringComparison.OrdinalIgnoreCase);
             ActionAvailability result = new ActionAvailability();
             result.EnableLabel = status.IsRunning ? "重新应用" : "启用皮肤";
             result.PauseLabel = status.IsPaused ? "继续显示" : "暂停皮肤";
+            result.RestartAfterApply = recoveryState || stopped;
             result.CanRestore = !busy;
-            if (busy || unsafeState) return result;
+            if (busy) return result;
+            result.CanApplyTheme = hasSelection;
+            result.CanSaveTheme = hasValidCustomImage;
+            if (recoveryState) return result;
             result.CanEnable = true;
             result.CanPause = status.IsRunning || status.IsPaused;
             result.CanReset = status.SupportedActions.Exists(action =>
                 string.Equals(action, "ResetTheme", StringComparison.OrdinalIgnoreCase));
-            result.CanApplyTheme = hasSelection;
-            result.CanSaveTheme = hasValidCustomImage;
             result.CanSaveApply = hasValidCustomImage;
             return result;
         }

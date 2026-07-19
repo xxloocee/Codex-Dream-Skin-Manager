@@ -142,8 +142,13 @@ function Get-ManagerWriteMutexName {
 function Invoke-ManagerWriteLock {
   param([Parameter(Mandatory = $true)][scriptblock]$Operation)
   $mutex = New-Object System.Threading.Mutex($false, (Get-ManagerWriteMutexName -Root $paths.Root))
+  $operationLock = $null
+  $recoveryLockHeld = $env:CODEX_DREAM_SKIN_RECOVERY_LOCK_HELD -eq '1'
   $acquired = $false
   try {
+    if (-not $recoveryLockHeld) {
+      $operationLock = Enter-DreamSkinOperationLock
+    }
     try {
       $acquired = $mutex.WaitOne([TimeSpan]::FromSeconds($LockTimeoutSeconds))
     } catch [System.Threading.AbandonedMutexException] {
@@ -158,6 +163,9 @@ function Invoke-ManagerWriteLock {
       try { $mutex.ReleaseMutex() } catch {}
     }
     $mutex.Dispose()
+    if ($null -ne $operationLock) {
+      Exit-DreamSkinOperationLock -Mutex $operationLock
+    }
   }
 }
 

@@ -5,11 +5,14 @@ using System.Reflection;
 using System.Collections;
 using System.IO.Compression;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using System.Web.Script.Serialization;
 
 namespace CodexDreamSkinManager
@@ -323,13 +326,181 @@ namespace CodexDreamSkinManager
                 AssertTrue(Convert.ToBoolean(ReadMemberObject(stoppedActions, "CanEnable")));
                 AssertTrue(!Convert.ToBoolean(ReadMemberObject(stoppedActions, "CanPause")));
                 AssertTrue(Convert.ToBoolean(ReadMemberObject(stoppedActions, "CanReset")));
+                AssertTrue(Convert.ToBoolean(ReadMemberObject(stoppedActions, "RestartAfterApply")));
                 DreamSkinStatus legacy = DreamSkinService.ParseStatus("{\"isRunning\":false,\"isPaused\":false,\"statusKind\":\"stopped\",\"supportedActions\":[\"Status\"],\"themes\":[]}");
                 object legacyActions = fromStatus.Invoke(null, new object[] { legacy, false, true, true });
                 AssertTrue(!Convert.ToBoolean(ReadMemberObject(legacyActions, "CanReset")));
                 DreamSkinStatus mismatch = DreamSkinService.ParseStatus("{\"isRunning\":false,\"isPaused\":false,\"statusKind\":\"mismatch\",\"themes\":[]}");
                 object mismatchActions = fromStatus.Invoke(null, new object[] { mismatch, false, true, true });
-                AssertTrue(!Convert.ToBoolean(ReadMemberObject(mismatchActions, "CanApplyTheme")));
+                AssertTrue(!Convert.ToBoolean(ReadMemberObject(mismatchActions, "CanEnable")));
+                AssertTrue(Convert.ToBoolean(ReadMemberObject(mismatchActions, "CanApplyTheme")));
+                AssertTrue(Convert.ToBoolean(ReadMemberObject(mismatchActions, "RestartAfterApply")));
                 AssertTrue(Convert.ToBoolean(ReadMemberObject(mismatchActions, "CanRestore")));
+                DreamSkinStatus stale = DreamSkinService.ParseStatus("{\"isRunning\":false,\"isPaused\":false,\"statusKind\":\"stale\",\"supportedActions\":[\"ResetTheme\"],\"themes\":[]}");
+                object staleActions = fromStatus.Invoke(null, new object[] { stale, false, true, true });
+                AssertTrue(!Convert.ToBoolean(ReadMemberObject(staleActions, "CanEnable")));
+                AssertTrue(!Convert.ToBoolean(ReadMemberObject(staleActions, "CanPause")));
+                AssertTrue(!Convert.ToBoolean(ReadMemberObject(staleActions, "CanReset")));
+                AssertTrue(Convert.ToBoolean(ReadMemberObject(staleActions, "CanApplyTheme")));
+                AssertTrue(Convert.ToBoolean(ReadMemberObject(staleActions, "RestartAfterApply")));
+            });
+
+            Run("Keeps actions available after a transient status refresh failure", delegate
+            {
+                string root = CreateLayout();
+                File.WriteAllText(Path.Combine(root, "windows", "scripts", "manager-actions.ps1"),
+                    "throw 'transient status failure'\n");
+                try
+                {
+                    DreamSkinService service = new DreamSkinService(root);
+                    MainWindow window = new MainWindow(service);
+                    SynchronizationContext previousContext = SynchronizationContext.Current;
+                    try
+                    {
+                        SynchronizationContext.SetSynchronizationContext(
+                            new DispatcherSynchronizationContext(window.Dispatcher));
+                        DreamSkinStatus running = new DreamSkinStatus {
+                            IsRunning = true,
+                            StatusKind = "running",
+                            SupportedActions = new List<string> { "ResetTheme" }
+                        };
+                        typeof(MainWindow).GetField("currentStatus", BindingFlags.Instance | BindingFlags.NonPublic)
+                            .SetValue(window, running);
+                        ListBox themes = GetPrivateField<ListBox>(window, "themeList");
+                        themes.Items.Add(new ThemeOption { Id = "selected", Name = "Selected" });
+                        themes.SelectedIndex = 0;
+
+                        MethodInfo refresh = typeof(MainWindow).GetMethod("RefreshStatusAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+                        Task<bool> refreshTask = null;
+                        window.Dispatcher.Invoke(new Action(delegate {
+                            refreshTask = (Task<bool>)refresh.Invoke(window, new object[] { false });
+                        }));
+                        AssertTrue(!WaitForTask(refreshTask, window.Dispatcher));
+                        AssertEqual("running", running.StatusKind);
+                        AssertTrue(GetPrivateField<Button>(window, "applyThemeButton").IsEnabled);
+                        AssertTrue(GetPrivateField<Button>(window, "refreshButton").IsEnabled);
+
+                        MethodInfo runOperation = typeof(MainWindow).GetMethod("RunOperationAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+                        Func<Task> action = delegate { return Task.FromResult(0); };
+                        Task operation = null;
+                        window.Dispatcher.Invoke(new Action(delegate {
+                            operation = (Task)runOperation.Invoke(window, new object[] { action, "done" });
+                        }));
+                        WaitForTask(operation, window.Dispatcher);
+                        AssertTrue(!(bool)ReadMemberObject(window, "operationRunning"));
+                        AssertTrue(GetPrivateField<Button>(window, "applyThemeButton").IsEnabled);
+
+                        running.IsRunning = false;
+                        running.StatusKind = "mismatch";
+                        typeof(MainWindow).GetMethod("UpdateActionState", BindingFlags.Instance | BindingFlags.NonPublic)
+                            .Invoke(window, null);
+                        AssertTrue(!GetPrivateField<Button>(window, "enableButton").IsEnabled);
+                        AssertTrue(GetPrivateField<Button>(window, "applyThemeButton").IsEnabled);
+                        AssertEqual("应用并重启 Codex",
+                            Convert.ToString(GetPrivateField<Button>(window, "applyThemeButton").Content));
+                    }
+                    finally
+                    {
+                        SynchronizationContext.SetSynchronizationContext(previousContext);
+                        window.Close();
+                    }
+                }
+                finally { Directory.Delete(root, true); }
+            });
+
+            Run("Blocks mutations while a status refresh is in flight", delegate
+            {
+                string root = CreateLayout();
+                File.WriteAllText(Path.Combine(root, "windows", "scripts", "manager-actions.ps1"),
+                    "Start-Sleep -Milliseconds 600\n" +
+                    "'{\"isRunning\":true,\"isPaused\":false,\"statusKind\":\"running\",\"themes\":[]}'\n");
+                try
+                {
+                    DreamSkinService service = new DreamSkinService(root);
+                    MainWindow window = new MainWindow(service);
+                    SynchronizationContext previousContext = SynchronizationContext.Current;
+                    try
+                    {
+                        SynchronizationContext.SetSynchronizationContext(
+                            new DispatcherSynchronizationContext(window.Dispatcher));
+                        typeof(MainWindow).GetField("currentStatus", BindingFlags.Instance | BindingFlags.NonPublic)
+                            .SetValue(window, new DreamSkinStatus { IsRunning = true, StatusKind = "running" });
+                        ListBox themes = GetPrivateField<ListBox>(window, "themeList");
+                        themes.Items.Add(new ThemeOption { Id = "selected", Name = "Selected" });
+                        themes.SelectedIndex = 0;
+
+                        MethodInfo refresh = typeof(MainWindow).GetMethod("RefreshStatusAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+                        Task<bool> refreshTask = null;
+                        window.Dispatcher.Invoke(new Action(delegate {
+                            refreshTask = (Task<bool>)refresh.Invoke(window, new object[] { false });
+                        }));
+                        AssertEqual("1", Convert.ToString(ReadMemberObject(window, "statusRefreshCount")));
+                        AssertTrue(!GetPrivateField<Button>(window, "applyThemeButton").IsEnabled);
+                        AssertTrue(!GetPrivateField<Button>(window, "refreshButton").IsEnabled);
+
+                        int actionsRun = 0;
+                        Func<Task> action = delegate { actionsRun++; return Task.FromResult(0); };
+                        MethodInfo runOperation = typeof(MainWindow).GetMethod("RunOperationAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+                        Task blockedOperation = (Task)runOperation.Invoke(window, new object[] { action, "done" });
+                        WaitForTask(blockedOperation, window.Dispatcher);
+                        AssertEqual("0", actionsRun.ToString());
+
+                        AssertTrue(WaitForTask(refreshTask, window.Dispatcher));
+                        AssertEqual("0", Convert.ToString(ReadMemberObject(window, "statusRefreshCount")));
+                        AssertTrue(GetPrivateField<Button>(window, "refreshButton").IsEnabled);
+                    }
+                    finally
+                    {
+                        SynchronizationContext.SetSynchronizationContext(previousContext);
+                        window.Close();
+                    }
+                }
+                finally { Directory.Delete(root, true); }
+            });
+
+            Run("Keeps the expected stopped state when restore refresh fails", delegate
+            {
+                string root = CreateLayout();
+                File.WriteAllText(Path.Combine(root, "windows", "scripts", "manager-actions.ps1"),
+                    "throw 'transient status failure'\n");
+                try
+                {
+                    DreamSkinService service = new DreamSkinService(root);
+                    MainWindow window = new MainWindow(service);
+                    SynchronizationContext previousContext = SynchronizationContext.Current;
+                    try
+                    {
+                        SynchronizationContext.SetSynchronizationContext(
+                            new DispatcherSynchronizationContext(window.Dispatcher));
+                        DreamSkinStatus running = new DreamSkinStatus { IsRunning = true, StatusKind = "running" };
+                        typeof(MainWindow).GetField("currentStatus", BindingFlags.Instance | BindingFlags.NonPublic)
+                            .SetValue(window, running);
+                        ListBox themes = GetPrivateField<ListBox>(window, "themeList");
+                        themes.Items.Add(new ThemeOption { Id = "selected", Name = "Selected" });
+                        themes.SelectedIndex = 0;
+
+                        MethodInfo expectedState = typeof(MainWindow).GetMethod("SetExpectedRuntimeState", BindingFlags.Instance | BindingFlags.NonPublic);
+                        Func<Task> action = delegate {
+                            expectedState.Invoke(window, new object[] { false, false });
+                            return Task.FromResult(0);
+                        };
+                        MethodInfo runOperation = typeof(MainWindow).GetMethod("RunOperationAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+                        Task operation = (Task)runOperation.Invoke(window, new object[] { action, "restored" });
+                        WaitForTask(operation, window.Dispatcher);
+
+                        AssertEqual("stopped", running.StatusKind);
+                        AssertTrue(!running.IsRunning);
+                        AssertEqual("应用并重启 Codex",
+                            Convert.ToString(GetPrivateField<Button>(window, "applyThemeButton").Content));
+                        AssertTrue(GetPrivateField<Button>(window, "applyThemeButton").IsEnabled);
+                    }
+                    finally
+                    {
+                        SynchronizationContext.SetSynchronizationContext(previousContext);
+                        window.Close();
+                    }
+                }
+                finally { Directory.Delete(root, true); }
             });
 
             Run("Allows emergency restore when manager script is missing", delegate
@@ -744,6 +915,7 @@ namespace CodexDreamSkinManager
             Directory.CreateDirectory(Path.Combine(root, "windows", "scripts"));
             File.WriteAllText(Path.Combine(root, "windows", "scripts", "start-dream-skin.ps1"), "# fixture");
             File.WriteAllText(Path.Combine(root, "windows", "scripts", "restore-dream-skin.ps1"), "# fixture");
+            File.WriteAllText(Path.Combine(root, "windows", "scripts", "apply-theme-and-recover.ps1"), "# fixture");
             if (includeManager) File.WriteAllText(Path.Combine(root, "windows", "scripts", "manager-actions.ps1"), "# fixture");
             return root;
         }
@@ -966,6 +1138,31 @@ namespace CodexDreamSkinManager
             T value = field == null ? null : field.GetValue(instance) as T;
             if (value == null) throw new Exception("Private field was not found: " + name);
             return value;
+        }
+
+        private static T WaitForTask<T>(Task<T> task, Dispatcher dispatcher)
+        {
+            T result = default(T);
+            Exception failure = null;
+            DispatcherFrame frame = new DispatcherFrame();
+            task.ContinueWith(completed =>
+            {
+                if (completed.IsFaulted) failure = completed.Exception.InnerException;
+                else if (!completed.IsCanceled) result = completed.Result;
+                dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(delegate { frame.Continue = false; }));
+            });
+            Dispatcher.PushFrame(frame);
+            if (failure != null) throw failure;
+            return result;
+        }
+
+        private static void WaitForTask(Task task, Dispatcher dispatcher)
+        {
+            WaitForTask<object>(task.ContinueWith(completed =>
+                {
+                    if (completed.IsFaulted) throw completed.Exception.InnerException;
+                    return (object)null;
+                }), dispatcher);
         }
 
         private static int CountVisibleColumns(ListBox list)

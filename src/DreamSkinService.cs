@@ -14,9 +14,11 @@ namespace CodexDreamSkinManager
         private readonly string scriptsDirectory;
         private readonly string managerScript;
         private readonly string restoreScript;
+        private readonly string recoveryScript;
 
         public bool CanManage { get { return File.Exists(managerScript); } }
         public bool CanRestore { get { return File.Exists(restoreScript); } }
+        public bool CanRecover { get { return File.Exists(recoveryScript); } }
 
         public DreamSkinService(string root)
         {
@@ -24,6 +26,7 @@ namespace CodexDreamSkinManager
             scriptsDirectory = FindScriptsDirectory(rootDirectory);
             managerScript = Path.Combine(scriptsDirectory, "manager-actions.ps1");
             restoreScript = Path.Combine(scriptsDirectory, "restore-dream-skin.ps1");
+            recoveryScript = Path.Combine(scriptsDirectory, "apply-theme-and-recover.ps1");
             if (!CanManage && !CanRestore)
                 throw new FileNotFoundException("缺少管理脚本和紧急恢复脚本。", managerScript);
         }
@@ -209,6 +212,22 @@ namespace CodexDreamSkinManager
             List<ScriptArgument> args = new List<ScriptArgument>();
             args.Add(P("-Action")); args.Add(V("ApplyTheme"));
             args.Add(P("-SkillRoot")); args.Add(V(Path.Combine(rootDirectory, "windows")));
+            AddThemeArguments(args, theme);
+            return RunManagerAsync(args);
+        }
+
+        public Task ApplyThemeAndRecoverAsync(ThemeOption theme)
+        {
+            if (!CanRecover) throw new FileNotFoundException("缺少主题恢复脚本。", recoveryScript);
+            List<ScriptArgument> args = new List<ScriptArgument>();
+            args.Add(P("-SkillRoot")); args.Add(V(Path.Combine(rootDirectory, "windows")));
+            AddThemeArguments(args, theme);
+            return RunScriptAsync(recoveryScript, args);
+        }
+
+        private static void AddThemeArguments(List<ScriptArgument> args, ThemeOption theme)
+        {
+            if (theme == null) throw new ArgumentNullException("theme");
             if (!string.IsNullOrWhiteSpace(theme.ThemeDirectory))
             {
                 args.Add(P("-ThemeDirectory")); args.Add(V(theme.ThemeDirectory));
@@ -224,7 +243,6 @@ namespace CodexDreamSkinManager
                 args.Add(P("-TaskMode")); args.Add(V(theme.TaskMode));
                 args.Add(P("-Accent")); args.Add(V(theme.Accent));
             }
-            return RunManagerAsync(args);
         }
 
         public Task ImportThemeAsync(CustomThemeOptions options, bool keepCurrent)

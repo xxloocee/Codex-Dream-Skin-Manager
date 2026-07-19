@@ -127,6 +127,7 @@ function New-RunnableWindowsPackage([string]$SourceRoot, [string]$DestinationRoo
 
   $requiredPackageFiles = $requiredSourceFiles + @(
     'scripts\manager-actions.ps1',
+    'scripts\apply-theme-and-recover.ps1',
     'presets\catalog.json'
   )
   foreach ($relativePath in $requiredPackageFiles) {
@@ -194,10 +195,14 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $managerScript = Join-Path $root 'windows\scripts\manager-actions.ps1'
 if (-not (Test-Path -LiteralPath $managerScript)) { throw 'manager-actions.ps1 is missing.' }
-$tokens = $null
-$parseErrors = $null
-[System.Management.Automation.Language.Parser]::ParseFile($managerScript, [ref]$tokens, [ref]$parseErrors) | Out-Null
-if (@($parseErrors).Count -ne 0) { throw $parseErrors[0].Message }
+$recoveryScript = Join-Path $root 'windows\scripts\apply-theme-and-recover.ps1'
+if (-not (Test-Path -LiteralPath $recoveryScript)) { throw 'apply-theme-and-recover.ps1 is missing.' }
+foreach ($scriptToParse in @($managerScript, $recoveryScript)) {
+  $tokens = $null
+  $parseErrors = $null
+  [System.Management.Automation.Language.Parser]::ParseFile($scriptToParse, [ref]$tokens, [ref]$parseErrors) | Out-Null
+  if (@($parseErrors).Count -ne 0) { throw $parseErrors[0].Message }
+}
 
 $integrationTest = Join-Path $root 'tests\manager-actions.integration.ps1'
 if (-not (Test-Path -LiteralPath $SkillRoot -PathType Container)) {
@@ -207,6 +212,12 @@ New-RunnableWindowsPackage -SourceRoot $SkillRoot -DestinationRoot $packageWindo
 $packagedManagerScript = Join-Path $packageWindows 'scripts\manager-actions.ps1'
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $integrationTest `
   -ManagerScript $packagedManagerScript -SkillRoot $packageWindows
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+$recoveryIntegrationTest = Join-Path $root 'tests\apply-theme-and-recover.integration.ps1'
+$packagedRecoveryScript = Join-Path $packageWindows 'scripts\apply-theme-and-recover.ps1'
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $recoveryIntegrationTest `
+  -RecoveryScript $packagedRecoveryScript
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 if ($TestsOnly) { exit 0 }

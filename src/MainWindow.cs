@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
@@ -99,6 +100,8 @@ namespace CodexDreamSkinManager
         private ListBox themeSourceSegment;
         private ComboBox themeSortCombo;
         private FrameworkElement emptyThemeState;
+        private Button addImagesButton;
+        private Button importPackageButton;
         private Button exportThemeButton;
         private Border previewSurface;
         private Border customPreviewSurface;
@@ -123,7 +126,9 @@ namespace CodexDreamSkinManager
         private ComboBox safeAreaCombo;
         private ComboBox taskModeCombo;
         private DreamSkinStatus currentStatus = new DreamSkinStatus();
+        private readonly SemaphoreSlim statusRefreshLock = new SemaphoreSlim(1, 1);
         private bool operationRunning;
+        private int statusRefreshCount;
         private bool suppressThemeSelection;
         private bool hasValidCustomImage;
 
@@ -258,12 +263,12 @@ namespace CodexDreamSkinManager
             left.Children.Add(filterBar);
 
             WrapPanel commandBar = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
-            Button addImagesButton = SecondaryButton("添加图片");
+            addImagesButton = SecondaryButton("添加图片");
             addImagesButton.Margin = new Thickness(0, 0, 8, 0);
             AutomationProperties.SetName(addImagesButton, "AddImagesButton");
             addImagesButton.Click += async delegate { await AddImagesAsync(); };
             commandBar.Children.Add(addImagesButton);
-            Button importPackageButton = SecondaryButton("导入主题包");
+            importPackageButton = SecondaryButton("导入主题包");
             importPackageButton.Margin = new Thickness(0, 0, 8, 0);
             AutomationProperties.SetName(importPackageButton, "ImportPackageButton");
             importPackageButton.Click += async delegate { await ImportPackagesAsync(); };
@@ -448,37 +453,61 @@ namespace CodexDreamSkinManager
             return scroll;
         }
 
-        private async Task RefreshStatusAsync(bool reportErrors = true)
+        private async Task<bool> RefreshStatusAsync(bool reportErrors = true)
         {
             if (service == null)
             {
                 currentStatus.StatusKind = "error";
                 UpdateActionState();
-                return;
+                return false;
             }
+            statusRefreshCount++;
+            UpdateActionState();
+            await statusRefreshLock.WaitAsync();
             try
             {
-                currentStatus = await service.GetStatusAsync();
-                bool unhealthy = currentStatus.StatusKind == "stale" || currentStatus.StatusKind == "mismatch" ||
-                    currentStatus.StatusKind == "uninspectable" || currentStatus.StatusKind == "error";
-                statusText.Text = unhealthy ? "状态需要恢复" : currentStatus.IsPaused ? "皮肤已暂停" : currentStatus.IsRunning ? "皮肤运行中" : "皮肤未运行";
-                statusText.Foreground = unhealthy ? DangerBrush : currentStatus.IsRunning && !currentStatus.IsPaused ? SuccessBrush : currentStatus.IsPaused ? WarningBrush : MutedBrush;
-                statusDot.Background = unhealthy ? DangerBrush : currentStatus.IsRunning && !currentStatus.IsPaused ? SuccessBrush : currentStatus.IsPaused ? WarningBrush : MutedBrush;
-                statusText.ToolTip = BuildStatusDetails(currentStatus);
-                activeThemeText.Text = string.IsNullOrWhiteSpace(currentStatus.ActiveThemeName) ? "未选择" : CleanThemeName(currentStatus.ActiveThemeName);
-                try { SetPreviewImage(previewSurface, currentStatus.ActiveThemeImage, 0.5, 0.5); } catch { }
-                PopulateThemes(currentStatus.Themes);
-                UpdateActionState();
+                DreamSkinStatus previousStatus = currentStatus;
+                try
+                {
+                    currentStatus = await service.GetStatusAsync();
+                    bool unhealthy = currentStatus.StatusKind == "stale" || currentStatus.StatusKind == "mismatch" ||
+                        currentStatus.StatusKind == "uninspectable" || currentStatus.StatusKind == "error";
+                    statusText.Text = unhealthy ? "状态需要恢复" : currentStatus.IsPaused ? "皮肤已暂停" : currentStatus.IsRunning ? "皮肤运行中" : "皮肤未运行";
+                    statusText.Foreground = unhealthy ? DangerBrush : currentStatus.IsRunning && !currentStatus.IsPaused ? SuccessBrush : currentStatus.IsPaused ? WarningBrush : MutedBrush;
+                    statusDot.Background = unhealthy ? DangerBrush : currentStatus.IsRunning && !currentStatus.IsPaused ? SuccessBrush : currentStatus.IsPaused ? WarningBrush : MutedBrush;
+                    statusText.ToolTip = BuildStatusDetails(currentStatus);
+                    activeThemeText.Text = string.IsNullOrWhiteSpace(currentStatus.ActiveThemeName) ? "未选择" : CleanThemeName(currentStatus.ActiveThemeName);
+                    try { SetPreviewImage(previewSurface, currentStatus.ActiveThemeImage, 0.5, 0.5); } catch { }
+                    PopulateThemes(currentStatus.Themes);
+                    UpdateActionState();
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    // Keep the last known state actionable when a post-operation status
+                    // read fails transiently while the watcher reloads the new theme.
+                    if (reportErrors)
+                    {
+                        currentStatus.StatusKind = "error";
+                        currentStatus.StatusMessage = ex.Message;
+                        currentStatus.IsRunning = false;
+                    }
+                    else
+                    {
+                        currentStatus = previousStatus;
+                    }
+                    if (reportErrors) SetMessage(ex.Message, true);
+                    statusText.Text = "状态读取失败";
+                    statusText.Foreground = DangerBrush;
+                    statusDot.Background = DangerBrush;
+                    UpdateActionState();
+                    return false;
+                }
             }
-            catch (Exception ex)
+            finally
             {
-                currentStatus.StatusKind = "error";
-                currentStatus.StatusMessage = ex.Message;
-                currentStatus.IsRunning = false;
-                if (reportErrors) SetMessage(ex.Message, true);
-                statusText.Text = "状态读取失败";
-                statusText.Foreground = DangerBrush;
-                statusDot.Background = DangerBrush;
+                statusRefreshLock.Release();
+                statusRefreshCount--;
                 UpdateActionState();
             }
         }
@@ -553,11 +582,22 @@ namespace CodexDreamSkinManager
         {
             ThemeOption theme = themeList.SelectedItem as ThemeOption;
             if (theme == null) { SetMessage("请先选择一个主题。", true); return; }
+            ActionAvailability availability = ActionAvailability.FromStatus(currentStatus, false, true, hasValidCustomImage);
+            bool restartAfterApply = restart || availability.RestartAfterApply;
+            if (restartAfterApply && !ConfirmThemeRecoveryRestart(theme.Name)) return;
             await RunOperationAsync(async delegate
             {
-                await service.ApplyThemeAsync(theme);
-                if (restart) await service.StartAsync(true);
-            }, restart ? "主题已应用，Codex 已重新启动。" : "主题已应用。");
+                if (restartAfterApply)
+                {
+                    await service.ApplyThemeAndRecoverAsync(theme);
+                    SetExpectedRuntimeState(true, false);
+                }
+                else
+                {
+                    await service.ApplyThemeAsync(theme);
+                    SetExpectedRuntimeState(currentStatus.IsRunning, false);
+                }
+            }, restartAfterApply ? "主题已应用，Codex 已重新启动。" : "主题已应用。");
         }
 
         private async Task EnableAsync()
@@ -566,24 +606,37 @@ namespace CodexDreamSkinManager
             await RunOperationAsync(async delegate
             {
                 await service.StartAsync(true);
+                SetExpectedRuntimeState(true, false);
             }, "皮肤已启用，Codex 已重新启动。");
         }
 
         private async Task TogglePauseAsync()
         {
             bool pause = !currentStatus.IsPaused;
-            await RunOperationAsync(delegate { return service.SetPausedAsync(pause); }, pause ? "皮肤已暂停。" : "皮肤已继续显示。");
+            await RunOperationAsync(async delegate
+            {
+                await service.SetPausedAsync(pause);
+                SetExpectedRuntimeState(currentStatus.IsRunning, pause);
+            }, pause ? "皮肤已暂停。" : "皮肤已继续显示。");
         }
 
         private async Task ResetSkinAsync()
         {
-            await RunOperationAsync(delegate { return service.ResetThemeAsync(); }, "皮肤已重置为默认主题。");
+            await RunOperationAsync(async delegate
+            {
+                await service.ResetThemeAsync();
+                SetExpectedRuntimeState(currentStatus.IsRunning, false);
+            }, "皮肤已重置为默认主题。");
         }
 
         private async Task RestoreAsync()
         {
             if (!ConfirmRestart("恢复原始外观")) return;
-            await RunOperationAsync(delegate { return service.RestoreAsync(true); }, "Codex 已恢复原始外观。");
+            await RunOperationAsync(async delegate
+            {
+                await service.RestoreAsync(true);
+                SetExpectedRuntimeState(false, false);
+            }, "Codex 已恢复原始外观。");
         }
 
         private async Task SaveCustomAsync(bool apply)
@@ -594,7 +647,11 @@ namespace CodexDreamSkinManager
             await RunOperationAsync(async delegate
             {
                 await service.ImportThemeAsync(options, !apply);
-                if (apply) await service.StartAsync(true);
+                if (apply)
+                {
+                    await service.StartAsync(true);
+                    SetExpectedRuntimeState(true, false);
+                }
             }, apply ? "自定义主题已保存并应用。" : "自定义主题已保存。");
         }
 
@@ -611,9 +668,17 @@ namespace CodexDreamSkinManager
             return options;
         }
 
+        private void SetExpectedRuntimeState(bool running, bool paused)
+        {
+            currentStatus.IsRunning = running;
+            currentStatus.IsPaused = paused;
+            currentStatus.StatusKind = running ? (paused ? "paused" : "running") : "stopped";
+            currentStatus.StatusMessage = "";
+        }
+
         private async Task RunOperationAsync(Func<Task> action, string success)
         {
-            if (operationRunning || service == null) return;
+            if (operationRunning || statusRefreshCount > 0 || service == null) return;
             operationRunning = true;
             UpdateActionState();
             SetMessage("正在执行...", false);
@@ -628,9 +693,29 @@ namespace CodexDreamSkinManager
                 finalMessage = ex.Message;
                 finalError = true;
             }
-            await RefreshStatusAsync(false);
-            operationRunning = false;
-            UpdateActionState();
+            bool refreshed = false;
+            try
+            {
+                refreshed = await RefreshStatusAsync(false);
+            }
+            catch (Exception ex)
+            {
+                if (!finalError)
+                {
+                    finalMessage = ex.Message;
+                    finalError = true;
+                }
+            }
+            finally
+            {
+                operationRunning = false;
+                UpdateActionState();
+            }
+            if (!refreshed && !finalError)
+            {
+                finalMessage = success + " 状态刷新失败，请点击刷新状态重试。";
+                finalError = true;
+            }
             SetMessage(finalMessage, finalError);
         }
 
@@ -676,6 +761,7 @@ namespace CodexDreamSkinManager
 
         private async Task AddImagesAsync()
         {
+            if (operationRunning || statusRefreshCount > 0) return;
             OpenFileDialog dialog = new OpenFileDialog {
                 Title = "添加背景图片",
                 Filter = "图片文件|*.png;*.jpg;*.jpeg;*.webp",
@@ -691,6 +777,7 @@ namespace CodexDreamSkinManager
 
         private async Task ImportPackagesAsync()
         {
+            if (operationRunning || statusRefreshCount > 0) return;
             OpenFileDialog dialog = new OpenFileDialog {
                 Title = "导入主题包",
                 Filter = "Codex Dream Skin 主题包|*.cdskin",
@@ -739,7 +826,7 @@ namespace CodexDreamSkinManager
 
         private async Task ImportItemsAsync(IList<BatchImportItem> items, int preflightFailures)
         {
-            if (operationRunning || service == null || items == null || items.Count == 0) return;
+            if (operationRunning || statusRefreshCount > 0 || service == null || items == null || items.Count == 0) return;
             operationRunning = true;
             UpdateActionState();
             SetMessage("正在导入 " + items.Count + " 个主题...", false);
@@ -757,9 +844,29 @@ namespace CodexDreamSkinManager
                 message = ex.Message;
                 error = true;
             }
-            await RefreshStatusAsync(false);
-            operationRunning = false;
-            UpdateActionState();
+            bool refreshed = false;
+            try
+            {
+                refreshed = await RefreshStatusAsync(false);
+            }
+            catch (Exception ex)
+            {
+                if (!error)
+                {
+                    message = ex.Message;
+                    error = true;
+                }
+            }
+            finally
+            {
+                operationRunning = false;
+                UpdateActionState();
+            }
+            if (!refreshed && !error)
+            {
+                message += " 状态刷新失败，请点击刷新状态重试。";
+                error = true;
+            }
             SetMessage(message, error);
         }
 
@@ -819,14 +926,23 @@ namespace CodexDreamSkinManager
         private void UpdateActionState()
         {
             bool selected = themeList != null && themeList.SelectedItem is ThemeOption;
-            ActionAvailability state = ActionAvailability.FromStatus(currentStatus, operationRunning, selected, hasValidCustomImage);
+            bool busy = operationRunning || statusRefreshCount > 0;
+            ActionAvailability state = ActionAvailability.FromStatus(currentStatus, busy, selected, hasValidCustomImage);
             if (enableButton != null) { enableButton.IsEnabled = state.CanEnable && service != null && service.CanManage; enableButton.Content = state.EnableLabel; }
             if (pauseButton != null) { pauseButton.IsEnabled = state.CanPause && service != null && service.CanManage; pauseButton.Content = state.PauseLabel; }
             if (resetButton != null) resetButton.IsEnabled = state.CanReset && service != null && service.CanManage;
             if (restoreButton != null) restoreButton.IsEnabled = state.CanRestore && service != null && service.CanRestore;
-            if (refreshButton != null) refreshButton.IsEnabled = !operationRunning && service != null && service.CanManage;
-            if (applyThemeButton != null) applyThemeButton.IsEnabled = state.CanApplyTheme && service != null && service.CanManage;
-            if (exportThemeButton != null) exportThemeButton.IsEnabled = selected && !operationRunning;
+            if (refreshButton != null) refreshButton.IsEnabled = !busy && service != null && service.CanManage;
+            if (applyThemeButton != null)
+            {
+                bool canRunApply = service != null && (state.RestartAfterApply ? service.CanRecover : service.CanManage);
+                applyThemeButton.IsEnabled = state.CanApplyTheme && canRunApply;
+                applyThemeButton.Content = state.RestartAfterApply ? "应用并重启 Codex" : "应用选中主题";
+                applyThemeButton.ToolTip = state.RestartAfterApply ? "安全检查通过后应用选中主题并重启 Codex" : null;
+            }
+            if (addImagesButton != null) addImagesButton.IsEnabled = !busy && service != null && service.CanManage;
+            if (importPackageButton != null) importPackageButton.IsEnabled = !busy && service != null && service.CanManage;
+            if (exportThemeButton != null) exportThemeButton.IsEnabled = selected && !busy;
             if (saveThemeButton != null) saveThemeButton.IsEnabled = state.CanSaveTheme && service != null && service.CanManage;
             if (saveApplyButton != null) saveApplyButton.IsEnabled = state.CanSaveApply && service != null && service.CanManage;
         }
@@ -834,6 +950,14 @@ namespace CodexDreamSkinManager
         private bool ConfirmRestart(string operation)
         {
             return MessageBox.Show(this, operation + "需要关闭并重新打开 Codex。是否继续？", "确认操作", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+        }
+
+        private bool ConfirmThemeRecoveryRestart(string themeName)
+        {
+            string message = "将应用“" + themeName + "”并重新启动 Codex。未保存的输入可能丢失。\n\n" +
+                "管理器不会终止身份无法确认的进程；若安全检查失败，将中止恢复并保留诊断状态。是否继续？";
+            return MessageBox.Show(this, message, "确认应用并重启", MessageBoxButton.YesNo,
+                MessageBoxImage.Warning) == MessageBoxResult.Yes;
         }
 
         private void SetMessage(string message, bool error)
