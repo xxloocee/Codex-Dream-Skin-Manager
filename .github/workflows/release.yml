@@ -49,11 +49,14 @@ jobs:
             throw "Tag version ($version) does not match AssemblyInformationalVersion ($($Matches[1]))."
           }
           $readme = Get-Content -LiteralPath 'README.md' -Raw -Encoding UTF8
-          if ($readme -notmatch '当前版本：`(\d+\.\d+\.\d+)`') {
+          $readmeVersionMatch = [regex]::Match($readme,
+            '(?m)^.*?`(\d+\.\d+\.\d+)`.*Windows.*Codex.*$')
+          if (-not $readmeVersionMatch.Success) {
             throw 'README current version is missing.'
           }
-          if ($Matches[1] -ne $version) {
-            throw "Tag version ($version) does not match README current version ($($Matches[1]))."
+          $readmeVersion = $readmeVersionMatch.Groups[1].Value
+          if ($readmeVersion -ne $version) {
+            throw "Tag version ($version) does not match README current version ($readmeVersion)."
           }
           $expectedArchive = "CodexDreamSkinManager-v$version-windows.zip"
           if (-not $readme.Contains($expectedArchive)) {
