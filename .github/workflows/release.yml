@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out manager
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Check out Codex Dream Skin dependency
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: Fei-Away/Codex-Dream-Skin
+          ref: 3af1d6d62f3a0388cc640d2f497ac3100998938e
+          path: .dependencies/Codex-Dream-Skin
+
+      - name: Validate release tag
+        id: version
+        shell: powershell
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $tag = $env:RELEASE_TAG
+          if ($tag -notmatch '^v(\d+\.\d+\.\d+)$') {
+            throw "Release tag must use vMAJOR.MINOR.PATCH: $tag"
+          }
+          $version = $Matches[1]
+          $assemblyInfo = Get-Content -LiteralPath 'src\AssemblyInfo.cs' -Raw
+          if ($assemblyInfo -notmatch 'AssemblyInformationalVersion\("([^\"]+)"\)') {
+            throw 'AssemblyInformationalVersion is missing.'
+          }
+          if ($Matches[1] -ne $version) {
+            throw "Tag version ($version) does not match AssemblyInformationalVersion ($($Matches[1]))."
+          }
+          $readme = Get-Content -LiteralPath 'README.md' -Raw -Encoding UTF8
+          if ($readme -notmatch '当前版本：`(\d+\.\d+\.\d+)`') {
+            throw 'README current version is missing.'
+          }
+          if ($Matches[1] -ne $version) {
+            throw "Tag version ($version) does not match README current version ($($Matches[1]))."
+          }
+          $expectedArchive = "CodexDreamSkinManager-v$version-windows.zip"
+          if (-not $readme.Contains($expectedArchive)) {
+            throw "README download name does not match the release archive: $expectedArchive"
+          }
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor $env:GITHUB_SHA origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Release tags must point to a commit contained in origin/main.'
+          }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Test and build runnable package
+        shell: powershell
+        run: |
+          .\build.ps1 `
+            -SkillRoot (Join-Path $PWD '.dependencies\Codex-Dream-Skin\windows')
+
+      - name: Create versioned release archive
+        shell: powershell
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          .\tools\package-release.ps1 -Version $env:RELEASE_VERSION
+
+      - name: Upload release package artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: CodexDreamSkinManager-v${{ steps.version.outputs.version }}-windows
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create GitHub Release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $tag = $env:RELEASE_TAG
+          $version = $env:RELEASE_VERSION
+          $archive = "dist\CodexDreamSkinManager-v$version-windows.zip"
+          $checksum = "dist\CodexDreamSkinManager-v$version-windows.sha256"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $archive $checksum --clobber --repo $env:GITHUB_REPOSITORY
+          } else {
+            gh release create $tag $archive $checksum `
+              --repo $env:GITHUB_REPOSITORY `
+              --verify-tag `
+              --title "Codex Dream Skin Manager v$version" `
+              --generate-notes
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

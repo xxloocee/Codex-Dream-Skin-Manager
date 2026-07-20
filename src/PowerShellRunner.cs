@@ -41,6 +41,8 @@ namespace CodexDreamSkinManager
 
     internal static class PowerShellRunner
     {
+        private const string EncodedErrorPrefix = "__CODEX_DREAM_SKIN_ERROR_UTF8__";
+
         public static string QuoteLiteral(string value)
         {
             return "'" + (value ?? "").Replace("'", "''") + "'";
@@ -86,7 +88,12 @@ namespace CodexDreamSkinManager
                     result.Output = outputTask.Result.Trim();
                     result.Error = NormalizePowerShellError(errorTask.Result);
                     if (result.ExitCode != 0)
-                        throw new InvalidOperationException(string.IsNullOrWhiteSpace(result.Error) ? result.Output : result.Error);
+                    {
+                        string encodedError = ExtractEncodedError(result.Output);
+                        throw new InvalidOperationException(!string.IsNullOrWhiteSpace(encodedError)
+                            ? encodedError
+                            : (string.IsNullOrWhiteSpace(result.Error) ? result.Output : result.Error));
+                    }
                     return result;
                 }
             });
@@ -96,7 +103,7 @@ namespace CodexDreamSkinManager
         {
             StringBuilder command = new StringBuilder();
             command.Append("$utf8 = New-Object System.Text.UTF8Encoding($false); ");
-            command.Append("[Console]::OutputEncoding = $utf8; $OutputEncoding = $utf8; & ");
+            command.Append("[Console]::OutputEncoding = $utf8; $OutputEncoding = $utf8; try { & ");
             command.Append(QuoteLiteral(scriptPath));
             foreach (ScriptArgument argument in arguments)
             {
@@ -104,8 +111,25 @@ namespace CodexDreamSkinManager
                 command.Append(' ');
                 command.Append(argument.IsParameter ? argument.Text : QuoteLiteral(argument.Text));
             }
+            command.Append(" } catch { $message = [string]$_.Exception.Message; ");
+            command.Append("if ([string]::IsNullOrWhiteSpace($message)) { $message = [string]$_ }; ");
+            command.Append("[Console]::Out.WriteLine('");
+            command.Append(EncodedErrorPrefix);
+            command.Append("' + [Convert]::ToBase64String($utf8.GetBytes($message))); exit 1 }");
             string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command.ToString()));
             return "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + encoded;
+        }
+
+        internal static string ExtractEncodedError(string output)
+        {
+            string value = output ?? "";
+            int marker = value.LastIndexOf(EncodedErrorPrefix, StringComparison.Ordinal);
+            if (marker < 0) return "";
+            int start = marker + EncodedErrorPrefix.Length;
+            int end = value.IndexOfAny(new[] { '\r', '\n' }, start);
+            string encoded = (end < 0 ? value.Substring(start) : value.Substring(start, end - start)).Trim();
+            try { return Encoding.UTF8.GetString(Convert.FromBase64String(encoded)).Trim(); }
+            catch (FormatException) { return ""; }
         }
 
         internal static string NormalizePowerShellError(string value)
