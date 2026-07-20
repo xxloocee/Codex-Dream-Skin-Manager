@@ -104,8 +104,12 @@ jobs:
           $version = $env:RELEASE_VERSION
           $archive = "dist\CodexDreamSkinManager-v$version-windows.zip"
           $checksum = "dist\CodexDreamSkinManager-v$version-windows.sha256"
+          $previousErrorActionPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'SilentlyContinue'
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $releaseExists = $LASTEXITCODE -eq 0
+          $ErrorActionPreference = $previousErrorActionPreference
+          if ($releaseExists) {
             gh release upload $tag $archive $checksum --clobber --repo $env:GITHUB_REPOSITORY
           } else {
             gh release create $tag $archive $checksum `
