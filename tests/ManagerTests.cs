@@ -77,7 +77,8 @@ namespace CodexDreamSkinManager
                     }
                     catch (InvalidOperationException ex)
                     {
-                        AssertTrue(ex.Message.Contains("恢复失败：中文错误"));
+                        if (!ex.Message.Contains("恢复失败：中文错误"))
+                            throw new Exception("Decoded error: " + ex.Message);
                         AssertTrue(!ex.Message.Contains("#< CLIXML"));
                         AssertTrue(!ex.Message.Contains("FullyQualifiedErrorId"));
                     }
@@ -809,7 +810,7 @@ namespace CodexDreamSkinManager
                 finally { host.Close(); }
             });
 
-            Run("Theme grid exposes at least three default and six maximized columns", delegate
+            Run("Theme grid uses available width from three to six columns", delegate
             {
                 MainWindow window = new MainWindow(null);
                 ListBox themes = GetPrivateField<ListBox>(window, "themeList");
@@ -827,7 +828,13 @@ namespace CodexDreamSkinManager
                     window.Height = 1080;
                     window.UpdateLayout();
                     int maximumColumns = CountVisibleColumns(themes);
-                    if (maximumColumns < 6) throw new Exception("Maximized theme columns: " + maximumColumns);
+                    int expectedColumns = ExpectedVisibleColumns(themes, 6);
+                    if (maximumColumns < defaultColumns)
+                        throw new Exception("Expanded theme grid regressed from " + defaultColumns +
+                            " to " + maximumColumns + " columns.");
+                    if (maximumColumns < expectedColumns)
+                        throw new Exception("Expanded theme columns: " + maximumColumns +
+                            ", expected at least " + expectedColumns + " for width " + themes.ActualWidth + ".");
                 }
                 finally { window.Close(); }
             });
@@ -878,7 +885,7 @@ namespace CodexDreamSkinManager
                     AssertAtMost(1260.5, workspace.ActualWidth, "Dashboard workspace is too wide.");
                     AssertBetween(329.0, 331.0, controls.ActualWidth, "Dashboard controls do not keep a stable width.");
                     AssertAtMost(540.0, controls.ActualHeight, "Dashboard controls stretch into an empty full-height panel.");
-                    AssertBetween(1.7, 2.3, preview.ActualWidth / preview.ActualHeight, "Dashboard preview is distorted at maximum size.");
+                    AssertResponsivePreview(preview, "Dashboard preview does not follow its responsive height contract.");
                     Rect controlsBounds = controls.TransformToAncestor(tabs).TransformBounds(new Rect(controls.RenderSize));
                     AssertTrue(controlsBounds.Left >= 0 && controlsBounds.Right <= tabs.ActualWidth + 0.5);
                 }
@@ -906,8 +913,8 @@ namespace CodexDreamSkinManager
                     AssertAtMost(1260.5, workspace.ActualWidth, "Custom workspace is too wide.");
                     AssertBetween(379.0, 381.0, controls.ActualWidth, "Custom controls do not keep a stable width.");
                     AssertAtMost(720.0, controls.ActualHeight, "Custom controls stretch into an empty full-height panel.");
-                    AssertBetween(1.7, 2.3, preview.ActualWidth / preview.ActualHeight,
-                        "Custom preview is distorted at maximum size (workspace " + workspace.ActualWidth +
+                    AssertResponsivePreview(preview,
+                        "Custom preview does not follow its responsive height contract (workspace " + workspace.ActualWidth +
                         ", preview " + preview.ActualWidth + "x" + preview.ActualHeight +
                         ", controls " + controls.ActualWidth + ").");
                     Rect controlsBounds = controls.TransformToAncestor(tabs).TransformBounds(new Rect(controls.RenderSize));
@@ -1392,6 +1399,26 @@ namespace CodexDreamSkinManager
                 if (point.Y >= 0 && point.Y < list.ActualHeight) columns.Add((int)Math.Round(point.X));
             }
             return columns.Count;
+        }
+
+        private static int ExpectedVisibleColumns(ListBox list, int maximum)
+        {
+            double available = list.ActualWidth - list.Padding.Left - list.Padding.Right -
+                list.BorderThickness.Left - list.BorderThickness.Right;
+            int columns = (int)Math.Floor(Math.Max(0, available) / 132.0);
+            return Math.Max(1, Math.Min(maximum, columns));
+        }
+
+        private static void AssertResponsivePreview(Border preview, string message)
+        {
+            ResponsivePreviewBorder responsive = preview as ResponsivePreviewBorder;
+            AssertTrue(responsive != null);
+            AssertClose(16.0 / 9.0, responsive.PreviewAspectRatio);
+            double expectedHeight = Math.Max(responsive.PreviewMinHeight,
+                Math.Min(responsive.PreviewMaxHeight,
+                    preview.ActualWidth / responsive.PreviewAspectRatio));
+            AssertBetween(expectedHeight - 0.5, expectedHeight + 0.5,
+                preview.ActualHeight, message);
         }
     }
 }
