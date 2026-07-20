@@ -68,6 +68,7 @@ namespace CodexDreamSkinManager
 
                 using (Process process = Process.Start(info))
                 {
+                    Stopwatch stopwatch = Stopwatch.StartNew();
                     Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
                     Task<string> errorTask = process.StandardError.ReadToEndAsync();
                     if (!process.WaitForExit(timeoutMilliseconds))
@@ -76,7 +77,10 @@ namespace CodexDreamSkinManager
                         process.WaitForExit(5000);
                         throw new TimeoutException("PowerShell 操作超时，请查看 Codex Dream Skin 状态后重试。");
                     }
-                    Task.WaitAll(outputTask, errorTask);
+                    int remainingMilliseconds = Math.Max(0,
+                        timeoutMilliseconds - (int)Math.Min(stopwatch.ElapsedMilliseconds, int.MaxValue));
+                    if (!Task.WaitAll(new Task[] { outputTask, errorTask }, remainingMilliseconds))
+                        throw new TimeoutException("PowerShell 操作超时，请查看 Codex Dream Skin 状态后重试。");
                     ScriptResult result = new ScriptResult();
                     result.ExitCode = process.ExitCode;
                     result.Output = outputTask.Result.Trim();

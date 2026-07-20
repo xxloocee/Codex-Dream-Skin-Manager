@@ -470,11 +470,12 @@ namespace CodexDreamSkinManager
                 try
                 {
                     currentStatus = await service.GetStatusAsync();
-                    bool unhealthy = currentStatus.StatusKind == "stale" || currentStatus.StatusKind == "mismatch" ||
+                    bool unhealthy = currentStatus.StatusKind == "mismatch" ||
                         currentStatus.StatusKind == "uninspectable" || currentStatus.StatusKind == "error";
-                    statusText.Text = unhealthy ? "状态需要恢复" : currentStatus.IsPaused ? "皮肤已暂停" : currentStatus.IsRunning ? "皮肤运行中" : "皮肤未运行";
-                    statusText.Foreground = unhealthy ? DangerBrush : currentStatus.IsRunning && !currentStatus.IsPaused ? SuccessBrush : currentStatus.IsPaused ? WarningBrush : MutedBrush;
-                    statusDot.Background = unhealthy ? DangerBrush : currentStatus.IsRunning && !currentStatus.IsPaused ? SuccessBrush : currentStatus.IsPaused ? WarningBrush : MutedBrush;
+                    bool pausedWhileRunning = currentStatus.IsRunning && currentStatus.IsPaused;
+                    statusText.Text = unhealthy ? "状态需要恢复" : pausedWhileRunning ? "皮肤已暂停" : currentStatus.IsRunning ? "皮肤运行中" : "皮肤未运行";
+                    statusText.Foreground = unhealthy ? DangerBrush : currentStatus.IsRunning ? pausedWhileRunning ? WarningBrush : SuccessBrush : MutedBrush;
+                    statusDot.Background = unhealthy ? DangerBrush : currentStatus.IsRunning ? pausedWhileRunning ? WarningBrush : SuccessBrush : MutedBrush;
                     statusText.ToolTip = BuildStatusDetails(currentStatus);
                     activeThemeText.Text = string.IsNullOrWhiteSpace(currentStatus.ActiveThemeName) ? "未选择" : CleanThemeName(currentStatus.ActiveThemeName);
                     try { SetPreviewImage(previewSurface, currentStatus.ActiveThemeImage, 0.5, 0.5); } catch { }
@@ -584,12 +585,22 @@ namespace CodexDreamSkinManager
             if (theme == null) { SetMessage("请先选择一个主题。", true); return; }
             ActionAvailability availability = ActionAvailability.FromStatus(currentStatus, false, true, hasValidCustomImage);
             bool restartAfterApply = restart || availability.RestartAfterApply;
-            if (restartAfterApply && !ConfirmThemeRecoveryRestart(theme.Name)) return;
+            if (restartAfterApply && !(availability.RequiresRecovery
+                ? ConfirmThemeRecoveryRestart(theme.Name)
+                : ConfirmRestart("应用主题"))) return;
             await RunOperationAsync(async delegate
             {
                 if (restartAfterApply)
                 {
-                    await service.ApplyThemeAndRecoverAsync(theme);
+                    if (availability.RequiresRecovery)
+                    {
+                        await service.ApplyThemeAndRecoverAsync(theme);
+                    }
+                    else
+                    {
+                        await service.ApplyThemeAsync(theme);
+                        await service.StartAsync(true);
+                    }
                     SetExpectedRuntimeState(true, false);
                 }
                 else
@@ -935,10 +946,12 @@ namespace CodexDreamSkinManager
             if (refreshButton != null) refreshButton.IsEnabled = !busy && service != null && service.CanManage;
             if (applyThemeButton != null)
             {
-                bool canRunApply = service != null && (state.RestartAfterApply ? service.CanRecover : service.CanManage);
+                bool canRunApply = service != null && (state.RequiresRecovery ? service.CanRecover : service.CanManage);
                 applyThemeButton.IsEnabled = state.CanApplyTheme && canRunApply;
                 applyThemeButton.Content = state.RestartAfterApply ? "应用并重启 Codex" : "应用选中主题";
-                applyThemeButton.ToolTip = state.RestartAfterApply ? "安全检查通过后应用选中主题并重启 Codex" : null;
+                applyThemeButton.ToolTip = state.RequiresRecovery
+                    ? "安全检查通过后应用选中主题并重启 Codex"
+                    : state.RestartAfterApply ? "应用选中主题并重启 Codex" : null;
             }
             if (addImagesButton != null) addImagesButton.IsEnabled = !busy && service != null && service.CanManage;
             if (importPackageButton != null) importPackageButton.IsEnabled = !busy && service != null && service.CanManage;

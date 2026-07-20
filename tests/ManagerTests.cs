@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Collections;
@@ -135,7 +136,7 @@ namespace CodexDreamSkinManager
                 AssertEqual("#7B78D6", ReadMember(theme, "Accent"));
             });
 
-            Run("Ships a balanced 24 theme preset catalog", delegate
+            Run("Ships a 31 theme preset catalog", delegate
             {
                 string presetRoot = Path.Combine(Environment.CurrentDirectory, "windows", "presets");
                 string catalogPath = Path.Combine(presetRoot, "catalog.json");
@@ -144,9 +145,27 @@ namespace CodexDreamSkinManager
                 AssertEqual("1", Convert.ToString(catalog["schemaVersion"]));
                 ArrayList themes = catalog["themes"] as ArrayList;
                 AssertTrue(themes != null);
-                AssertEqual("24", themes.Count.ToString());
+                AssertEqual("31", themes.Count.ToString());
+                string[] originalThemeIds = {
+                    "romantic-rose", "sakura-dawn", "cloud-reverie", "moonlit-garden",
+                    "forest-mist", "alpine-dawn", "ocean-glass", "bamboo-rain",
+                    "cyber-neon", "hologram-city", "neon-circuit", "synthwave-grid",
+                    "paper-light", "glass-workspace", "soft-geometry", "monochrome-lines",
+                    "midnight-aurora", "obsidian-glow", "starfield", "rainy-night",
+                    "amber-dusk", "peach-sunrise", "candle-atelier", "autumn-window"
+                };
+                // The shipped catalog is a stable prefix; future presets must append after it.
+                for (int index = 0; index < originalThemeIds.Length; index++)
+                {
+                    Dictionary<string, object> originalTheme = themes[index] as Dictionary<string, object>;
+                    AssertTrue(originalTheme != null);
+                    AssertEqual(originalThemeIds[index], Convert.ToString(originalTheme["id"]));
+                }
                 HashSet<string> ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 Dictionary<string, int> categories = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                Dictionary<string, object> authorizedTheme = null;
+                Dictionary<string, object> peopleAiTheme = null;
+                Dictionary<string, object> arinaTheme = null;
                 foreach (object value in themes)
                 {
                     Dictionary<string, object> row = value as Dictionary<string, object>;
@@ -157,9 +176,99 @@ namespace CodexDreamSkinManager
                     AssertTrue(ids.Add(id));
                     AssertTrue(File.Exists(Path.Combine(presetRoot, image)));
                     categories[category] = categories.ContainsKey(category) ? categories[category] + 1 : 1;
+                    if (id == "violet-thunder") authorizedTheme = row;
+                    if (id == "people-ai-red-horizon") peopleAiTheme = row;
+                    if (id == "arina-hashimoto") arinaTheme = row;
                 }
                 foreach (string category in new[] { "dream", "nature", "cyber", "minimal", "dark", "warm" })
-                    AssertTrue(categories.ContainsKey(category) && categories[category] == 4);
+                    AssertTrue(categories.ContainsKey(category) && categories[category] >= 4);
+
+                AssertTrue(authorizedTheme != null);
+                AssertEqual("dark", Convert.ToString(authorizedTheme["category"]));
+                AssertEqual("dark", Convert.ToString(authorizedTheme["appearance"]));
+                AssertEqual("right", Convert.ToString(authorizedTheme["safeArea"]));
+                AssertEqual("ambient", Convert.ToString(authorizedTheme["taskMode"]));
+                AssertClose(0.52, Convert.ToDouble(authorizedTheme["focusX"]));
+                AssertClose(0.43, Convert.ToDouble(authorizedTheme["focusY"]));
+                string authorizedImagePath = Path.Combine(
+                    presetRoot, Convert.ToString(authorizedTheme["image"]));
+                using (System.Drawing.Image image = System.Drawing.Image.FromFile(authorizedImagePath))
+                {
+                    AssertEqual("2560", image.Width.ToString());
+                    AssertEqual("1440", image.Height.ToString());
+                }
+                AssertTrue(new FileInfo(authorizedImagePath).Length < 16L * 1024L * 1024L);
+
+                AssertTrue(peopleAiTheme != null);
+                AssertEqual("人民的AI", Convert.ToString(peopleAiTheme["name"]));
+                AssertEqual("cyber", Convert.ToString(peopleAiTheme["category"]));
+                AssertEqual("light", Convert.ToString(peopleAiTheme["appearance"]));
+                AssertEqual("left", Convert.ToString(peopleAiTheme["safeArea"]));
+                AssertEqual("ambient", Convert.ToString(peopleAiTheme["taskMode"]));
+                AssertEqual("#D72E35", Convert.ToString(peopleAiTheme["accent"]));
+                AssertClose(0.78, Convert.ToDouble(peopleAiTheme["focusX"]));
+                AssertClose(0.5, Convert.ToDouble(peopleAiTheme["focusY"]));
+                string peopleAiImagePath = Path.Combine(
+                    presetRoot, Convert.ToString(peopleAiTheme["image"]));
+                using (System.Drawing.Image image = System.Drawing.Image.FromFile(peopleAiImagePath))
+                {
+                    AssertEqual("2560", image.Width.ToString());
+                    AssertEqual("1440", image.Height.ToString());
+                }
+                AssertTrue(new FileInfo(peopleAiImagePath).Length < 16L * 1024L * 1024L);
+
+                AssertTrue(arinaTheme != null);
+                AssertEqual("桥本有菜", Convert.ToString(arinaTheme["name"]));
+                AssertEqual("dream", Convert.ToString(arinaTheme["category"]));
+                AssertEqual("auto", Convert.ToString(arinaTheme["appearance"]));
+                AssertEqual("left", Convert.ToString(arinaTheme["safeArea"]));
+                AssertEqual("ambient", Convert.ToString(arinaTheme["taskMode"]));
+                AssertClose(0.72, Convert.ToDouble(arinaTheme["focusX"]));
+                AssertClose(0.45, Convert.ToDouble(arinaTheme["focusY"]));
+                string arinaImagePath = Path.Combine(presetRoot, Convert.ToString(arinaTheme["image"]));
+                using (System.Drawing.Image image = System.Drawing.Image.FromFile(arinaImagePath))
+                {
+                    AssertEqual("2560", image.Width.ToString());
+                    AssertEqual("1440", image.Height.ToString());
+                }
+                AssertTrue(new FileInfo(arinaImagePath).Length < 16L * 1024L * 1024L);
+            });
+
+            Run("Ships four Ergouzi theme variants", delegate
+            {
+                string presetRoot = Path.Combine(Environment.CurrentDirectory, "windows", "presets");
+                Dictionary<string, object> catalog = new JavaScriptSerializer()
+                    .Deserialize<Dictionary<string, object>>(File.ReadAllText(
+                        Path.Combine(presetRoot, "catalog.json"), Encoding.UTF8));
+                ArrayList themes = catalog["themes"] as ArrayList;
+                Dictionary<string, string[]> expected = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase) {
+                    { "ergouzi-paper-comet-light", new[] { "dream", "light", "#E96F79", "0.75", "0.44" } },
+                    { "ergouzi-paper-comet-dark", new[] { "dream", "dark", "#F07D9B", "0.75", "0.44" } },
+                    { "ergouzi-signal-star-light", new[] { "cyber", "light", "#E775A7", "0.76", "0.45" } },
+                    { "ergouzi-signal-star-dark", new[] { "cyber", "dark", "#F080B4", "0.76", "0.45" } }
+                };
+                foreach (Dictionary<string, object> row in themes)
+                {
+                    string id = Convert.ToString(row["id"]);
+                    if (!expected.ContainsKey(id)) continue;
+                    string[] values = expected[id];
+                    AssertEqual(values[0], Convert.ToString(row["category"]));
+                    AssertEqual(values[1], Convert.ToString(row["appearance"]));
+                    AssertEqual(values[2], Convert.ToString(row["accent"]));
+                    AssertClose(Convert.ToDouble(values[3]), Convert.ToDouble(row["focusX"]));
+                    AssertClose(Convert.ToDouble(values[4]), Convert.ToDouble(row["focusY"]));
+                    AssertEqual("left", Convert.ToString(row["safeArea"]));
+                    AssertEqual("ambient", Convert.ToString(row["taskMode"]));
+                    string imagePath = Path.Combine(presetRoot, Convert.ToString(row["image"]));
+                    using (System.Drawing.Image image = System.Drawing.Image.FromFile(imagePath))
+                    {
+                        AssertEqual("2560", image.Width.ToString());
+                        AssertEqual("1440", image.Height.ToString());
+                    }
+                    AssertTrue(new FileInfo(imagePath).Length < 16L * 1024L * 1024L);
+                    expected.Remove(id);
+                }
+                AssertEqual("0", expected.Count.ToString());
             });
 
             Run("Ships six optimized 16 by 9 themes", delegate
@@ -327,6 +436,7 @@ namespace CodexDreamSkinManager
                 AssertTrue(!Convert.ToBoolean(ReadMemberObject(stoppedActions, "CanPause")));
                 AssertTrue(Convert.ToBoolean(ReadMemberObject(stoppedActions, "CanReset")));
                 AssertTrue(Convert.ToBoolean(ReadMemberObject(stoppedActions, "RestartAfterApply")));
+                AssertTrue(!Convert.ToBoolean(ReadMemberObject(stoppedActions, "RequiresRecovery")));
                 DreamSkinStatus legacy = DreamSkinService.ParseStatus("{\"isRunning\":false,\"isPaused\":false,\"statusKind\":\"stopped\",\"supportedActions\":[\"Status\"],\"themes\":[]}");
                 object legacyActions = fromStatus.Invoke(null, new object[] { legacy, false, true, true });
                 AssertTrue(!Convert.ToBoolean(ReadMemberObject(legacyActions, "CanReset")));
@@ -335,14 +445,58 @@ namespace CodexDreamSkinManager
                 AssertTrue(!Convert.ToBoolean(ReadMemberObject(mismatchActions, "CanEnable")));
                 AssertTrue(Convert.ToBoolean(ReadMemberObject(mismatchActions, "CanApplyTheme")));
                 AssertTrue(Convert.ToBoolean(ReadMemberObject(mismatchActions, "RestartAfterApply")));
+                AssertTrue(Convert.ToBoolean(ReadMemberObject(mismatchActions, "RequiresRecovery")));
                 AssertTrue(Convert.ToBoolean(ReadMemberObject(mismatchActions, "CanRestore")));
                 DreamSkinStatus stale = DreamSkinService.ParseStatus("{\"isRunning\":false,\"isPaused\":false,\"statusKind\":\"stale\",\"supportedActions\":[\"ResetTheme\"],\"themes\":[]}");
                 object staleActions = fromStatus.Invoke(null, new object[] { stale, false, true, true });
-                AssertTrue(!Convert.ToBoolean(ReadMemberObject(staleActions, "CanEnable")));
+                AssertTrue(Convert.ToBoolean(ReadMemberObject(staleActions, "CanEnable")));
                 AssertTrue(!Convert.ToBoolean(ReadMemberObject(staleActions, "CanPause")));
-                AssertTrue(!Convert.ToBoolean(ReadMemberObject(staleActions, "CanReset")));
+                AssertTrue(Convert.ToBoolean(ReadMemberObject(staleActions, "CanReset")));
                 AssertTrue(Convert.ToBoolean(ReadMemberObject(staleActions, "CanApplyTheme")));
                 AssertTrue(Convert.ToBoolean(ReadMemberObject(staleActions, "RestartAfterApply")));
+                AssertTrue(!Convert.ToBoolean(ReadMemberObject(staleActions, "RequiresRecovery")));
+                DreamSkinStatus stalePaused = DreamSkinService.ParseStatus("{\"isRunning\":false,\"isPaused\":true,\"statusKind\":\"stale\",\"themes\":[]}");
+                object stalePausedActions = fromStatus.Invoke(null, new object[] { stalePaused, false, true, true });
+                AssertTrue(!Convert.ToBoolean(ReadMemberObject(stalePausedActions, "CanPause")));
+                AssertEqual("暂停皮肤", Convert.ToString(ReadMemberObject(stalePausedActions, "PauseLabel")));
+                DreamSkinStatus runningPaused = DreamSkinService.ParseStatus("{\"isRunning\":true,\"isPaused\":true,\"statusKind\":\"paused\",\"themes\":[]}");
+                object runningPausedActions = fromStatus.Invoke(null, new object[] { runningPaused, false, true, true });
+                AssertTrue(Convert.ToBoolean(ReadMemberObject(runningPausedActions, "CanPause")));
+                AssertEqual("继续显示", Convert.ToString(ReadMemberObject(runningPausedActions, "PauseLabel")));
+            });
+
+            Run("Shows stale paused markers as stopped", delegate
+            {
+                string root = CreateLayout();
+                File.WriteAllText(Path.Combine(root, "windows", "scripts", "manager-actions.ps1"),
+                    "'{\"isRunning\":false,\"isPaused\":true,\"statusKind\":\"stale\",\"themes\":[]}'\n");
+                try
+                {
+                    DreamSkinService service = new DreamSkinService(root);
+                    MainWindow window = new MainWindow(service);
+                    SynchronizationContext previousContext = SynchronizationContext.Current;
+                    try
+                    {
+                        SynchronizationContext.SetSynchronizationContext(
+                            new DispatcherSynchronizationContext(window.Dispatcher));
+                        MethodInfo refresh = typeof(MainWindow).GetMethod("RefreshStatusAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+                        Task<bool> refreshTask = null;
+                        window.Dispatcher.Invoke(new Action(delegate {
+                            refreshTask = (Task<bool>)refresh.Invoke(window, new object[] { false });
+                        }));
+                        AssertTrue(WaitForTask(refreshTask, window.Dispatcher));
+                        AssertEqual("皮肤未运行", GetPrivateField<TextBlock>(window, "statusText").Text);
+                        Button pause = GetPrivateField<Button>(window, "pauseButton");
+                        AssertTrue(!pause.IsEnabled);
+                        AssertEqual("暂停皮肤", Convert.ToString(pause.Content));
+                    }
+                    finally
+                    {
+                        SynchronizationContext.SetSynchronizationContext(previousContext);
+                        window.Close();
+                    }
+                }
+                finally { Directory.Delete(root, true); }
             });
 
             Run("Keeps actions available after a transient status refresh failure", delegate
@@ -851,6 +1005,68 @@ namespace CodexDreamSkinManager
                 finally
                 {
                     File.Delete(script);
+                }
+            });
+
+            Run("Bounds output drain after PowerShell exits", delegate
+            {
+                string script = Path.Combine(Path.GetTempPath(), "dream-skin-output-timeout-" + Guid.NewGuid().ToString("N") + ".ps1");
+                string pidPath = Path.Combine(Path.GetTempPath(), "dream-skin-output-pids-" + Guid.NewGuid().ToString("N") + ".txt");
+                File.WriteAllText(script,
+                    "param([string]$PidPath)\n" +
+                    "$child = Start-Process -FilePath powershell.exe -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 15' -NoNewWindow -PassThru\n" +
+                    "Set-Content -LiteralPath $PidPath -Value (\"$PID|$($child.Id)\")\n" +
+                    "Write-Output 'done'\n");
+                int childPid = 0;
+                try
+                {
+                    Stopwatch stopwatch = Stopwatch.StartNew();
+                    Task<ScriptResult> task = PowerShellRunner.RunAsync(script, new[] {
+                        ScriptArgument.Parameter("-PidPath"), ScriptArgument.Literal(pidPath)
+                    }, 5000);
+                    DateTime markerDeadline = DateTime.UtcNow.AddSeconds(3);
+                    while (!File.Exists(pidPath) && DateTime.UtcNow < markerDeadline) Thread.Sleep(25);
+                    AssertTrue(File.Exists(pidPath));
+                    string[] processIds = File.ReadAllText(pidPath).Trim().Split('|');
+                    int parentPid = Convert.ToInt32(processIds[0]);
+                    childPid = Convert.ToInt32(processIds[1]);
+                    bool parentExited = false;
+                    DateTime exitDeadline = DateTime.UtcNow.AddSeconds(2);
+                    while (!parentExited && DateTime.UtcNow < exitDeadline)
+                    {
+                        try
+                        {
+                            using (Process parent = Process.GetProcessById(parentPid))
+                                parentExited = parent.HasExited;
+                        }
+                        catch (ArgumentException) { parentExited = true; }
+                        if (!parentExited) Thread.Sleep(25);
+                    }
+                    AssertTrue(parentExited);
+                    AssertTrue(!task.IsCompleted);
+                    AssertThrows<TimeoutException>(delegate
+                    {
+                        task.GetAwaiter().GetResult();
+                    });
+                    stopwatch.Stop();
+                    AssertTrue(stopwatch.ElapsedMilliseconds < 8000);
+                }
+                finally
+                {
+                    if (childPid > 0)
+                    {
+                        try
+                        {
+                            using (Process child = Process.GetProcessById(childPid))
+                            {
+                                if (!child.HasExited) child.Kill();
+                                child.WaitForExit(2000);
+                            }
+                        }
+                        catch (ArgumentException) { }
+                    }
+                    File.Delete(script);
+                    File.Delete(pidPath);
                 }
             });
 

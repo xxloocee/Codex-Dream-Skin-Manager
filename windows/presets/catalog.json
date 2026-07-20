@@ -312,6 +312,97 @@
       "safeArea": "left",
       "taskMode": "ambient",
       "accent": "#A65A55"
+    },
+    {
+      "id": "arina-hashimoto",
+      "name": "桥本有菜",
+      "image": "arina-hashimoto.jpg",
+      "category": "dream",
+      "tags": ["人物", "玫瑰", "柔光"],
+      "appearance": "auto",
+      "focusX": 0.72,
+      "focusY": 0.45,
+      "safeArea": "left",
+      "taskMode": "ambient",
+      "accent": "#C7748E"
+    },
+    {
+      "id": "ergouzi-paper-comet-light",
+      "name": "二狗子 · 灵感纸飞机 · 浅色",
+      "image": "ergouzi-paper-comet-light.jpg",
+      "category": "dream",
+      "tags": ["二狗子", "纸飞机", "灵感"],
+      "appearance": "light",
+      "focusX": 0.75,
+      "focusY": 0.44,
+      "safeArea": "left",
+      "taskMode": "ambient",
+      "accent": "#E96F79"
+    },
+    {
+      "id": "ergouzi-paper-comet-dark",
+      "name": "二狗子 · 灵感纸飞机 · 深色",
+      "image": "ergouzi-paper-comet-dark.jpg",
+      "category": "dream",
+      "tags": ["二狗子", "纸飞机", "灵感"],
+      "appearance": "dark",
+      "focusX": 0.75,
+      "focusY": 0.44,
+      "safeArea": "left",
+      "taskMode": "ambient",
+      "accent": "#F07D9B"
+    },
+    {
+      "id": "people-ai-red-horizon",
+      "name": "人民的AI",
+      "image": "people-ai-red-horizon.jpg",
+      "category": "cyber",
+      "tags": ["人民AI", "红白", "未来城市"],
+      "appearance": "light",
+      "focusX": 0.78,
+      "focusY": 0.5,
+      "safeArea": "left",
+      "taskMode": "ambient",
+      "accent": "#D72E35"
+    },
+    {
+      "id": "ergouzi-signal-star-light",
+      "name": "二狗子 · 信号星 · 浅色",
+      "image": "ergouzi-signal-star-light.jpg",
+      "category": "cyber",
+      "tags": ["二狗子", "信号", "星光"],
+      "appearance": "light",
+      "focusX": 0.76,
+      "focusY": 0.45,
+      "safeArea": "left",
+      "taskMode": "ambient",
+      "accent": "#E775A7"
+    },
+    {
+      "id": "ergouzi-signal-star-dark",
+      "name": "二狗子 · 信号星 · 深色",
+      "image": "ergouzi-signal-star-dark.jpg",
+      "category": "cyber",
+      "tags": ["二狗子", "信号", "星光"],
+      "appearance": "dark",
+      "focusX": 0.76,
+      "focusY": 0.45,
+      "safeArea": "left",
+      "taskMode": "ambient",
+      "accent": "#F080B4"
+    },
+    {
+      "id": "violet-thunder",
+      "name": "紫电神影",
+      "image": "violet-thunder.png",
+      "category": "dark",
+      "tags": ["紫电", "人物", "幻想"],
+      "appearance": "dark",
+      "focusX": 0.52,
+      "focusY": 0.43,
+      "safeArea": "right",
+      "taskMode": "ambient",
+      "accent": "#A86BFF"
     }
   ]
 }
