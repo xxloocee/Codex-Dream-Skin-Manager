@@ -99,6 +99,12 @@ function New-RunnableWindowsPackage([string]$SourceRoot, [string]$DestinationRoo
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
   Copy-Item -LiteralPath $source -Destination $destination -Recurse
   Copy-Item -Path (Join-Path $root 'windows\*') -Destination $destination -Recurse -Force
+  $framingPatch = Join-Path $root 'packaging\Add-CustomFramingRuntime.ps1'
+  if (-not (Test-Path -LiteralPath $framingPatch -PathType Leaf)) {
+    throw 'The custom framing runtime patch is missing.'
+  }
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $framingPatch -WindowsRoot $destination
+  if ($LASTEXITCODE -ne 0) { throw 'The custom framing runtime patch failed.' }
   Copy-Item -LiteralPath $replacementDefaultImage `
     -Destination (Join-Path $destination 'assets\dream-reference.jpg') -Force
 
@@ -128,6 +134,7 @@ function New-RunnableWindowsPackage([string]$SourceRoot, [string]$DestinationRoo
   $requiredPackageFiles = $requiredSourceFiles + @(
     'scripts\manager-actions.ps1',
     'scripts\apply-theme-and-recover.ps1',
+    'scripts\runtime-version.ps1',
     'presets\catalog.json'
   )
   foreach ($relativePath in $requiredPackageFiles) {
@@ -197,18 +204,28 @@ $managerScript = Join-Path $root 'windows\scripts\manager-actions.ps1'
 if (-not (Test-Path -LiteralPath $managerScript)) { throw 'manager-actions.ps1 is missing.' }
 $recoveryScript = Join-Path $root 'windows\scripts\apply-theme-and-recover.ps1'
 if (-not (Test-Path -LiteralPath $recoveryScript)) { throw 'apply-theme-and-recover.ps1 is missing.' }
-foreach ($scriptToParse in @($managerScript, $recoveryScript)) {
+$runtimeVersionScript = Join-Path $root 'windows\scripts\runtime-version.ps1'
+if (-not (Test-Path -LiteralPath $runtimeVersionScript)) { throw 'runtime-version.ps1 is missing.' }
+foreach ($scriptToParse in @($managerScript, $recoveryScript, $runtimeVersionScript)) {
   $tokens = $null
   $parseErrors = $null
   [System.Management.Automation.Language.Parser]::ParseFile($scriptToParse, [ref]$tokens, [ref]$parseErrors) | Out-Null
   if (@($parseErrors).Count -ne 0) { throw $parseErrors[0].Message }
 }
 
+$runtimeVersionTest = Join-Path $root 'tests\runtime-version.test.ps1'
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runtimeVersionTest `
+  -RuntimeVersionScript $runtimeVersionScript
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 $integrationTest = Join-Path $root 'tests\manager-actions.integration.ps1'
 if (-not (Test-Path -LiteralPath $SkillRoot -PathType Container)) {
   throw "The CodexDreamSkin Windows package is required for integration tests: $SkillRoot"
 }
 New-RunnableWindowsPackage -SourceRoot $SkillRoot -DestinationRoot $packageWindows
+$runtimeFramingTest = Join-Path $root 'tests\custom-framing-runtime.test.mjs'
+& node $runtimeFramingTest $packageWindows
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $packagedManagerScript = Join-Path $packageWindows 'scripts\manager-actions.ps1'
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $integrationTest `
   -ManagerScript $packagedManagerScript -SkillRoot $packageWindows

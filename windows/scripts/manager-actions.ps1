@@ -1,7 +1,7 @@
 ﻿[CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet('Status','ApplyTheme','ImportTheme','ImportBatch','Pause','Resume','ResetTheme','ValidateImage')]
+  [ValidateSet('Status','ApplyTheme','DeleteTheme','ImportTheme','ImportBatch','Pause','Resume','ResetTheme','ValidateImage')]
   [string]$Action,
   [Parameter(Mandatory = $true)][string]$SkillRoot,
   [string]$StateRoot = (Join-Path $env:LOCALAPPDATA 'CodexDreamSkin'),
@@ -12,6 +12,11 @@ param(
   [ValidateSet('auto','light','dark')][string]$Appearance = 'auto',
   [ValidateRange(0.0, 1.0)][double]$FocusX = 0.5,
   [ValidateRange(0.0, 1.0)][double]$FocusY = 0.5,
+  [ValidateRange(-1.0, 1.0)][double]$PositionX = 0.0,
+  [ValidateRange(-1.0, 1.0)][double]$PositionY = 0.0,
+  [ValidateRange(1.0, 2.0)][double]$Zoom = 1.0,
+  [ValidateSet('locked','free')][string]$PositionMode = 'locked',
+  [ValidateSet('true','false')][string]$FramingEnabled = 'false',
   [ValidateSet('auto','left','right','center','none')][string]$SafeArea = 'auto',
   [ValidateSet('auto','ambient','banner','off')][string]$TaskMode = 'auto',
   [ValidatePattern('^$|^#[0-9A-Fa-f]{6}$')][string]$Accent = '',
@@ -23,12 +28,12 @@ $ErrorActionPreference = 'Stop'
 $scripts = Join-Path $SkillRoot 'scripts'
 . (Join-Path $scripts 'common-windows.ps1')
 . (Join-Path $scripts 'theme-windows.ps1')
+. (Join-Path $scripts 'runtime-version.ps1')
 
-$paths = if ($Action -eq 'ValidateImage') {
-  Get-DreamSkinThemePaths -StateRoot $StateRoot
-} else {
-  Initialize-DreamSkinThemeStore -SkillRoot $SkillRoot -StateRoot $StateRoot
-}
+$paths = Get-DreamSkinThemePaths -StateRoot $StateRoot
+$ManagerDeleteMarkerName = '.manager-delete.json'
+$UseCustomFraming = $FramingEnabled -eq 'true' -or $PositionX -ne 0.0 -or $PositionY -ne 0.0 -or
+  $Zoom -ne 1.0 -or $PositionMode -eq 'free'
 
 function ConvertTo-ManagerTheme {
   param(
@@ -45,6 +50,11 @@ function ConvertTo-ManagerTheme {
     [string]$ThemeAppearance = 'auto',
     [double]$ThemeFocusX = 0.5,
     [double]$ThemeFocusY = 0.5,
+    [double]$ThemePositionX = 0.0,
+    [double]$ThemePositionY = 0.0,
+    [double]$ThemeZoom = 1.0,
+    [string]$ThemePositionMode = 'locked',
+    [bool]$ThemeFramingEnabled = $false,
     [string]$ThemeSafeArea = 'auto',
     [string]$ThemeTaskMode = 'auto',
     [string]$ThemeAccent = ''
@@ -63,10 +73,23 @@ function ConvertTo-ManagerTheme {
     appearance = $ThemeAppearance
     focusX = $ThemeFocusX
     focusY = $ThemeFocusY
+    positionX = $ThemePositionX
+    positionY = $ThemePositionY
+    zoom = $ThemeZoom
+    positionMode = $ThemePositionMode
+    framingEnabled = $ThemeFramingEnabled
     safeArea = $ThemeSafeArea
     taskMode = $ThemeTaskMode
     accent = $ThemeAccent
   }
+}
+
+function Test-ManagerThemeFraming {
+  param([object]$Theme)
+  if (-not $Theme -or -not $Theme.art) { return $false }
+  $names = @($Theme.art.PSObject.Properties.Name)
+  return $names -contains 'positionX' -or $names -contains 'positionY' -or
+    $names -contains 'zoom' -or $names -contains 'positionMode'
 }
 
 function Read-ManagerPresetCatalog {
@@ -120,6 +143,7 @@ function Read-ManagerPresetCatalog {
       id = "preset-$id"; name = $name; imagePath = $imagePath; themeDirectory = ''; isPreset = $true
       category = $category; tags = @($tags); source = 'preset'; order = $index; addedAt = ''
       appearance = $appearance; focusX = $focusX; focusY = $focusY; safeArea = $safeArea
+      positionX = 0.0; positionY = 0.0; zoom = 1.0; positionMode = 'locked'; framingEnabled = $false
       taskMode = $taskMode; accent = $accent.ToUpperInvariant()
     }
   }
@@ -188,6 +212,12 @@ function New-ManagerCustomTheme {
   if ($Accent) {
     $theme.palette | Add-Member -NotePropertyName accent -NotePropertyValue $Accent.ToUpperInvariant()
   }
+  if ($UseCustomFraming) {
+    $theme.art | Add-Member -NotePropertyName positionX -NotePropertyValue $PositionX
+    $theme.art | Add-Member -NotePropertyName positionY -NotePropertyValue $PositionY
+    $theme.art | Add-Member -NotePropertyName zoom -NotePropertyValue $Zoom
+    $theme.art | Add-Member -NotePropertyName positionMode -NotePropertyValue $PositionMode
+  }
   return $theme
 }
 
@@ -244,9 +274,14 @@ function Get-ManagerThemeFingerprint {
   $accent = if ($Theme.palette -and $Theme.palette.accent) { "$($Theme.palette.accent)".ToUpperInvariant() } else { '' }
   $normalized = [ordered]@{
     imageHash = $imageHash
+    framingEnabled = Test-ManagerThemeFraming -Theme $Theme
     appearance = if ($Theme.appearance) { "$($Theme.appearance)" } else { 'auto' }
     focusX = if ($Theme.art -and $null -ne $Theme.art.focusX) { [double]$Theme.art.focusX } else { 0.5 }
     focusY = if ($Theme.art -and $null -ne $Theme.art.focusY) { [double]$Theme.art.focusY } else { 0.5 }
+    positionX = if ($Theme.art -and $null -ne $Theme.art.positionX) { [double]$Theme.art.positionX } else { 0.0 }
+    positionY = if ($Theme.art -and $null -ne $Theme.art.positionY) { [double]$Theme.art.positionY } else { 0.0 }
+    zoom = if ($Theme.art -and $null -ne $Theme.art.zoom) { [double]$Theme.art.zoom } else { 1.0 }
+    positionMode = if ($Theme.art -and $Theme.art.positionMode) { "$($Theme.art.positionMode)" } else { 'locked' }
     safeArea = if ($Theme.art -and $Theme.art.safeArea) { "$($Theme.art.safeArea)" } else { 'auto' }
     taskMode = if ($Theme.art -and $Theme.art.taskMode) { "$($Theme.art.taskMode)" } else { 'auto' }
     accent = $accent
@@ -258,12 +293,20 @@ function Get-ManagerThemeFingerprint {
   } finally { $sha.Dispose() }
 }
 
+$ManagerFingerprintVersion = 2
+
 function Get-ManagerSavedFingerprints {
   $fingerprints = @{}
   foreach ($saved in @(Get-DreamSkinSavedThemes -StateRoot $StateRoot -SkipImageMetadata)) {
     try {
       $loaded = Read-DreamSkinTheme -ThemeDirectory $saved.Path -SkipImageMetadata
-      $fingerprint = if ($loaded.Theme.managerFingerprint) {
+      # Stored fingerprints from older manager versions omit custom-framing fields.
+      # Recompute unless the theme explicitly records the current fingerprint version.
+      $fingerprintVersion = 0
+      if ($null -ne $loaded.Theme.managerFingerprintVersion) {
+        [void][int]::TryParse("$($loaded.Theme.managerFingerprintVersion)", [ref]$fingerprintVersion)
+      }
+      $fingerprint = if ($fingerprintVersion -eq $ManagerFingerprintVersion -and $loaded.Theme.managerFingerprint) {
         "$($loaded.Theme.managerFingerprint)"
       } else {
         Get-ManagerThemeFingerprint -SourceImage $loaded.ImagePath -Theme $loaded.Theme
@@ -307,16 +350,43 @@ function ConvertTo-ManagerBatchTheme {
   if ($tagsValue.Count -gt 8 -or @($tagsValue | Where-Object { -not $_ -or $_.Length -gt 20 }).Count -gt 0) { throw '主题标签无效。' }
   $focusXValue = if ($null -ne $Item.focusX) { [double]$Item.focusX } else { 0.5 }
   $focusYValue = if ($null -ne $Item.focusY) { [double]$Item.focusY } else { 0.5 }
+  $positionXValue = if ($null -ne $Item.positionX) { [double]$Item.positionX } else { 0.0 }
+  $positionYValue = if ($null -ne $Item.positionY) { [double]$Item.positionY } else { 0.0 }
+  $zoomValue = if ($null -ne $Item.zoom) { [double]$Item.zoom } else { 1.0 }
+  $positionModeValue = if ($Item.positionMode) { "$($Item.positionMode)" } else { 'locked' }
+  $itemProperties = @($Item.PSObject.Properties.Name)
+  $hasFramingFields = $itemProperties -contains 'positionX' -or $itemProperties -contains 'positionY' -or
+    $itemProperties -contains 'zoom' -or $itemProperties -contains 'positionMode'
+  $framingEnabledValue = if ($itemProperties -contains 'framingEnabled') {
+    [bool]$Item.framingEnabled
+  } else { $hasFramingFields }
   if ([double]::IsNaN($focusXValue) -or [double]::IsInfinity($focusXValue) -or [double]::IsNaN($focusYValue) -or
     [double]::IsInfinity($focusYValue) -or $focusXValue -lt 0 -or $focusXValue -gt 1 -or
     $focusYValue -lt 0 -or $focusYValue -gt 1) { throw '主题焦点必须是 0 到 1 之间的有限数字。' }
+  if ([double]::IsNaN($positionXValue) -or [double]::IsInfinity($positionXValue) -or
+    [double]::IsNaN($positionYValue) -or [double]::IsInfinity($positionYValue) -or
+    [double]::IsNaN($zoomValue) -or [double]::IsInfinity($zoomValue) -or
+    $positionXValue -lt -1 -or $positionXValue -gt 1 -or $positionYValue -lt -1 -or
+    $positionYValue -gt 1 -or $zoomValue -lt 1 -or $zoomValue -gt 2) {
+    throw '图片位置必须是 -1 到 1、缩放必须是 1 到 2 之间的有限数字。'
+  }
+  if ($positionModeValue -notin @('locked','free')) { throw '图片移动模式无效。' }
   $accentValue = "$($Item.accent)"
   if ($accentValue -and $accentValue -notmatch '^#[0-9A-Fa-f]{6}$') { throw '强调色必须是 #RRGGBB。' }
   $theme = [pscustomobject][ordered]@{
     schemaVersion = 1; id = 'custom'; name = $itemName; image = ''; category = $categoryValue
     tags = @($tagsValue); appearance = $appearanceValue
-    art = [pscustomobject][ordered]@{ focusX = $focusXValue; focusY = $focusYValue; safeArea = $safeAreaValue; taskMode = $taskModeValue }
+    art = [pscustomobject][ordered]@{
+      focusX = $focusXValue; focusY = $focusYValue
+      safeArea = $safeAreaValue; taskMode = $taskModeValue
+    }
     palette = [pscustomobject]@{}
+  }
+  if ($framingEnabledValue) {
+    $theme.art | Add-Member -NotePropertyName positionX -NotePropertyValue $positionXValue
+    $theme.art | Add-Member -NotePropertyName positionY -NotePropertyValue $positionYValue
+    $theme.art | Add-Member -NotePropertyName zoom -NotePropertyValue $zoomValue
+    $theme.art | Add-Member -NotePropertyName positionMode -NotePropertyValue $positionModeValue
   }
   if ($accentValue) { $theme.palette | Add-Member -NotePropertyName accent -NotePropertyValue $accentValue.ToUpperInvariant() }
   return $theme
@@ -392,6 +462,14 @@ function Get-ManagerInjectorStatus {
   if (-not $matches) {
     return [pscustomobject]@{ Kind = 'mismatch'; Message = "PID $processId 存在，但不是记录的 Dream Skin 注入器。"; Running = $false }
   }
+  if (-not (Test-DreamSkinRuntimeCurrent -SkillRoot $SkillRoot -RecordedInjectorPath $expectedInjector `
+      -RecordedFingerprint "$($State.runtimeFingerprint)")) {
+    return [pscustomobject]@{
+      Kind = 'stale'
+      Message = '皮肤运行时已更新，需要重新应用后才能使用新功能。'
+      Running = $false
+    }
+  }
   return [pscustomobject]@{ Kind = 'running'; Message = "皮肤注入器正在运行（PID $processId）。"; Running = $true }
 }
 
@@ -419,8 +497,156 @@ function Get-ManagerImageMetadata {
   }
 }
 
+function Assert-ManagerDeleteTreeSafe {
+  param([Parameter(Mandatory = $true)][string]$ThemeDirectory)
+  $pending = New-Object 'System.Collections.Generic.Stack[string]'
+  $pending.Push($ThemeDirectory)
+  while ($pending.Count -gt 0) {
+    $current = $pending.Pop()
+    $item = Get-Item -LiteralPath $current -Force -ErrorAction Stop
+    if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+      throw '主题目录包含不安全的重解析点，拒绝删除。'
+    }
+    if (-not $item.PSIsContainer) { continue }
+    foreach ($child in @(Get-ChildItem -LiteralPath $item.FullName -Force -ErrorAction Stop)) {
+      if (($child.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw '主题目录包含不安全的重解析点，拒绝删除。'
+      }
+      if ($child.PSIsContainer) { $pending.Push($child.FullName) }
+    }
+  }
+}
+
+function Remove-ManagerTreeSafe {
+  param([Parameter(Mandatory = $true)][string]$ThemeDirectory)
+  $pending = New-Object 'System.Collections.Generic.Stack[object]'
+  $pending.Push([pscustomobject]@{ Path = $ThemeDirectory; Expanded = $false })
+  while ($pending.Count -gt 0) {
+    $node = $pending.Pop()
+    $item = Get-Item -LiteralPath $node.Path -Force -ErrorAction Stop
+    if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+      throw '主题目录在删除过程中出现不安全的重解析点，已停止删除。'
+    }
+    if ($item.PSIsContainer -and -not $node.Expanded) {
+      $pending.Push([pscustomobject]@{ Path = $item.FullName; Expanded = $true })
+      foreach ($child in @(Get-ChildItem -LiteralPath $item.FullName -Force -ErrorAction Stop)) {
+        if (($child.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+          throw '主题目录在删除过程中出现不安全的重解析点，已停止删除。'
+        }
+        $pending.Push([pscustomobject]@{ Path = $child.FullName; Expanded = $false })
+      }
+      continue
+    }
+    Remove-Item -LiteralPath $item.FullName -Force -ErrorAction Stop
+  }
+}
+
+function Write-ManagerDeleteMarker {
+  param(
+    [Parameter(Mandatory = $true)][string]$ThemeDirectory,
+    [Parameter(Mandatory = $true)][string]$ThemeId,
+    [Parameter(Mandatory = $true)][string]$QuarantineName
+  )
+  $markerPath = Join-Path $ThemeDirectory $ManagerDeleteMarkerName
+  Assert-DreamSkinNoReparseComponents -Path $markerPath
+  $marker = [ordered]@{
+    schemaVersion = 1
+    themeId = $ThemeId
+    quarantineName = $QuarantineName
+    createdAt = (Get-Date).ToUniversalTime().ToString('o')
+  }
+  Write-DreamSkinUtf8FileAtomically -Path $markerPath -Content (($marker | ConvertTo-Json -Depth 3) + [Environment]::NewLine)
+  return $markerPath
+}
+
+function Assert-ManagerDeleteQuarantine {
+  param([Parameter(Mandatory = $true)][string]$ThemeDirectory)
+  $directory = Get-Item -LiteralPath $ThemeDirectory -Force -ErrorAction Stop
+  if (-not $directory.PSIsContainer -or $directory.Name -notmatch '^\.manager-delete-[0-9a-f]{32}$') {
+    throw '删除隔离目录名称无效。'
+  }
+  $parent = [System.IO.Directory]::GetParent($directory.FullName)
+  if ($null -eq $parent -or -not [string]::Equals(
+      $parent.FullName.TrimEnd('\'), [System.IO.Path]::GetFullPath($paths.Root).TrimEnd('\'),
+      [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw '删除隔离目录不在受管状态根目录中。'
+  }
+  $markerPath = Join-Path $directory.FullName $ManagerDeleteMarkerName
+  Assert-DreamSkinNoReparseComponents -Path $markerPath
+  if (-not (Test-Path -LiteralPath $markerPath -PathType Leaf)) { throw '删除隔离目录缺少来源标记。' }
+  try {
+    $marker = (Read-DreamSkinUtf8File -Path $markerPath) | ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    throw '删除隔离目录来源标记无效。'
+  }
+  if ($marker.schemaVersion -ne 1 -or -not $marker.themeId -or
+      -not [string]::Equals("$($marker.quarantineName)", $directory.Name,
+        [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw '删除隔离目录来源标记无效。'
+  }
+  if (Test-Path -LiteralPath (Join-Path $directory.FullName 'theme.json') -PathType Leaf) {
+    $theme = Read-DreamSkinTheme -ThemeDirectory $directory.FullName -SkipImageMetadata
+    if (-not [string]::Equals("$($theme.Theme.id)", "$($marker.themeId)",
+        [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw '删除隔离目录的主题与来源标记不匹配。'
+    }
+  }
+}
+
+function Remove-ManagerDeleteQuarantineSafe {
+  param([Parameter(Mandatory = $true)][string]$ThemeDirectory)
+  Assert-ManagerDeleteQuarantine -ThemeDirectory $ThemeDirectory
+  Assert-ManagerDeleteTreeSafe -ThemeDirectory $ThemeDirectory
+  foreach ($child in @(Get-ChildItem -LiteralPath $ThemeDirectory -Force -ErrorAction Stop |
+      Where-Object { $_.Name -ne $ManagerDeleteMarkerName })) {
+    Remove-ManagerTreeSafe -ThemeDirectory $child.FullName
+  }
+  $markerPath = Join-Path $ThemeDirectory $ManagerDeleteMarkerName
+  $markerContent = Read-DreamSkinUtf8File -Path $markerPath
+  try {
+    Remove-Item -LiteralPath $markerPath -Force -ErrorAction Stop
+    if ($env:CODEX_DREAM_SKIN_TEST_FAIL_FINAL_QUARANTINE_REMOVE -eq '1') {
+      throw 'simulated final quarantine directory removal failure'
+    }
+    Remove-Item -LiteralPath $ThemeDirectory -Force -ErrorAction Stop
+  } catch {
+    # Keep provenance available if the final directory removal is denied or
+    # temporarily blocked after the marker itself was removed.
+    if ((Test-Path -LiteralPath $ThemeDirectory -PathType Container) -and
+        -not (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
+      try {
+        Write-DreamSkinUtf8FileAtomically -Path $markerPath -Content $markerContent
+      } catch {}
+    }
+    throw
+  }
+}
+
+function Remove-ManagerPendingDeleteTrees {
+  param([Parameter(Mandatory = $true)][string]$Root)
+  if (-not (Test-Path -LiteralPath $Root -PathType Container)) { return }
+  foreach ($pending in @(Get-ChildItem -LiteralPath $Root -Directory -Force -Filter '.manager-delete-*' -ErrorAction SilentlyContinue)) {
+    try {
+      Assert-DreamSkinNoReparseComponents -Path $pending.FullName
+      Remove-ManagerDeleteQuarantineSafe -ThemeDirectory $pending.FullName
+    } catch {
+      # A locked quarantine is retained for a later manager invocation.
+    }
+  }
+}
+
+if ($Action -notin @('ValidateImage', 'Status')) {
+  Invoke-ManagerWriteLock {
+    Initialize-DreamSkinThemeStore -SkillRoot $SkillRoot -StateRoot $StateRoot | Out-Null
+    Remove-ManagerPendingDeleteTrees -Root $paths.Root
+  } | Out-Null
+}
+
 switch ($Action) {
   'Status' {
+    Invoke-ManagerWriteLock {
+    Initialize-DreamSkinThemeStore -SkillRoot $SkillRoot -StateRoot $StateRoot | Out-Null
+    Remove-ManagerPendingDeleteTrees -Root $paths.Root
     $active = $null
     try { $active = Read-DreamSkinTheme -ThemeDirectory $paths.Active -SkipImageMetadata } catch {}
     $state = Read-DreamSkinState -Path $paths.State
@@ -454,6 +680,11 @@ switch ($Action) {
         -ThemeAppearance $(if ($loaded.Theme.appearance) { "$($loaded.Theme.appearance)" } else { 'auto' }) `
         -ThemeFocusX $(if ($null -ne $loaded.Theme.art.focusX) { [double]$loaded.Theme.art.focusX } else { 0.5 }) `
         -ThemeFocusY $(if ($null -ne $loaded.Theme.art.focusY) { [double]$loaded.Theme.art.focusY } else { 0.5 }) `
+        -ThemePositionX $(if ($null -ne $loaded.Theme.art.positionX) { [double]$loaded.Theme.art.positionX } else { 0.0 }) `
+        -ThemePositionY $(if ($null -ne $loaded.Theme.art.positionY) { [double]$loaded.Theme.art.positionY } else { 0.0 }) `
+        -ThemeZoom $(if ($null -ne $loaded.Theme.art.zoom) { [double]$loaded.Theme.art.zoom } else { 1.0 }) `
+        -ThemePositionMode $(if ($loaded.Theme.art.positionMode) { "$($loaded.Theme.art.positionMode)" } else { 'locked' }) `
+        -ThemeFramingEnabled $(Test-ManagerThemeFraming -Theme $loaded.Theme) `
         -ThemeSafeArea $(if ($loaded.Theme.art.safeArea) { "$($loaded.Theme.art.safeArea)" } else { 'auto' }) `
         -ThemeTaskMode $(if ($loaded.Theme.art.taskMode) { "$($loaded.Theme.art.taskMode)" } else { 'auto' }) `
         -ThemeAccent $(if ($loaded.Theme.palette.accent) { "$($loaded.Theme.palette.accent)" } else { '' })
@@ -473,18 +704,27 @@ switch ($Action) {
       isPaused = [bool]$paused
       statusKind = $statusKind
       statusMessage = $identity.Message
+      activeThemeId = if ($active -and $active.Theme.id) { "$($active.Theme.id)" } else { '' }
       activeTheme = if ($active -and $active.Theme.name) { "$($active.Theme.name)" } else { '' }
       activeImage = if ($active) { "$($active.ImagePath)" } else { '' }
-      managerApiVersion = '1.2'
+      activeFocusX = if ($active -and $null -ne $active.Theme.art.focusX) { [double]$active.Theme.art.focusX } else { 0.5 }
+      activeFocusY = if ($active -and $null -ne $active.Theme.art.focusY) { [double]$active.Theme.art.focusY } else { 0.5 }
+      activePositionX = if ($active -and $null -ne $active.Theme.art.positionX) { [double]$active.Theme.art.positionX } else { 0.0 }
+      activePositionY = if ($active -and $null -ne $active.Theme.art.positionY) { [double]$active.Theme.art.positionY } else { 0.0 }
+      activeZoom = if ($active -and $null -ne $active.Theme.art.zoom) { [double]$active.Theme.art.zoom } else { 1.0 }
+      activePositionMode = if ($active -and $active.Theme.art.positionMode) { "$($active.Theme.art.positionMode)" } else { 'locked' }
+      activeFramingEnabled = if ($active) { Test-ManagerThemeFraming -Theme $active.Theme } else { $false }
+      managerApiVersion = '1.5'
       themeSchemaVersion = 1
       stateSchemaVersion = $stateSchema
       injectorVersion = '1'
       nodeVersion = $nodeVersion
       codexVersion = $codexVersion
-      supportedActions = @('Status','ApplyTheme','ImportTheme','ImportBatch','Pause','Resume','ResetTheme','ValidateImage')
+      supportedActions = @('Status','ApplyTheme','DeleteTheme','ImportTheme','ImportBatch','Pause','Resume','ResetTheme','ValidateImage')
       catalogMessage = $catalogMessage
       themes = @($themes)
     } | ConvertTo-Json -Depth 8
+    }
   }
   'ValidateImage' {
     if (-not $ImagePath) { throw '请选择需要验证的图片。' }
@@ -501,6 +741,58 @@ switch ($Action) {
       Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
       Remove-ManagerDuplicateImageArchives
       [ordered]@{ name = "$($result.Theme.name)"; imagePath = "$($result.ImagePath)" } | ConvertTo-Json -Depth 4
+    }
+  }
+  'DeleteTheme' {
+    Invoke-ManagerWriteLock {
+      if ([string]::IsNullOrWhiteSpace($ThemeDirectory)) { throw '请选择需要删除的主题。' }
+      $target = [System.IO.Path]::GetFullPath($ThemeDirectory).TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+      if (-not (Test-Path -LiteralPath $target -PathType Container)) { throw '需要删除的主题目录不存在。' }
+      $savedRoot = [System.IO.Path]::GetFullPath($paths.Saved).TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+      $parent = [System.IO.Directory]::GetParent($target)
+      if ($null -eq $parent -or -not [string]::Equals(
+          $parent.FullName.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar),
+          $savedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw '只能删除“我的”主题库中的直接子目录。'
+      }
+      Assert-DreamSkinNoReparseComponents -Path $target
+      $loaded = Read-DreamSkinTheme -ThemeDirectory $target -SkipImageMetadata
+      $active = $null
+      if (Test-Path -LiteralPath $paths.Active -PathType Container) {
+        $active = Read-DreamSkinTheme -ThemeDirectory $paths.Active -SkipImageMetadata
+      }
+      if ($active -and $active.Theme.id -and [string]::Equals(
+          "$($active.Theme.id)", "$($loaded.Theme.id)", [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw '当前正在使用该主题，请先应用其他主题后再删除。'
+      }
+      Assert-ManagerDeleteTreeSafe -ThemeDirectory $target
+      $quarantine = Join-Path $paths.Root ('.manager-delete-' + [guid]::NewGuid().ToString('N'))
+      Assert-DreamSkinNoReparseComponents -Path $quarantine
+      $markerPath = Write-ManagerDeleteMarker -ThemeDirectory $target -ThemeId "$($loaded.Theme.id)" `
+        -QuarantineName ([System.IO.Path]::GetFileName($quarantine))
+      try {
+        [System.IO.Directory]::Move($target, $quarantine)
+      } catch {
+        Remove-Item -LiteralPath $markerPath -Force -ErrorAction SilentlyContinue
+        throw
+      }
+      $cleanupPending = $false
+      try {
+        Assert-DreamSkinNoReparseComponents -Path $quarantine
+        Assert-ManagerDeleteQuarantine -ThemeDirectory $quarantine
+        $quarantined = Read-DreamSkinTheme -ThemeDirectory $quarantine -SkipImageMetadata
+        if (-not [string]::Equals("$($quarantined.Theme.id)", "$($loaded.Theme.id)",
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+          throw '主题在删除过程中发生变化。'
+        }
+        Remove-ManagerDeleteQuarantineSafe -ThemeDirectory $quarantine
+      } catch {
+        $cleanupPending = $true
+      }
+      [ordered]@{ id = "$($loaded.Theme.id)"; name = "$($loaded.Theme.name)"; deleted = $true; cleanupPending = $cleanupPending } |
+        ConvertTo-Json -Depth 4
     }
   }
   'ImportTheme' {
@@ -537,6 +829,7 @@ switch ($Action) {
             $results += [ordered]@{ name = $itemName; status = 'skipped'; message = '相同图片和主题参数已存在。'; themeDirectory = "$($known[$fingerprint])" }
             continue
           }
+          $batchTheme | Add-Member -NotePropertyName managerFingerprintVersion -NotePropertyValue $ManagerFingerprintVersion -Force
           $batchTheme | Add-Member -NotePropertyName managerFingerprint -NotePropertyValue $fingerprint -Force
           $savedBatchTheme = Save-ManagerThemeDirectly -SourceImage $source -ThemeName $itemName -Theme $batchTheme
           $known[$fingerprint] = $savedBatchTheme.Directory

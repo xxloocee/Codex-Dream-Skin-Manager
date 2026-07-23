@@ -18,6 +18,11 @@ namespace CodexDreamSkinManager
         public string Appearance = "auto";
         public double FocusX = 0.5;
         public double FocusY = 0.5;
+        public double PositionX;
+        public double PositionY;
+        public double Zoom = 1.0;
+        public string PositionMode = "locked";
+        public bool FramingEnabled = true;
         public string SafeArea = "auto";
         public string TaskMode = "auto";
         public string Accent = "";
@@ -162,6 +167,12 @@ namespace CodexDreamSkinManager
             data.Appearance = ReadString(manifest, "appearance", "auto");
             data.FocusX = ReadDouble(art, "focusX", 0.5);
             data.FocusY = ReadDouble(art, "focusY", 0.5);
+            data.PositionX = ReadDouble(art, "positionX", 0);
+            data.PositionY = ReadDouble(art, "positionY", 0);
+            data.Zoom = ReadDouble(art, "zoom", 1.0);
+            data.PositionMode = ReadString(art, "positionMode", "locked");
+            data.FramingEnabled = art.ContainsKey("positionX") || art.ContainsKey("positionY") ||
+                art.ContainsKey("zoom") || art.ContainsKey("positionMode");
             data.SafeArea = ReadString(art, "safeArea", "auto");
             data.TaskMode = ReadString(art, "taskMode", "auto");
             data.Accent = ReadString(palette, "accent", "").ToUpperInvariant();
@@ -187,6 +198,14 @@ namespace CodexDreamSkinManager
             if (double.IsNaN(data.FocusX) || double.IsInfinity(data.FocusX) || double.IsNaN(data.FocusY) ||
                 double.IsInfinity(data.FocusY) || data.FocusX < 0 || data.FocusX > 1 || data.FocusY < 0 || data.FocusY > 1)
                 throw new InvalidDataException("主题包焦点无效。 ");
+            if (double.IsNaN(data.PositionX) || double.IsInfinity(data.PositionX) ||
+                double.IsNaN(data.PositionY) || double.IsInfinity(data.PositionY) ||
+                double.IsNaN(data.Zoom) || double.IsInfinity(data.Zoom) ||
+                data.PositionX < -1 || data.PositionX > 1 || data.PositionY < -1 || data.PositionY > 1 ||
+                data.Zoom < 1 || data.Zoom > 2)
+                throw new InvalidDataException("主题包图片位置或缩放无效。 ");
+            if (data.PositionMode != "locked" && data.PositionMode != "free")
+                throw new InvalidDataException("主题包图片移动模式无效。 ");
             if (data.SafeArea != "auto" && data.SafeArea != "left" && data.SafeArea != "right" && data.SafeArea != "center" && data.SafeArea != "none")
                 throw new InvalidDataException("主题包安全区无效。 ");
             if (data.TaskMode != "auto" && data.TaskMode != "ambient" && data.TaskMode != "banner" && data.TaskMode != "off")
@@ -214,7 +233,18 @@ namespace CodexDreamSkinManager
             manifest["category"] = string.IsNullOrWhiteSpace(data.Category) ? "custom" : data.Category;
             manifest["tags"] = data.Tags.ToArray();
             manifest["appearance"] = data.Appearance;
-            manifest["art"] = new Dictionary<string, object> { { "focusX", data.FocusX }, { "focusY", data.FocusY }, { "safeArea", data.SafeArea }, { "taskMode", data.TaskMode } };
+            Dictionary<string, object> art = new Dictionary<string, object> {
+                { "focusX", data.FocusX }, { "focusY", data.FocusY },
+                { "safeArea", data.SafeArea }, { "taskMode", data.TaskMode }
+            };
+            if (data.FramingEnabled)
+            {
+                art["positionX"] = data.PositionX;
+                art["positionY"] = data.PositionY;
+                art["zoom"] = data.Zoom;
+                art["positionMode"] = data.PositionMode;
+            }
+            manifest["art"] = art;
             Dictionary<string, object> palette = new Dictionary<string, object>();
             if (!string.IsNullOrWhiteSpace(data.Accent)) palette["accent"] = data.Accent;
             manifest["palette"] = palette;
@@ -224,7 +254,10 @@ namespace CodexDreamSkinManager
         private static Dictionary<string, object> ReadObject(Dictionary<string, object> data, string key)
         {
             object value;
-            return data != null && data.TryGetValue(key, out value) ? value as Dictionary<string, object> ?? new Dictionary<string, object>() : new Dictionary<string, object>();
+            if (data == null || !data.TryGetValue(key, out value)) return new Dictionary<string, object>();
+            Dictionary<string, object> result = value as Dictionary<string, object>;
+            if (result == null) throw new InvalidDataException("主题包字段 " + key + " 必须是对象。 ");
+            return result;
         }
 
         private static string ReadString(Dictionary<string, object> data, string key, string fallback)

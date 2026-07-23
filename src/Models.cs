@@ -12,8 +12,16 @@ namespace CodexDreamSkinManager
         public bool IsPaused;
         public string StatusKind = "stopped";
         public string StatusMessage = "";
+        public string ActiveThemeId = "";
         public string ActiveThemeName = "未选择";
         public string ActiveThemeImage = "";
+        public double ActiveFocusX = 0.5;
+        public double ActiveFocusY = 0.5;
+        public double ActivePositionX;
+        public double ActivePositionY;
+        public double ActiveZoom = 1.0;
+        public string ActivePositionMode = "locked";
+        public bool ActiveFramingEnabled;
         public string Message = "";
         public string ManagerApiVersion = "";
         public int ThemeSchemaVersion;
@@ -43,6 +51,11 @@ namespace CodexDreamSkinManager
         public string Appearance = "auto";
         public double FocusX = 0.5;
         public double FocusY = 0.5;
+        public double PositionX;
+        public double PositionY;
+        public double Zoom = 1.0;
+        public string PositionMode = "locked";
+        public bool FramingEnabled = true;
         public string SafeArea = "auto";
         public string TaskMode = "auto";
         public string Accent = "";
@@ -66,6 +79,14 @@ namespace CodexDreamSkinManager
         public List<BatchImportResultItem> Results = new List<BatchImportResultItem>();
     }
 
+    internal sealed class ThemeDeletionResult
+    {
+        public string Id = "";
+        public string Name = "";
+        public bool Deleted;
+        public bool CleanupPending;
+    }
+
     internal sealed class PreviewCrop
     {
         public double X;
@@ -78,6 +99,14 @@ namespace CodexDreamSkinManager
     {
         public double X;
         public double Y;
+    }
+
+    internal sealed class PreviewLayout
+    {
+        public double X;
+        public double Y;
+        public double Width;
+        public double Height;
     }
 
     internal static class PreviewMath
@@ -104,6 +133,33 @@ namespace CodexDreamSkinManager
             return crop;
         }
 
+        public static PreviewLayout CalculateFramingLayout(double imageWidth, double imageHeight,
+            double viewportWidth, double viewportHeight, double positionX, double positionY,
+            double zoom, string positionMode)
+        {
+            PreviewLayout layout = new PreviewLayout();
+            if (imageWidth <= 0 || imageHeight <= 0 || viewportWidth <= 0 || viewportHeight <= 0) return layout;
+            positionX = ClampSigned(positionX);
+            positionY = ClampSigned(positionY);
+            zoom = Math.Max(1, Math.Min(2, zoom));
+            double coverScale = Math.Max(viewportWidth / imageWidth, viewportHeight / imageHeight);
+            layout.Width = imageWidth * coverScale * zoom;
+            layout.Height = imageHeight * coverScale * zoom;
+            bool free = string.Equals(positionMode, "free", StringComparison.OrdinalIgnoreCase);
+            double rangeX = free ? (layout.Width + viewportWidth) / 2 : Math.Max(0, (layout.Width - viewportWidth) / 2);
+            double rangeY = free ? (layout.Height + viewportHeight) / 2 : Math.Max(0, (layout.Height - viewportHeight) / 2);
+            layout.X = (viewportWidth - layout.Width) / 2 + positionX * rangeX;
+            layout.Y = (viewportHeight - layout.Height) / 2 + positionY * rangeY;
+            return layout;
+        }
+
+        public static bool UsesCustomFraming(bool framingEnabled, double positionX, double positionY,
+            double zoom, string positionMode)
+        {
+            return framingEnabled || string.Equals(positionMode, "free", StringComparison.OrdinalIgnoreCase) ||
+                Math.Abs(positionX) > 0.0001 || Math.Abs(positionY) > 0.0001 || zoom > 1.0001;
+        }
+
         public static PreviewPoint CalculateMarker(double viewportWidth, double viewportHeight,
             double focusX, double focusY)
         {
@@ -116,6 +172,11 @@ namespace CodexDreamSkinManager
         private static double Clamp(double value)
         {
             return Math.Max(0, Math.Min(1, value));
+        }
+
+        private static double ClampSigned(double value)
+        {
+            return Math.Max(-1, Math.Min(1, value));
         }
     }
 
@@ -178,6 +239,11 @@ namespace CodexDreamSkinManager
         public string Appearance { get; set; }
         public double FocusX { get; set; }
         public double FocusY { get; set; }
+        public double PositionX { get; set; }
+        public double PositionY { get; set; }
+        public double Zoom { get; set; }
+        public string PositionMode { get; set; }
+        public bool FramingEnabled { get; set; }
         public string SafeArea { get; set; }
         public string TaskMode { get; set; }
         public string Accent { get; set; }
@@ -195,6 +261,11 @@ namespace CodexDreamSkinManager
             Appearance = "auto";
             FocusX = 0.5;
             FocusY = 0.5;
+            PositionX = 0;
+            PositionY = 0;
+            Zoom = 1.0;
+            PositionMode = "locked";
+            FramingEnabled = false;
             SafeArea = "auto";
             TaskMode = "auto";
             Accent = "";
@@ -358,6 +429,10 @@ namespace CodexDreamSkinManager
         public string Appearance = "auto";
         public double FocusX = 0.5;
         public double FocusY = 0.5;
+        public double PositionX;
+        public double PositionY;
+        public double Zoom = 1.0;
+        public string PositionMode = "locked";
         public string SafeArea = "auto";
         public string TaskMode = "auto";
         public string Accent = "";
@@ -368,10 +443,24 @@ namespace CodexDreamSkinManager
             FocusY = Clamp(y / 100.0);
         }
 
+        public void SetFramingPercent(double x, double y, double zoomPercent)
+        {
+            PositionX = ClampSigned(x / 100.0);
+            PositionY = ClampSigned(y / 100.0);
+            Zoom = ClampZoom(zoomPercent / 100.0);
+        }
+
         public void Validate()
         {
             if (string.IsNullOrWhiteSpace(Name)) throw new ArgumentException("请输入主题名称。");
             if (string.IsNullOrWhiteSpace(ImagePath)) throw new ArgumentException("请选择背景图片。");
+            if (double.IsNaN(PositionX) || double.IsInfinity(PositionX) ||
+                double.IsNaN(PositionY) || double.IsInfinity(PositionY) ||
+                double.IsNaN(Zoom) || double.IsInfinity(Zoom) ||
+                PositionX < -1 || PositionX > 1 || PositionY < -1 || PositionY > 1 || Zoom < 1 || Zoom > 2)
+                throw new ArgumentException("图片位置或缩放超出允许范围。");
+            if (PositionMode != "locked" && PositionMode != "free")
+                throw new ArgumentException("图片移动模式无效。");
             Accent = ValidateAccent(Accent);
         }
 
@@ -386,6 +475,16 @@ namespace CodexDreamSkinManager
         private static double Clamp(double value)
         {
             return Math.Max(0, Math.Min(1, value));
+        }
+
+        private static double ClampSigned(double value)
+        {
+            return Math.Max(-1, Math.Min(1, value));
+        }
+
+        private static double ClampZoom(double value)
+        {
+            return Math.Max(1, Math.Min(2, value));
         }
     }
 }

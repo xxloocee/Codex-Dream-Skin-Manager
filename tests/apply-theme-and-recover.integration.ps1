@@ -39,7 +39,11 @@ function Invoke-Recovery([switch]$UseImage) {
   try {
     $arguments = @('-SkillRoot', (Join-Path $testRoot 'windows'))
     if ($UseImage) {
-      $arguments += @('-ImagePath', $imagePath, '-Name', 'Selected image')
+      $arguments += @(
+        '-ImagePath', $imagePath, '-Name', 'Selected image',
+        '-PositionX', '0.4', '-PositionY', '-0.3', '-Zoom', '1.5', '-PositionMode', 'free',
+        '-FramingEnabled', 'true'
+      )
     } else {
       $arguments += @('-ThemeDirectory', $themeDirectory)
     }
@@ -111,10 +115,17 @@ function Assert-DreamSkinImageFile { param([string]$Path) if (-not (Test-Path -L
 '@
   Write-Utf8 (Join-Path $scripts 'manager-actions.ps1') @'
 param([string]$Action,[string]$SkillRoot,[string]$StateRoot,[string]$ThemeDirectory,[string]$ImagePath,
-  [string]$Name,[string]$Appearance,[double]$FocusX,[double]$FocusY,[string]$SafeArea,[string]$TaskMode,[string]$Accent)
+  [string]$Name,[string]$Appearance,[double]$FocusX,[double]$FocusY,
+  [double]$PositionX,[double]$PositionY,[double]$Zoom,[string]$PositionMode,[string]$FramingEnabled,
+  [string]$SafeArea,[string]$TaskMode,[string]$Accent)
 if ($Action -eq 'Status') {
   [ordered]@{ statusKind = (Get-Content -LiteralPath $env:RECOVERY_TEST_KIND -Raw).Trim() } | ConvertTo-Json
 } elseif ($Action -eq 'ApplyTheme') {
+  if ($Name -eq 'Selected image' -and
+      ($PositionX -ne 0.4 -or $PositionY -ne -0.3 -or $Zoom -ne 1.5 -or
+       $PositionMode -ne 'free' -or $FramingEnabled -ne 'true')) {
+    throw 'custom framing arguments were not preserved'
+  }
   Add-Content -LiteralPath $env:RECOVERY_TEST_LOG -Value 'apply'
   [ordered]@{ applied = $true } | ConvertTo-Json
 } else { throw "unexpected action: $Action" }

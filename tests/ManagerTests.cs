@@ -102,9 +102,15 @@ namespace CodexDreamSkinManager
 
             Run("Maps status JSON", delegate
             {
-                DreamSkinStatus status = DreamSkinService.ParseStatus("{\"isRunning\":true,\"isPaused\":false,\"activeTheme\":\"森林薄雾\",\"themes\":[]}");
+                DreamSkinStatus status = DreamSkinService.ParseStatus("{\"isRunning\":true,\"isPaused\":false,\"activeThemeId\":\"forest-mist\",\"activeTheme\":\"森林薄雾\",\"activeFocusX\":0.7,\"activeFocusY\":0.4,\"activePositionX\":0.2,\"activePositionY\":-0.1,\"activeZoom\":1.3,\"activePositionMode\":\"free\",\"activeFramingEnabled\":true,\"themes\":[]}");
                 AssertTrue(status.IsRunning);
+                AssertEqual("forest-mist", status.ActiveThemeId);
                 AssertEqual("森林薄雾", status.ActiveThemeName);
+                AssertClose(0.2, status.ActivePositionX);
+                AssertClose(-0.1, status.ActivePositionY);
+                AssertClose(1.3, status.ActiveZoom);
+                AssertEqual("free", status.ActivePositionMode);
+                AssertTrue(status.ActiveFramingEnabled);
             });
 
             Run("Maps structured status and capabilities", delegate
@@ -122,7 +128,7 @@ namespace CodexDreamSkinManager
 
             Run("Maps theme catalog metadata", delegate
             {
-                DreamSkinStatus status = DreamSkinService.ParseStatus("{\"isRunning\":false,\"themes\":[{\"id\":\"cloud\",\"name\":\"云端遐想\",\"category\":\"dream\",\"tags\":[\"云层\",\"柔光\"],\"source\":\"preset\",\"order\":7,\"addedAt\":\"2026-07-17T00:00:00Z\",\"appearance\":\"light\",\"focusX\":0.62,\"focusY\":0.41,\"safeArea\":\"left\",\"taskMode\":\"ambient\",\"accent\":\"#7B78D6\"}]}");
+                DreamSkinStatus status = DreamSkinService.ParseStatus("{\"isRunning\":false,\"themes\":[{\"id\":\"cloud\",\"name\":\"云端遐想\",\"category\":\"dream\",\"tags\":[\"云层\",\"柔光\"],\"source\":\"preset\",\"order\":7,\"addedAt\":\"2026-07-17T00:00:00Z\",\"appearance\":\"light\",\"focusX\":0.62,\"focusY\":0.41,\"positionX\":0.3,\"positionY\":-0.2,\"zoom\":1.4,\"positionMode\":\"free\",\"framingEnabled\":true,\"safeArea\":\"left\",\"taskMode\":\"ambient\",\"accent\":\"#7B78D6\"}]}");
                 ThemeOption theme = status.Themes[0];
                 AssertEqual("dream", ReadMember(theme, "Category"));
                 AssertEqual("preset", ReadMember(theme, "Source"));
@@ -132,6 +138,11 @@ namespace CodexDreamSkinManager
                 AssertEqual("light", ReadMember(theme, "Appearance"));
                 AssertClose(0.62, Convert.ToDouble(ReadMemberObject(theme, "FocusX")));
                 AssertClose(0.41, Convert.ToDouble(ReadMemberObject(theme, "FocusY")));
+                AssertClose(0.3, Convert.ToDouble(ReadMemberObject(theme, "PositionX")));
+                AssertClose(-0.2, Convert.ToDouble(ReadMemberObject(theme, "PositionY")));
+                AssertClose(1.4, Convert.ToDouble(ReadMemberObject(theme, "Zoom")));
+                AssertEqual("free", ReadMember(theme, "PositionMode"));
+                AssertTrue(Convert.ToBoolean(ReadMemberObject(theme, "FramingEnabled")));
                 AssertEqual("left", ReadMember(theme, "SafeArea"));
                 AssertEqual("ambient", ReadMember(theme, "TaskMode"));
                 AssertEqual("#7B78D6", ReadMember(theme, "Accent"));
@@ -342,7 +353,7 @@ namespace CodexDreamSkinManager
                 {
                     string image = CreateJpeg(root, "art.jpg");
                     string package = Path.Combine(root, "valid.cdskin");
-                    CreateCdskin(package, "{\"formatVersion\":1,\"id\":\"sample\",\"name\":\"示例主题\",\"image\":\"art.jpg\",\"category\":\"custom\",\"tags\":[\"测试\"],\"appearance\":\"dark\",\"art\":{\"focusX\":0.7,\"focusY\":0.4,\"safeArea\":\"left\",\"taskMode\":\"ambient\"},\"palette\":{\"accent\":\"#112233\"}}", image, null);
+                    CreateCdskin(package, "{\"formatVersion\":1,\"id\":\"sample\",\"name\":\"示例主题\",\"image\":\"art.jpg\",\"category\":\"custom\",\"tags\":[\"测试\"],\"appearance\":\"dark\",\"art\":{\"focusX\":0.7,\"focusY\":0.4,\"positionX\":0.35,\"positionY\":-0.25,\"zoom\":1.6,\"positionMode\":\"free\",\"safeArea\":\"left\",\"taskMode\":\"ambient\"},\"palette\":{\"accent\":\"#112233\"}}", image, null);
                     Type serviceType = typeof(MainWindow).Assembly.GetType("CodexDreamSkinManager.ThemePackageService", true);
                     MethodInfo read = serviceType.GetMethod("ReadPackage", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
                     object data = read.Invoke(null, new object[] { package, Path.Combine(root, "extract") });
@@ -350,10 +361,17 @@ namespace CodexDreamSkinManager
                     AssertEqual("custom", ReadMember(data, "Category"));
                     AssertEqual("dark", ReadMember(data, "Appearance"));
                     AssertClose(0.7, Convert.ToDouble(ReadMemberObject(data, "FocusX")));
+                    AssertClose(0.35, Convert.ToDouble(ReadMemberObject(data, "PositionX")));
+                    AssertClose(-0.25, Convert.ToDouble(ReadMemberObject(data, "PositionY")));
+                    AssertClose(1.6, Convert.ToDouble(ReadMemberObject(data, "Zoom")));
+                    AssertEqual("free", ReadMember(data, "PositionMode"));
+                    AssertTrue(Convert.ToBoolean(ReadMemberObject(data, "FramingEnabled")));
                     AssertTrue(Contains(ReadMemberObject(data, "Tags") as IEnumerable, "测试"));
                     AssertTrue(File.Exists(ReadMember(data, "ImagePath")));
                     BatchImportItem item = MainWindow.CreateBatchImportItem((ThemePackageData)data);
                     AssertEqual("custom", ReadMember(item, "Category"));
+                    AssertEqual("free", ReadMember(item, "PositionMode"));
+                    AssertTrue(Convert.ToBoolean(ReadMemberObject(item, "FramingEnabled")));
                     AssertTrue(Contains(ReadMemberObject(item, "Tags") as IEnumerable, "测试"));
                     string exported = Path.Combine(root, "roundtrip.cdskin");
                     serviceType.GetMethod("WritePackage", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
@@ -361,6 +379,23 @@ namespace CodexDreamSkinManager
                     object roundtrip = read.Invoke(null, new object[] { exported, Path.Combine(root, "roundtrip-extract") });
                     AssertEqual("示例主题", ReadMember(roundtrip, "Name"));
                     AssertEqual("#112233", ReadMember(roundtrip, "Accent"));
+                    AssertClose(0.35, Convert.ToDouble(ReadMemberObject(roundtrip, "PositionX")));
+                    AssertEqual("free", ReadMember(roundtrip, "PositionMode"));
+
+                    string legacy = Path.Combine(root, "legacy.cdskin");
+                    CreateCdskin(legacy, "{\"formatVersion\":1,\"id\":\"legacy\",\"name\":\"旧主题\",\"image\":\"art.jpg\",\"category\":\"custom\",\"appearance\":\"auto\",\"art\":{\"focusX\":0.7,\"focusY\":0.4,\"safeArea\":\"auto\",\"taskMode\":\"auto\"},\"palette\":{}}", image, null);
+                    object legacyData = read.Invoke(null, new object[] { legacy, Path.Combine(root, "legacy-extract") });
+                    AssertClose(0, Convert.ToDouble(ReadMemberObject(legacyData, "PositionX")));
+                    AssertClose(0, Convert.ToDouble(ReadMemberObject(legacyData, "PositionY")));
+                    AssertClose(1, Convert.ToDouble(ReadMemberObject(legacyData, "Zoom")));
+                    AssertEqual("locked", ReadMember(legacyData, "PositionMode"));
+                    AssertTrue(!Convert.ToBoolean(ReadMemberObject(legacyData, "FramingEnabled")));
+                    string legacyRoundtrip = Path.Combine(root, "legacy-roundtrip.cdskin");
+                    serviceType.GetMethod("WritePackage", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+                        .Invoke(null, new object[] { legacyRoundtrip, legacyData });
+                    object legacyRoundtripData = read.Invoke(null,
+                        new object[] { legacyRoundtrip, Path.Combine(root, "legacy-roundtrip-extract") });
+                    AssertTrue(!Convert.ToBoolean(ReadMemberObject(legacyRoundtripData, "FramingEnabled")));
                 }
                 finally { Directory.Delete(root, true); }
             });
@@ -391,6 +426,14 @@ namespace CodexDreamSkinManager
                     CreateCdskin(stringTags, manifest.Replace("\"appearance\":\"auto\"", "\"tags\":\"abc\",\"appearance\":\"auto\""), image, null);
                     AssertInvocationThrows(read, new object[] { stringTags, Path.Combine(root, "extract-d") });
 
+                    string wrongArtType = Path.Combine(root, "wrong-art-type.cdskin");
+                    CreateCdskin(wrongArtType, manifest.Replace("\"art\":{\"focusX\":0.5,\"focusY\":0.5,\"safeArea\":\"auto\",\"taskMode\":\"auto\"}", "\"art\":[]"), image, null);
+                    AssertInvocationThrows(read, new object[] { wrongArtType, Path.Combine(root, "extract-d2") });
+
+                    string wrongPaletteType = Path.Combine(root, "wrong-palette-type.cdskin");
+                    CreateCdskin(wrongPaletteType, manifest.Replace("\"palette\":{}", "\"palette\":1"), image, null);
+                    AssertInvocationThrows(read, new object[] { wrongPaletteType, Path.Combine(root, "extract-d3") });
+
                     string invalidFocus = Path.Combine(root, "invalid-focus.cdskin");
                     CreateCdskin(invalidFocus, manifest.Replace("\"focusX\":0.5", "\"focusX\":\"invalid\""), image, null);
                     AssertInvocationThrows(read, new object[] { invalidFocus, Path.Combine(root, "extract-e") });
@@ -398,6 +441,18 @@ namespace CodexDreamSkinManager
                     string nonFiniteFocus = Path.Combine(root, "non-finite-focus.cdskin");
                     CreateCdskin(nonFiniteFocus, manifest.Replace("\"focusX\":0.5", "\"focusX\":\"NaN\""), image, null);
                     AssertInvocationThrows(read, new object[] { nonFiniteFocus, Path.Combine(root, "extract-f") });
+
+                    string invalidPosition = Path.Combine(root, "invalid-position.cdskin");
+                    CreateCdskin(invalidPosition, manifest.Replace("\"focusX\":0.5", "\"positionX\":1.1,\"focusX\":0.5"), image, null);
+                    AssertInvocationThrows(read, new object[] { invalidPosition, Path.Combine(root, "extract-g") });
+
+                    string invalidZoom = Path.Combine(root, "invalid-zoom.cdskin");
+                    CreateCdskin(invalidZoom, manifest.Replace("\"focusX\":0.5", "\"zoom\":\"NaN\",\"focusX\":0.5"), image, null);
+                    AssertInvocationThrows(read, new object[] { invalidZoom, Path.Combine(root, "extract-h") });
+
+                    string invalidPositionMode = Path.Combine(root, "invalid-position-mode.cdskin");
+                    CreateCdskin(invalidPositionMode, manifest.Replace("\"focusX\":0.5", "\"positionMode\":\"floating\",\"focusX\":0.5"), image, null);
+                    AssertInvocationThrows(read, new object[] { invalidPositionMode, Path.Combine(root, "extract-i") });
                 }
                 finally { Directory.Delete(root, true); }
             });
@@ -414,6 +469,15 @@ namespace CodexDreamSkinManager
                 AssertTrue(items != null && ContainsResultName(items, "A"));
             });
 
+            Run("Parses theme deletion cleanup state", delegate
+            {
+                ThemeDeletionResult result = DreamSkinService.ParseThemeDeletionResult(
+                    "{\"id\":\"saved-a\",\"name\":\"我的主题\",\"deleted\":true,\"cleanupPending\":true}");
+                AssertEqual("saved-a", result.Id);
+                AssertTrue(result.Deleted);
+                AssertTrue(result.CleanupPending);
+            });
+
             Run("Calculates continuous preview crop and marker", delegate
             {
                 Type math = typeof(MainWindow).Assembly.GetType("CodexDreamSkinManager.PreviewMath", true);
@@ -425,6 +489,33 @@ namespace CodexDreamSkinManager
                     .Invoke(null, new object[] { 800.0, 400.0, 0.37, 0.83 });
                 AssertClose(296.0, Convert.ToDouble(ReadMemberObject(marker, "X")));
                 AssertClose(332.0, Convert.ToDouble(ReadMemberObject(marker, "Y")));
+                MethodInfo calculateLayout = math.GetMethod("CalculateFramingLayout",
+                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                object locked = calculateLayout.Invoke(null,
+                    new object[] { 2000.0, 1000.0, 1000.0, 1000.0, 1.0, 0.0, 1.0, "locked" });
+                AssertClose(2000, Convert.ToDouble(ReadMemberObject(locked, "Width")));
+                AssertClose(0, Convert.ToDouble(ReadMemberObject(locked, "X")));
+                AssertClose(0, Convert.ToDouble(ReadMemberObject(locked, "Y")));
+                object free = calculateLayout.Invoke(null,
+                    new object[] { 2000.0, 1000.0, 1000.0, 1000.0, 1.0, -1.0, 1.0, "free" });
+                AssertClose(1000, Convert.ToDouble(ReadMemberObject(free, "X")));
+                AssertClose(-1000, Convert.ToDouble(ReadMemberObject(free, "Y")));
+                object centeredZoom = calculateLayout.Invoke(null,
+                    new object[] { 1000.0, 1000.0, 1000.0, 1000.0, 0.0, 0.0, 1.5, "locked" });
+                AssertClose(1500, Convert.ToDouble(ReadMemberObject(centeredZoom, "Width")));
+                AssertClose(1500, Convert.ToDouble(ReadMemberObject(centeredZoom, "Height")));
+                AssertClose(-250, Convert.ToDouble(ReadMemberObject(centeredZoom, "X")));
+                AssertClose(-250, Convert.ToDouble(ReadMemberObject(centeredZoom, "Y")));
+                MethodInfo usesCustomFraming = math.GetMethod("UsesCustomFraming",
+                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                AssertTrue(!Convert.ToBoolean(usesCustomFraming.Invoke(null,
+                    new object[] { false, 0.0, 0.0, 1.0, "locked" })));
+                AssertTrue(Convert.ToBoolean(usesCustomFraming.Invoke(null,
+                    new object[] { true, 0.0, 0.0, 1.0, "locked" })));
+                AssertTrue(Convert.ToBoolean(usesCustomFraming.Invoke(null,
+                    new object[] { false, 0.0, 0.0, 1.0, "free" })));
+                AssertTrue(Convert.ToBoolean(usesCustomFraming.Invoke(null,
+                    new object[] { false, 0.1, 0.0, 1.0, "locked" })));
             });
 
             Run("Derives action availability from state", delegate
@@ -705,6 +796,17 @@ namespace CodexDreamSkinManager
                 options.SetFocusPercent(72, 45);
                 AssertClose(0.72, options.FocusX);
                 AssertClose(0.45, options.FocusY);
+                options.SetFramingPercent(65, -30, 175);
+                AssertClose(0.65, options.PositionX);
+                AssertClose(-0.3, options.PositionY);
+                AssertClose(1.75, options.Zoom);
+                options.Name = "测试";
+                options.ImagePath = "image.jpg";
+                options.Zoom = double.NaN;
+                AssertThrows(delegate { options.Validate(); });
+                options.Zoom = 1;
+                options.PositionMode = "floating";
+                AssertThrows(delegate { options.Validate(); });
             });
 
             Run("Rejects unsafe accent color", delegate
@@ -719,11 +821,136 @@ namespace CodexDreamSkinManager
                 string[] names = {
                     "StatusText", "ThemeList", "ThemeGridScroll", "ThemeSearch", "ThemeCategory",
                     "ThemeSource", "ThemeSort", "AddImagesButton", "ImportPackageButton",
-                    "ExportThemeButton", "PreviewImage", "EnableButton", "PauseButton",
-                    "ResetButton", "RestoreButton", "CustomSkinTab"
+                    "ExportThemeButton", "DeleteThemeButton", "PreviewImage", "EnableButton", "PauseButton",
+                    "ResetButton", "RestoreButton", "CustomSkinTab", "HorizontalPositionSlider",
+                    "VerticalPositionSlider", "ZoomSlider", "PositionMode", "ResetFramingButton"
                 };
                 foreach (string name in names)
                     AssertTrue(FindAutomationName(window, name));
+                window.Close();
+            });
+
+            Run("Blocks image selection while validation is running", delegate
+            {
+                string root = CreateLayout();
+                try
+                {
+                    MainWindow window = new MainWindow(new DreamSkinService(root));
+                    FieldInfo running = typeof(MainWindow).GetField("imageValidationRunning",
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+                    MethodInfo update = typeof(MainWindow).GetMethod("UpdateActionState",
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+                    Button browse = ReadMemberObject(window, "browseImageButton") as Button;
+                    AssertTrue(running != null && update != null && browse != null);
+                    running.SetValue(window, true);
+                    update.Invoke(window, null);
+                    AssertTrue(!browse.IsEnabled);
+                    running.SetValue(window, false);
+                    update.Invoke(window, null);
+                    AssertTrue(browse.IsEnabled);
+                    window.Close();
+                }
+                finally { Directory.Delete(root, true); }
+            });
+
+            Run("Shows delete only for saved themes", delegate
+            {
+                string root = CreateLayout();
+                try
+                {
+                    MainWindow window = new MainWindow(new DreamSkinService(root));
+                    ListBox themes = ReadMemberObject(window, "themeList") as ListBox;
+                    Button delete = ReadMemberObject(window, "deleteThemeButton") as Button;
+                    DreamSkinStatus status = ReadMemberObject(window, "currentStatus") as DreamSkinStatus;
+                    if (themes == null) throw new Exception("ThemeList was not found.");
+                    if (delete == null) throw new Exception("DeleteThemeButton was not found.");
+                    if (status == null) throw new Exception("Current status was not found.");
+                    status.SupportedActions.Add("DeleteTheme");
+                    ThemeOption preset = new ThemeOption { Id = "preset-a", Name = "内置", IsPreset = true, Source = "preset" };
+                    ThemeOption saved = new ThemeOption { Id = "saved-a", Name = "我的主题", Source = "saved", ThemeDirectory = Path.Combine(root, "saved-a") };
+                    themes.Items.Add(preset);
+                    themes.Items.Add(saved);
+                    themes.SelectedItem = preset;
+                    if (delete.Visibility != Visibility.Collapsed) throw new Exception("Delete button was shown for a preset theme.");
+                    themes.SelectedItem = saved;
+                    if (delete.Visibility != Visibility.Visible) throw new Exception("Delete button was hidden for a saved theme.");
+                    if (!delete.IsEnabled) throw new Exception("Delete button was disabled for an inactive saved theme.");
+                    status.ActiveThemeId = saved.Id;
+                    themes.SelectedItem = preset;
+                    themes.SelectedItem = saved;
+                    if (delete.Visibility != Visibility.Visible) throw new Exception("Delete button was hidden for the active saved theme.");
+                    if (delete.IsEnabled) throw new Exception("Delete button was enabled for the active saved theme.");
+                    window.Close();
+                }
+                finally { Directory.Delete(root, true); }
+            });
+
+            Run("Rejects invalid theme deletion requests", delegate
+            {
+                string root = CreateLayout();
+                try
+                {
+                    DreamSkinService service = new DreamSkinService(root);
+                    AssertThrows(delegate { service.DeleteThemeAsync(null); });
+                    AssertThrows(delegate { service.DeleteThemeAsync(new ThemeOption { IsPreset = true, Source = "preset" }); });
+                    AssertThrows(delegate { service.DeleteThemeAsync(new ThemeOption { Source = "saved" }); });
+                }
+                finally { Directory.Delete(root, true); }
+            });
+
+            Run("Resets custom framing sliders", delegate
+            {
+                MainWindow window = new MainWindow(null);
+                window.Show();
+                TabControl tabs = FindVisualChild<TabControl>(window);
+                tabs.SelectedIndex = 1;
+                window.UpdateLayout();
+                Slider horizontal = FindAutomationElement(window, "HorizontalPositionSlider") as Slider;
+                Slider vertical = FindAutomationElement(window, "VerticalPositionSlider") as Slider;
+                Slider zoom = FindAutomationElement(window, "ZoomSlider") as Slider;
+                Button reset = FindAutomationElement(window, "ResetFramingButton") as Button;
+                AssertTrue(horizontal != null && vertical != null && zoom != null && reset != null);
+                AssertClose(0, horizontal.Value);
+                AssertClose(0, vertical.Value);
+                AssertClose(100, zoom.Value);
+                horizontal.Value = 80;
+                vertical.Value = -45;
+                zoom.Value = 180;
+                reset.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                AssertClose(0, horizontal.Value);
+                AssertClose(0, vertical.Value);
+                AssertClose(100, zoom.Value);
+                window.Close();
+            });
+
+            Run("Shows the selected movement mode", delegate
+            {
+                MainWindow window = new MainWindow(null);
+                window.Show();
+                TabControl tabs = FindVisualChild<TabControl>(window);
+                ListBox source = FindAutomationElement(window, "ThemeSource") as ListBox;
+                AssertTrue(source != null);
+                AssertTrue(ScrollViewer.GetHorizontalScrollBarVisibility(source) == ScrollBarVisibility.Disabled);
+                tabs.SelectedIndex = 1;
+                window.UpdateLayout();
+                ListBox mode = FindAutomationElement(window, "PositionMode") as ListBox;
+                AssertTrue(mode != null);
+                AssertTrue(mode.HorizontalAlignment == HorizontalAlignment.Left);
+                AssertTrue(ScrollViewer.GetHorizontalScrollBarVisibility(mode) == ScrollBarVisibility.Disabled);
+                ListBoxItem locked = mode.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem;
+                ListBoxItem free = mode.ItemContainerGenerator.ContainerFromIndex(1) as ListBoxItem;
+                AssertTrue(locked != null && free != null && locked.IsSelected && !free.IsSelected);
+                locked.ApplyTemplate();
+                free.ApplyTemplate();
+                Border lockedChrome = locked.Template.FindName("SegmentChrome", locked) as Border;
+                Border freeChrome = free.Template.FindName("SegmentChrome", free) as Border;
+                AssertEqual("#FF111214", ((SolidColorBrush)lockedChrome.Background).Color.ToString());
+                AssertEqual("#FFFFFFFF", ((SolidColorBrush)freeChrome.Background).Color.ToString());
+                mode.SelectedIndex = 1;
+                window.UpdateLayout();
+                AssertTrue(!locked.IsSelected && free.IsSelected);
+                AssertEqual("#FFFFFFFF", ((SolidColorBrush)lockedChrome.Background).Color.ToString());
+                AssertEqual("#FF111214", ((SolidColorBrush)freeChrome.Background).Color.ToString());
                 window.Close();
             });
 
@@ -842,19 +1069,31 @@ namespace CodexDreamSkinManager
             Run("Keeps theme grid reachable and vertically scrollable", delegate
             {
                 MainWindow window = new MainWindow(null);
-                window.Width = 980;
-                window.Height = 680;
+                ListBox themes = GetPrivateField<ListBox>(window, "themeList");
+                for (int i = 0; i < 40; i++)
+                    themes.Items.Add(new ThemeOption { Id = "scroll-theme-" + i, Name = "主题 " + i });
+                window.Width = 760;
+                window.Height = 560;
                 window.Show();
                 window.UpdateLayout();
                 try
                 {
-                    FrameworkElement themeLibrary = FindAutomationElement(window, "ThemeList");
-                    TabControl tabs = FindVisualChild<TabControl>(window);
-                    Rect bounds = themeLibrary.TransformToAncestor(tabs)
-                        .TransformBounds(new Rect(themeLibrary.RenderSize));
-                    AssertTrue(bounds.Top >= 0 && bounds.Top < tabs.ActualHeight);
-                    ScrollViewer gridScroll = FindVisualChild<ScrollViewer>(themeLibrary);
-                    AssertTrue(gridScroll != null);
+                    foreach (Size size in new[] { new Size(760, 560), new Size(1634, 900) })
+                    {
+                        window.Width = size.Width;
+                        window.Height = size.Height;
+                        window.UpdateLayout();
+                        ScrollViewer dashboard = FindAutomationElement(window, "DashboardScroll") as ScrollViewer;
+                        AssertTrue(dashboard != null);
+                        Rect bounds = themes.TransformToAncestor(dashboard)
+                            .TransformBounds(new Rect(themes.RenderSize));
+                        AssertTrue(bounds.Top >= 0 && bounds.Bottom <= dashboard.ViewportHeight + 0.5);
+                        ScrollViewer gridScroll = FindVisualChild<ScrollViewer>(themes);
+                        AssertTrue(gridScroll != null && gridScroll.ScrollableHeight > 0);
+                        gridScroll.ScrollToEnd();
+                        window.UpdateLayout();
+                        AssertClose(gridScroll.ScrollableHeight, gridScroll.VerticalOffset);
+                    }
                 }
                 finally
                 {
@@ -923,7 +1162,7 @@ namespace CodexDreamSkinManager
                 finally { window.Close(); }
             });
 
-            Run("Dashboard supports vertical scrolling", delegate
+            Run("Dashboard hides outer scrollbar but remains scrollable", delegate
             {
                 MainWindow window = new MainWindow(null);
                 window.Width = 760;
@@ -935,7 +1174,7 @@ namespace CodexDreamSkinManager
                     FrameworkElement element = FindAutomationElement(window, "DashboardScroll");
                     ScrollViewer scroll = element as ScrollViewer;
                     AssertTrue(scroll != null);
-                    AssertTrue(scroll.VerticalScrollBarVisibility == ScrollBarVisibility.Auto);
+                    AssertTrue(scroll.VerticalScrollBarVisibility == ScrollBarVisibility.Hidden);
                     AssertTrue(scroll.ScrollableHeight > 0);
                 }
                 finally
@@ -980,6 +1219,73 @@ namespace CodexDreamSkinManager
                 themes.SelectedIndex = 0;
                 AssertEqual("当前活动主题", active.Text);
                 window.Close();
+            });
+
+            Run("Refreshes the selected theme preview after status updates", delegate
+            {
+                string root = Path.Combine(Path.GetTempPath(), "dream-skin-preview-refresh-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(root);
+                string activeImage = CreateJpeg(root, "active.jpg");
+                string selectedImage = CreateJpeg(root, "selected.jpg");
+                try
+                {
+                    MainWindow window = new MainWindow(null);
+                    DreamSkinStatus status = new DreamSkinStatus { ActiveThemeImage = activeImage };
+                    typeof(MainWindow).GetField("currentStatus", BindingFlags.Instance | BindingFlags.NonPublic)
+                        .SetValue(window, status);
+                    ListBox themes = GetPrivateField<ListBox>(window, "themeList");
+                    ThemeOption selected = new ThemeOption {
+                        Id = "selected", Name = "Selected", ImagePath = selectedImage, FramingEnabled = true
+                    };
+                    themes.Items.Add(selected);
+                    themes.SelectedIndex = 0;
+                    MethodInfo populate = typeof(MainWindow).GetMethod("PopulateThemes", BindingFlags.Instance | BindingFlags.NonPublic);
+                    MethodInfo refreshPreview = typeof(MainWindow).GetMethod("RefreshDashboardPreview", BindingFlags.Instance | BindingFlags.NonPublic);
+                    populate.Invoke(window, new object[] { new List<ThemeOption> {
+                        new ThemeOption { Id = "active", Name = "Active", ImagePath = activeImage }, selected
+                    } });
+                    refreshPreview.Invoke(window, null);
+                    Image layer = GetPrivateField<Image>(window, "previewImageLayer");
+                    BitmapImage source = layer.Source as BitmapImage;
+                    AssertTrue(source != null);
+                    AssertEqual(Path.GetFullPath(selectedImage), source.UriSource.LocalPath);
+                    AssertTrue(object.ReferenceEquals(selected, GetPrivateField<ThemeOption>(window, "dashboardPreviewTheme")));
+                    window.Close();
+                }
+                finally { Directory.Delete(root, true); }
+            });
+
+            Run("Recomputes dashboard framing when preview size changes", delegate
+            {
+                string root = Path.Combine(Path.GetTempPath(), "dream-skin-preview-resize-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(root);
+                string imagePath = CreateJpeg(root, "framed.jpg");
+                try
+                {
+                    MainWindow window = new MainWindow(null);
+                    window.Show();
+                    window.UpdateLayout();
+                    ThemeOption theme = new ThemeOption {
+                        Id = "framed", Name = "Framed", ImagePath = imagePath,
+                        FramingEnabled = true, PositionX = 0.4, PositionY = -0.2, Zoom = 1.5,
+                        PositionMode = "locked"
+                    };
+                    ListBox themes = GetPrivateField<ListBox>(window, "themeList");
+                    themes.Items.Add(theme);
+                    themes.SelectedIndex = 0;
+                    MethodInfo refreshPreview = typeof(MainWindow).GetMethod("RefreshDashboardPreview", BindingFlags.Instance | BindingFlags.NonPublic);
+                    refreshPreview.Invoke(window, null);
+                    Border preview = GetPrivateField<Border>(window, "previewSurface");
+                    Image layer = GetPrivateField<Image>(window, "previewImageLayer");
+                    Brush beforeFill = preview.Background;
+                    double before = layer.Width;
+                    preview.Width = Math.Max(160, preview.ActualWidth - 80);
+                    window.UpdateLayout();
+                    AssertTrue(layer.Width > 0 && Math.Abs(layer.Width - before) > 1);
+                    AssertTrue(object.ReferenceEquals(beforeFill, preview.Background));
+                    window.Close();
+                }
+                finally { Directory.Delete(root, true); }
             });
 
             Run("Reads large PowerShell output streams without deadlock", delegate

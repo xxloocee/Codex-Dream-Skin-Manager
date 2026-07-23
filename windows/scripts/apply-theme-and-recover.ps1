@@ -7,6 +7,11 @@ param(
   [ValidateSet('auto','light','dark')][string]$Appearance = 'auto',
   [ValidateRange(0.0, 1.0)][double]$FocusX = 0.5,
   [ValidateRange(0.0, 1.0)][double]$FocusY = 0.5,
+  [ValidateRange(-1.0, 1.0)][double]$PositionX = 0.0,
+  [ValidateRange(-1.0, 1.0)][double]$PositionY = 0.0,
+  [ValidateRange(1.0, 2.0)][double]$Zoom = 1.0,
+  [ValidateSet('locked','free')][string]$PositionMode = 'locked',
+  [ValidateSet('true','false')][string]$FramingEnabled = 'false',
   [ValidateSet('auto','left','right','center','none')][string]$SafeArea = 'auto',
   [ValidateSet('auto','ambient','banner','off')][string]$TaskMode = 'auto',
   [ValidatePattern('^$|^#[0-9A-Fa-f]{6}$')][string]$Accent = ''
@@ -117,6 +122,9 @@ try {
       $applyArguments += @(
         '-ImagePath', $ImagePath, '-Name', $Name, '-Appearance', $Appearance,
         '-FocusX', "$FocusX", '-FocusY', "$FocusY", '-SafeArea', $SafeArea,
+        '-PositionX', "$PositionX", '-PositionY', "$PositionY", '-Zoom', "$Zoom",
+        '-PositionMode', $PositionMode,
+        '-FramingEnabled', "$FramingEnabled",
         '-TaskMode', $TaskMode
       )
       if (-not [string]::IsNullOrWhiteSpace($Accent)) {

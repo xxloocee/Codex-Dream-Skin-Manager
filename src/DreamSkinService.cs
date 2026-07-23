@@ -49,8 +49,16 @@ namespace CodexDreamSkinManager
             status.IsPaused = ReadBool(data, "isPaused");
             status.StatusKind = ReadString(data, "statusKind", status.IsRunning ? "running" : "stopped");
             status.StatusMessage = ReadString(data, "statusMessage", "");
+            status.ActiveThemeId = ReadString(data, "activeThemeId", "");
             status.ActiveThemeName = ReadString(data, "activeTheme", "未选择");
             status.ActiveThemeImage = ReadString(data, "activeImage", "");
+            status.ActiveFocusX = ReadDouble(data, "activeFocusX", 0.5);
+            status.ActiveFocusY = ReadDouble(data, "activeFocusY", 0.5);
+            status.ActivePositionX = ReadDouble(data, "activePositionX", 0);
+            status.ActivePositionY = ReadDouble(data, "activePositionY", 0);
+            status.ActiveZoom = ReadDouble(data, "activeZoom", 1.0);
+            status.ActivePositionMode = ReadString(data, "activePositionMode", "locked");
+            status.ActiveFramingEnabled = ReadBool(data, "activeFramingEnabled");
             status.ManagerApiVersion = ReadString(data, "managerApiVersion", "");
             status.ThemeSchemaVersion = ReadInt(data, "themeSchemaVersion");
             status.StateSchemaVersion = ReadInt(data, "stateSchemaVersion");
@@ -87,6 +95,11 @@ namespace CodexDreamSkinManager
                         theme.Appearance = ReadString(row, "appearance", "auto");
                         theme.FocusX = ReadDouble(row, "focusX", 0.5);
                         theme.FocusY = ReadDouble(row, "focusY", 0.5);
+                        theme.PositionX = ReadDouble(row, "positionX", 0);
+                        theme.PositionY = ReadDouble(row, "positionY", 0);
+                        theme.Zoom = ReadDouble(row, "zoom", 1.0);
+                        theme.PositionMode = ReadString(row, "positionMode", "locked");
+                        theme.FramingEnabled = ReadBool(row, "framingEnabled");
                         theme.SafeArea = ReadString(row, "safeArea", "auto");
                         theme.TaskMode = ReadString(row, "taskMode", "auto");
                         theme.Accent = ReadString(row, "accent", "");
@@ -187,6 +200,8 @@ namespace CodexDreamSkinManager
                     rows.Add(new Dictionary<string, object> {
                         { "imagePath", item.ImagePath }, { "name", item.Name }, { "appearance", item.Appearance },
                         { "focusX", item.FocusX }, { "focusY", item.FocusY }, { "safeArea", item.SafeArea },
+                        { "positionX", item.PositionX }, { "positionY", item.PositionY }, { "zoom", item.Zoom },
+                        { "positionMode", item.PositionMode }, { "framingEnabled", item.FramingEnabled },
                         { "taskMode", item.TaskMode }, { "accent", item.Accent }, { "category", item.Category },
                         { "tags", (item.Tags ?? new List<string>()).ToArray() }
                     });
@@ -216,6 +231,40 @@ namespace CodexDreamSkinManager
             return RunManagerAsync(args);
         }
 
+        public Task<ThemeDeletionResult> DeleteThemeAsync(ThemeOption theme)
+        {
+            if (theme == null) throw new ArgumentNullException("theme");
+            if (theme.IsPreset || !string.Equals(theme.Source, "saved", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("只能删除“我的”已保存主题。");
+            if (string.IsNullOrWhiteSpace(theme.ThemeDirectory))
+                throw new InvalidOperationException("主题目录为空，无法删除。");
+            EnsureManagerAvailable();
+            return RunDeleteThemeAsync(theme.ThemeDirectory);
+        }
+
+        private async Task<ThemeDeletionResult> RunDeleteThemeAsync(string themeDirectory)
+        {
+            ScriptResult result = await PowerShellRunner.RunAsync(managerScript, new[] {
+                P("-Action"), V("DeleteTheme"),
+                P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")),
+                P("-ThemeDirectory"), V(themeDirectory)
+            }, 30000);
+            return ParseThemeDeletionResult(result.Output);
+        }
+
+        internal static ThemeDeletionResult ParseThemeDeletionResult(string json)
+        {
+            JavaScriptSerializer serializer = new JavaScriptSerializer();
+            Dictionary<string, object> data = serializer.Deserialize<Dictionary<string, object>>(json);
+            if (data == null) throw new FormatException("删除主题 JSON 为空。");
+            return new ThemeDeletionResult {
+                Id = ReadString(data, "id", ""),
+                Name = ReadString(data, "name", ""),
+                Deleted = ReadBool(data, "deleted"),
+                CleanupPending = ReadBool(data, "cleanupPending")
+            };
+        }
+
         public Task ApplyThemeAndRecoverAsync(ThemeOption theme)
         {
             if (!CanRecover) throw new FileNotFoundException("缺少主题恢复脚本。", recoveryScript);
@@ -239,6 +288,11 @@ namespace CodexDreamSkinManager
                 args.Add(P("-Appearance")); args.Add(V(theme.Appearance));
                 args.Add(P("-FocusX")); args.Add(V(theme.FocusX.ToString(CultureInfo.InvariantCulture)));
                 args.Add(P("-FocusY")); args.Add(V(theme.FocusY.ToString(CultureInfo.InvariantCulture)));
+                args.Add(P("-PositionX")); args.Add(V(theme.PositionX.ToString(CultureInfo.InvariantCulture)));
+                args.Add(P("-PositionY")); args.Add(V(theme.PositionY.ToString(CultureInfo.InvariantCulture)));
+                args.Add(P("-Zoom")); args.Add(V(theme.Zoom.ToString(CultureInfo.InvariantCulture)));
+                args.Add(P("-PositionMode")); args.Add(V(theme.PositionMode));
+                args.Add(P("-FramingEnabled")); args.Add(V(theme.FramingEnabled ? "true" : "false"));
                 args.Add(P("-SafeArea")); args.Add(V(theme.SafeArea));
                 args.Add(P("-TaskMode")); args.Add(V(theme.TaskMode));
                 args.Add(P("-Accent")); args.Add(V(theme.Accent));
@@ -254,6 +308,11 @@ namespace CodexDreamSkinManager
                 P("-Appearance"), V(options.Appearance),
                 P("-FocusX"), V(options.FocusX.ToString(CultureInfo.InvariantCulture)),
                 P("-FocusY"), V(options.FocusY.ToString(CultureInfo.InvariantCulture)),
+                P("-PositionX"), V(options.PositionX.ToString(CultureInfo.InvariantCulture)),
+                P("-PositionY"), V(options.PositionY.ToString(CultureInfo.InvariantCulture)),
+                P("-Zoom"), V(options.Zoom.ToString(CultureInfo.InvariantCulture)),
+                P("-PositionMode"), V(options.PositionMode),
+                P("-FramingEnabled"), V("true"),
                 P("-SafeArea"), V(options.SafeArea), P("-TaskMode"), V(options.TaskMode),
                 P("-Accent"), V(options.Accent)
             });

@@ -93,6 +93,7 @@ namespace CodexDreamSkinManager
         private TextBlock activeThemeText;
         private TextBlock messageText;
         private Border statusDot;
+        private ScrollViewer dashboardScroll;
         private ListBox themeList;
         private readonly List<ThemeOption> allThemes = new List<ThemeOption>();
         private TextBox themeSearchBox;
@@ -103,9 +104,14 @@ namespace CodexDreamSkinManager
         private Button addImagesButton;
         private Button importPackageButton;
         private Button exportThemeButton;
+        private Button deleteThemeButton;
         private Border previewSurface;
         private Border customPreviewSurface;
-        private FrameworkElement customFocusMarker;
+        private Image previewImageLayer;
+        private Image customPreviewImageLayer;
+        private BitmapSource dashboardPreviewBitmap;
+        private ThemeOption dashboardPreviewTheme;
+        private Brush dashboardPreviewMutedFill;
         private BitmapSource customPreviewBitmap;
         private Button enableButton;
         private Button pauseButton;
@@ -118,16 +124,22 @@ namespace CodexDreamSkinManager
         private TextBox imagePathBox;
         private TextBox themeNameBox;
         private TextBox accentBox;
-        private Slider focusXSlider;
-        private Slider focusYSlider;
-        private TextBlock focusXValue;
-        private TextBlock focusYValue;
+        private Slider positionXSlider;
+        private Slider positionYSlider;
+        private Slider zoomSlider;
+        private ListBox positionModeSegment;
+        private TextBlock positionXValue;
+        private TextBlock positionYValue;
+        private TextBlock zoomValue;
         private ComboBox appearanceCombo;
         private ComboBox safeAreaCombo;
         private ComboBox taskModeCombo;
+        private Button browseImageButton;
         private DreamSkinStatus currentStatus = new DreamSkinStatus();
         private readonly SemaphoreSlim statusRefreshLock = new SemaphoreSlim(1, 1);
         private bool operationRunning;
+        private bool imageValidationRunning;
+        private int imageValidationGeneration;
         private int statusRefreshCount;
         private bool suppressThemeSelection;
         private bool hasValidCustomImage;
@@ -147,7 +159,7 @@ namespace CodexDreamSkinManager
             Content = BuildLayout();
             SizeChanged += delegate { UpdateThemeGridHeight(); };
             UpdateActionState();
-            Loaded += async delegate { await RefreshStatusAsync(); };
+            Loaded += async delegate { UpdateThemeGridHeight(); await RefreshStatusAsync(); };
         }
 
         public void SetStartupError(string message)
@@ -209,13 +221,14 @@ namespace CodexDreamSkinManager
 
         private UIElement BuildDashboard()
         {
-            ScrollViewer scroll = new ScrollViewer
+            dashboardScroll = new ScrollViewer
             {
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Hidden,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch
             };
-            AutomationProperties.SetName(scroll, "DashboardScroll");
+            dashboardScroll.SizeChanged += delegate { UpdateThemeGridHeight(); };
+            AutomationProperties.SetName(dashboardScroll, "DashboardScroll");
             Grid grid = new Grid { Margin = new Thickness(4, 14, 4, 4), MaxWidth = 1260, HorizontalAlignment = HorizontalAlignment.Stretch };
             AutomationProperties.SetName(grid, "DashboardContent");
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -243,9 +256,12 @@ namespace CodexDreamSkinManager
             filterBar.Children.Add(themeCategoryCombo);
 
             themeSourceSegment = new ListBox { Width = 174, Height = 36, BorderBrush = AppBorderBrush,
-                BorderThickness = new Thickness(1), Background = SurfaceBrush, Margin = new Thickness(0, 0, 8, 8) };
+                BorderThickness = new Thickness(1), Background = SurfaceBrush, Padding = new Thickness(2),
+                Margin = new Thickness(0, 0, 8, 8), SelectionMode = SelectionMode.Single };
+            ScrollViewer.SetHorizontalScrollBarVisibility(themeSourceSegment, ScrollBarVisibility.Disabled);
+            ScrollViewer.SetVerticalScrollBarVisibility(themeSourceSegment, ScrollBarVisibility.Disabled);
             themeSourceSegment.ItemsPanel = HorizontalStackItemsPanel();
-            themeSourceSegment.ItemContainerStyle = SegmentedItemStyle();
+            themeSourceSegment.ItemContainerStyle = SegmentedItemStyle(52, new Thickness(8, 5, 8, 5));
             themeSourceSegment.Items.Add("全部");
             themeSourceSegment.Items.Add("内置");
             themeSourceSegment.Items.Add("我的");
@@ -274,9 +290,16 @@ namespace CodexDreamSkinManager
             importPackageButton.Click += async delegate { await ImportPackagesAsync(); };
             commandBar.Children.Add(importPackageButton);
             exportThemeButton = SecondaryButton("导出主题");
+            exportThemeButton.Margin = new Thickness(0, 0, 8, 0);
             AutomationProperties.SetName(exportThemeButton, "ExportThemeButton");
             exportThemeButton.Click += ExportSelectedTheme;
             commandBar.Children.Add(exportThemeButton);
+            deleteThemeButton = DangerButton("删除主题");
+            deleteThemeButton.Margin = new Thickness(0);
+            deleteThemeButton.Visibility = Visibility.Collapsed;
+            AutomationProperties.SetName(deleteThemeButton, "DeleteThemeButton");
+            deleteThemeButton.Click += async delegate { await DeleteSelectedThemeAsync(); };
+            commandBar.Children.Add(deleteThemeButton);
             left.Children.Add(commandBar);
 
             Grid themeHost = new Grid();
@@ -307,6 +330,8 @@ namespace CodexDreamSkinManager
             AutomationProperties.SetName(controls, "DashboardControls");
             StackPanel controlStack = new StackPanel();
             previewSurface = CreatePreviewSurface("PreviewImage", 145, 180, 16.0 / 9.0);
+            previewImageLayer = CreatePreviewImageLayer(previewSurface, "PreviewImageLayer");
+            previewSurface.SizeChanged += delegate { ReapplyDashboardPreview(); };
             previewSurface.Margin = new Thickness(0, 0, 0, 14);
             controlStack.Children.Add(previewSurface);
             controlStack.Children.Add(SectionLabel("当前主题"));
@@ -358,8 +383,8 @@ namespace CodexDreamSkinManager
             controls.Child = controlStack;
             Grid.SetColumn(controls, 2);
             grid.Children.Add(controls);
-            scroll.Content = grid;
-            return scroll;
+            dashboardScroll.Content = grid;
+            return dashboardScroll;
         }
 
         private UIElement BuildCustomSkin()
@@ -371,8 +396,8 @@ namespace CodexDreamSkinManager
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(18) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(380) });
             customPreviewSurface = CreatePreviewSurface("CustomPreviewImage", 330, 480, 16.0 / 9.0);
-            customFocusMarker = customPreviewSurface.Tag as FrameworkElement;
-            if (customFocusMarker != null) customFocusMarker.Visibility = Visibility.Visible;
+            customPreviewImageLayer = CreatePreviewImageLayer(customPreviewSurface, "CustomPreviewImageLayer");
+            customPreviewSurface.IsHitTestVisible = false;
             customPreviewSurface.SizeChanged += delegate { UpdateCustomPreview(); };
             grid.Children.Add(customPreviewSurface);
 
@@ -390,27 +415,57 @@ namespace CodexDreamSkinManager
             imagePathBox = InputBox("选择 PNG、JPG 或 WebP");
             imagePathBox.IsReadOnly = true;
             fileRow.Children.Add(imagePathBox);
-            Button browse = SecondaryButton("选择图片");
-            browse.Margin = new Thickness(8, 0, 0, 0);
-            browse.Click += async delegate { await BrowseImageAsync(); };
-            Grid.SetColumn(browse, 1);
-            fileRow.Children.Add(browse);
+            browseImageButton = SecondaryButton("选择图片");
+            browseImageButton.Margin = new Thickness(8, 0, 0, 0);
+            browseImageButton.Click += async delegate { await BrowseImageAsync(); };
+            Grid.SetColumn(browseImageButton, 1);
+            fileRow.Children.Add(browseImageButton);
             fields.Children.Add(fileRow);
 
             fields.Children.Add(FieldLabel("外观模式"));
             appearanceCombo = CreateCombo(new[] { "自动", "浅色", "深色" }, 0);
             fields.Children.Add(appearanceCombo);
 
-            focusXValue = new TextBlock { Text = "50%", Foreground = MutedBrush, HorizontalAlignment = HorizontalAlignment.Right };
-            fields.Children.Add(SliderLabel("水平焦点", focusXValue));
-            focusXSlider = CreateSlider();
-            focusXSlider.ValueChanged += FocusChanged;
-            fields.Children.Add(focusXSlider);
-            focusYValue = new TextBlock { Text = "50%", Foreground = MutedBrush, HorizontalAlignment = HorizontalAlignment.Right };
-            fields.Children.Add(SliderLabel("垂直焦点", focusYValue));
-            focusYSlider = CreateSlider();
-            focusYSlider.ValueChanged += FocusChanged;
-            fields.Children.Add(focusYSlider);
+            positionXValue = new TextBlock { Text = "0%", Foreground = MutedBrush, HorizontalAlignment = HorizontalAlignment.Right };
+            fields.Children.Add(SliderLabel("水平位置", positionXValue));
+            positionXSlider = CreateSlider(-100, 100, 0, 10, "HorizontalPositionSlider");
+            positionXSlider.ValueChanged += FramingChanged;
+            fields.Children.Add(positionXSlider);
+            positionYValue = new TextBlock { Text = "0%", Foreground = MutedBrush, HorizontalAlignment = HorizontalAlignment.Right };
+            fields.Children.Add(SliderLabel("垂直位置", positionYValue));
+            positionYSlider = CreateSlider(-100, 100, 0, 10, "VerticalPositionSlider");
+            positionYSlider.ValueChanged += FramingChanged;
+            fields.Children.Add(positionYSlider);
+            zoomValue = new TextBlock { Text = "100%", Foreground = MutedBrush, HorizontalAlignment = HorizontalAlignment.Right };
+            fields.Children.Add(SliderLabel("缩放", zoomValue));
+            zoomSlider = CreateSlider(100, 200, 100, 10, "ZoomSlider");
+            zoomSlider.ValueChanged += FramingChanged;
+            fields.Children.Add(zoomSlider);
+            Grid framingModeRow = new Grid { Margin = new Thickness(0, 8, 0, 2),
+                HorizontalAlignment = HorizontalAlignment.Left };
+            framingModeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            framingModeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            positionModeSegment = new ListBox { Height = 38, Background = BackgroundBrush,
+                BorderBrush = AppBorderBrush, BorderThickness = new Thickness(1),
+                Padding = new Thickness(2), SelectionMode = SelectionMode.Single,
+                HorizontalAlignment = HorizontalAlignment.Left };
+            ScrollViewer.SetHorizontalScrollBarVisibility(positionModeSegment, ScrollBarVisibility.Disabled);
+            ScrollViewer.SetVerticalScrollBarVisibility(positionModeSegment, ScrollBarVisibility.Disabled);
+            positionModeSegment.ItemsPanel = HorizontalStackItemsPanel();
+            positionModeSegment.ItemContainerStyle = SegmentedItemStyle(76, new Thickness(12, 6, 12, 6));
+            positionModeSegment.Items.Add("锁定区域内");
+            positionModeSegment.Items.Add("不锁定区域");
+            positionModeSegment.SelectedIndex = 0;
+            AutomationProperties.SetName(positionModeSegment, "PositionMode");
+            positionModeSegment.SelectionChanged += delegate { UpdateCustomPreview(); };
+            framingModeRow.Children.Add(positionModeSegment);
+            Button resetFraming = SecondaryButton("复位");
+            resetFraming.Margin = new Thickness(8, 0, 0, 0);
+            AutomationProperties.SetName(resetFraming, "ResetFramingButton");
+            resetFraming.Click += delegate { ResetFramingControls(); };
+            Grid.SetColumn(resetFraming, 1);
+            framingModeRow.Children.Add(resetFraming);
+            fields.Children.Add(framingModeRow);
 
             fields.Children.Add(FieldLabel("文字安全区"));
             safeAreaCombo = CreateCombo(new[] { "自动", "左侧", "右侧", "居中", "关闭" }, 0);
@@ -478,8 +533,8 @@ namespace CodexDreamSkinManager
                     statusDot.Background = unhealthy ? DangerBrush : currentStatus.IsRunning ? pausedWhileRunning ? WarningBrush : SuccessBrush : MutedBrush;
                     statusText.ToolTip = BuildStatusDetails(currentStatus);
                     activeThemeText.Text = string.IsNullOrWhiteSpace(currentStatus.ActiveThemeName) ? "未选择" : CleanThemeName(currentStatus.ActiveThemeName);
-                    try { SetPreviewImage(previewSurface, currentStatus.ActiveThemeImage, 0.5, 0.5); } catch { }
                     PopulateThemes(currentStatus.Themes);
+                    RefreshDashboardPreview();
                     UpdateActionState();
                     return true;
                 }
@@ -560,9 +615,19 @@ namespace CodexDreamSkinManager
 
         private void UpdateThemeGridHeight()
         {
-            if (themeList == null) return;
-            double available = ActualHeight > 0 ? ActualHeight - 300 : 360;
-            themeList.Height = Math.Max(260, Math.Min(610, available));
+            if (themeList == null || dashboardScroll == null) return;
+            double viewportHeight = dashboardScroll.ViewportHeight;
+            if (viewportHeight <= 0 || double.IsNaN(viewportHeight) || double.IsInfinity(viewportHeight))
+                viewportHeight = dashboardScroll.ActualHeight;
+            if (viewportHeight <= 0) return;
+            try
+            {
+                Point top = themeList.TranslatePoint(new Point(0, 0), dashboardScroll);
+                double available = viewportHeight - Math.Max(0, top.Y) - 4;
+                if (available > 0)
+                    themeList.Height = Math.Max(1, Math.Min(610, Math.Floor(available)));
+            }
+            catch (InvalidOperationException) { }
         }
 
         private void ThemeSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -570,13 +635,34 @@ namespace CodexDreamSkinManager
             if (suppressThemeSelection) return;
             ThemeOption theme = themeList.SelectedItem as ThemeOption;
             UpdateActionState();
-            if (theme == null) return;
+            if (theme == null)
+            {
+                ClearDashboardPreview();
+                return;
+            }
             try
             {
-                SetPreviewImage(previewSurface, theme.ImagePath, theme.FocusX, theme.FocusY);
+                BitmapSource bitmap = LoadPreviewBitmap(theme.ImagePath);
+                if (bitmap == null)
+                {
+                    ClearDashboardPreview();
+                }
+                else
+                {
+                    dashboardPreviewBitmap = bitmap;
+                    dashboardPreviewTheme = theme;
+                    dashboardPreviewMutedFill = PreviewMath.UsesCustomFraming(theme.FramingEnabled,
+                        theme.PositionX, theme.PositionY, theme.Zoom, theme.PositionMode)
+                        ? CreateMutedImageFill(bitmap) : null;
+                    ApplyThemePreview(previewSurface, previewImageLayer, bitmap, theme, dashboardPreviewMutedFill);
+                }
                 SetMessage("已预览：" + theme.Name, false);
             }
-            catch (Exception ex) { SetMessage("主题预览失败：" + ex.Message, true); }
+            catch (Exception ex)
+            {
+                ClearDashboardPreview();
+                SetMessage("主题预览失败：" + ex.Message, true);
+            }
         }
 
         private async Task ApplySelectedThemeAsync(bool restart)
@@ -609,6 +695,31 @@ namespace CodexDreamSkinManager
                     SetExpectedRuntimeState(currentStatus.IsRunning, false);
                 }
             }, restartAfterApply ? "主题已应用，Codex 已重新启动。" : "主题已应用。");
+        }
+
+        private async Task DeleteSelectedThemeAsync()
+        {
+            ThemeOption theme = themeList == null ? null : themeList.SelectedItem as ThemeOption;
+            if (!IsSavedTheme(theme)) { SetMessage("只能删除“我的”已保存主题。", true); return; }
+            if (string.Equals(theme.Id, currentStatus.ActiveThemeId, StringComparison.OrdinalIgnoreCase))
+            {
+                SetMessage("当前正在使用该主题，请先应用其他主题后再删除。", true);
+                return;
+            }
+            string message = "将永久删除“" + theme.Name + "”及其本地图片。此操作无法撤销。是否继续？";
+            if (MessageBox.Show(this, message, "确认删除主题", MessageBoxButton.YesNo,
+                MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+            ThemeDeletionResult result = null;
+            await RunOperationAsync(async delegate { result = await service.DeleteThemeAsync(theme); }, "主题已删除。");
+            if (result != null && result.CleanupPending)
+                SetMessage("主题已从主题库移除，但部分本地文件暂未清理。", true);
+        }
+
+        internal static bool IsSavedTheme(ThemeOption theme)
+        {
+            return theme != null && !theme.IsPreset &&
+                string.Equals(theme.Source, "saved", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(theme.ThemeDirectory);
         }
 
         private async Task EnableAsync()
@@ -672,7 +783,8 @@ namespace CodexDreamSkinManager
             options.Name = themeNameBox.Text.Trim();
             options.ImagePath = imagePathBox.Text.Trim();
             options.Appearance = MapAppearance(appearanceCombo == null ? 0 : appearanceCombo.SelectedIndex);
-            options.SetFocusPercent(focusXSlider.Value, focusYSlider.Value);
+            options.SetFramingPercent(positionXSlider.Value, positionYSlider.Value, zoomSlider.Value);
+            options.PositionMode = positionModeSegment != null && positionModeSegment.SelectedIndex == 1 ? "free" : "locked";
             options.SafeArea = MapSafeArea(safeAreaCombo.SelectedIndex);
             options.TaskMode = MapTaskMode(taskModeCombo.SelectedIndex);
             options.Accent = accentBox.Text.Trim();
@@ -737,36 +849,52 @@ namespace CodexDreamSkinManager
             dialog.Filter = "图片文件|*.png;*.jpg;*.jpeg;*.webp";
             if (dialog.ShowDialog(this) == true)
             {
+                int validationGeneration = ++imageValidationGeneration;
+                imageValidationRunning = true;
                 hasValidCustomImage = false;
+                imagePathBox.Text = "";
+                customPreviewBitmap = null;
+                customPreviewImageLayer.Source = null;
+                customPreviewSurface.Background = BrushFrom("#E3E8EE");
                 UpdateActionState();
                 SetMessage("正在验证图片...", false);
                 try
                 {
                     if (service == null) throw new InvalidOperationException("管理组件不可用，无法验证图片。");
                     ImageValidationResult validation = await service.ValidateImageAsync(dialog.FileName);
+                    if (validationGeneration != imageValidationGeneration) return;
                     imagePathBox.Text = validation.Path;
-                    hasValidCustomImage = true;
                     if (validation.CanPreview)
                     {
-                        customPreviewBitmap = SetPreviewImage(customPreviewSurface, validation.Path,
-                            focusXSlider.Value / 100.0, focusYSlider.Value / 100.0);
+                        customPreviewBitmap = LoadPreviewBitmap(validation.Path);
+                        customPreviewSurface.Background = CreateMutedImageFill(customPreviewBitmap);
                         UpdateCustomPreview();
                     }
                     else
                     {
                         customPreviewBitmap = null;
+                        customPreviewImageLayer.Source = null;
                         customPreviewSurface.Background = BrushFrom("#E3E8EE");
                     }
+                    hasValidCustomImage = true;
                     string details = validation.Width + " x " + validation.Height + " · " + validation.Format.ToUpperInvariant();
                     SetMessage(string.IsNullOrWhiteSpace(validation.PreviewMessage) ? "图片验证通过：" + details : validation.PreviewMessage + " " + details, false);
                 }
                 catch (Exception ex)
                 {
+                    if (validationGeneration != imageValidationGeneration) return;
+                    hasValidCustomImage = false;
                     imagePathBox.Text = "";
                     customPreviewBitmap = null;
+                    customPreviewImageLayer.Source = null;
+                    customPreviewSurface.Background = BrushFrom("#E3E8EE");
                     SetMessage(ex.Message, true);
                 }
-                finally { UpdateActionState(); }
+                finally
+                {
+                    if (validationGeneration == imageValidationGeneration) imageValidationRunning = false;
+                    UpdateActionState();
+                }
             }
         }
 
@@ -830,6 +958,8 @@ namespace CodexDreamSkinManager
             return new BatchImportItem {
                 ImagePath = data.ImagePath, Name = data.Name, Appearance = data.Appearance,
                 FocusX = data.FocusX, FocusY = data.FocusY, SafeArea = data.SafeArea,
+                PositionX = data.PositionX, PositionY = data.PositionY, Zoom = data.Zoom,
+                PositionMode = data.PositionMode, FramingEnabled = data.FramingEnabled,
                 TaskMode = data.TaskMode, Accent = data.Accent, Category = data.Category,
                 Tags = new List<string>(data.Tags ?? new List<string>())
             };
@@ -901,6 +1031,8 @@ namespace CodexDreamSkinManager
                     Name = theme.Name, ImagePath = theme.ImagePath, Category = theme.Category,
                     Tags = new List<string>(theme.Tags ?? new List<string>()), Appearance = theme.Appearance,
                     FocusX = theme.FocusX, FocusY = theme.FocusY, SafeArea = theme.SafeArea,
+                    PositionX = theme.PositionX, PositionY = theme.PositionY, Zoom = theme.Zoom,
+                    PositionMode = theme.PositionMode, FramingEnabled = theme.FramingEnabled,
                     TaskMode = theme.TaskMode, Accent = theme.Accent
                 };
                 ThemePackageService.WritePackage(dialog.FileName, data);
@@ -926,18 +1058,34 @@ namespace CodexDreamSkinManager
             }
         }
 
-        private void FocusChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        private void FramingChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (focusXValue == null || focusYValue == null) return;
-            focusXValue.Text = Math.Round(focusXSlider.Value) + "%";
-            focusYValue.Text = Math.Round(focusYSlider.Value) + "%";
+            if (positionXValue == null || positionYValue == null || zoomValue == null) return;
+            positionXValue.Text = FormatSignedPercent(positionXSlider.Value);
+            positionYValue.Text = FormatSignedPercent(positionYSlider.Value);
+            zoomValue.Text = Math.Round(zoomSlider.Value) + "%";
             UpdateCustomPreview();
+        }
+
+        private void ResetFramingControls()
+        {
+            positionXSlider.Value = 0;
+            positionYSlider.Value = 0;
+            zoomSlider.Value = 100;
+            UpdateCustomPreview();
+        }
+
+        private static string FormatSignedPercent(double value)
+        {
+            double rounded = Math.Round(value);
+            return (rounded > 0 ? "+" : "") + rounded + "%";
         }
 
         private void UpdateActionState()
         {
-            bool selected = themeList != null && themeList.SelectedItem is ThemeOption;
-            bool busy = operationRunning || statusRefreshCount > 0;
+            ThemeOption selectedTheme = themeList == null ? null : themeList.SelectedItem as ThemeOption;
+            bool selected = selectedTheme != null;
+            bool busy = operationRunning || statusRefreshCount > 0 || imageValidationRunning;
             ActionAvailability state = ActionAvailability.FromStatus(currentStatus, busy, selected, hasValidCustomImage);
             if (enableButton != null) { enableButton.IsEnabled = state.CanEnable && service != null && service.CanManage; enableButton.Content = state.EnableLabel; }
             if (pauseButton != null) { pauseButton.IsEnabled = state.CanPause && service != null && service.CanManage; pauseButton.Content = state.PauseLabel; }
@@ -954,8 +1102,22 @@ namespace CodexDreamSkinManager
                     : state.RestartAfterApply ? "应用选中主题并重启 Codex" : null;
             }
             if (addImagesButton != null) addImagesButton.IsEnabled = !busy && service != null && service.CanManage;
+            if (browseImageButton != null) browseImageButton.IsEnabled = !busy && service != null && service.CanManage;
             if (importPackageButton != null) importPackageButton.IsEnabled = !busy && service != null && service.CanManage;
             if (exportThemeButton != null) exportThemeButton.IsEnabled = selected && !busy;
+            if (deleteThemeButton != null)
+            {
+                bool savedTheme = IsSavedTheme(selectedTheme);
+                bool activeTheme = savedTheme && !string.IsNullOrWhiteSpace(currentStatus.ActiveThemeId) &&
+                    string.Equals(selectedTheme.Id, currentStatus.ActiveThemeId, StringComparison.OrdinalIgnoreCase);
+                bool supportsDelete = currentStatus.SupportedActions.Contains("DeleteTheme");
+                deleteThemeButton.Visibility = savedTheme ? Visibility.Visible : Visibility.Collapsed;
+                deleteThemeButton.IsEnabled = savedTheme && !activeTheme && supportsDelete && !busy &&
+                    service != null && service.CanManage;
+                deleteThemeButton.ToolTip = activeTheme
+                    ? "当前正在使用该主题，请先应用其他主题后再删除"
+                    : !supportsDelete ? "当前管理脚本不支持删除主题" : null;
+            }
             if (saveThemeButton != null) saveThemeButton.IsEnabled = state.CanSaveTheme && service != null && service.CanManage;
             if (saveApplyButton != null) saveApplyButton.IsEnabled = state.CanSaveApply && service != null && service.CanManage;
         }
@@ -992,18 +1154,73 @@ namespace CodexDreamSkinManager
 
         private void UpdateCustomPreview()
         {
-            if (customPreviewSurface == null || focusXSlider == null || focusYSlider == null) return;
-            double x = focusXSlider.Value / 100.0;
-            double y = focusYSlider.Value / 100.0;
-            if (customPreviewBitmap != null) ApplyPreviewBrush(customPreviewSurface, customPreviewBitmap, x, y);
-            if (customFocusMarker != null)
+            if (customPreviewSurface == null || positionXSlider == null || positionYSlider == null || zoomSlider == null) return;
+            if (customPreviewBitmap != null)
+                ApplyFramingPreviewLayer(customPreviewSurface, customPreviewImageLayer, customPreviewBitmap,
+                    positionXSlider.Value / 100.0, positionYSlider.Value / 100.0,
+                    zoomSlider.Value / 100.0,
+                    positionModeSegment != null && positionModeSegment.SelectedIndex == 1 ? "free" : "locked");
+        }
+
+        private void RefreshDashboardPreview()
+        {
+            ClearDashboardPreview();
+            ThemeOption selected = themeList == null ? null : themeList.SelectedItem as ThemeOption;
+            if (selected != null)
             {
-                double width = customPreviewSurface.ActualWidth > 0 ? customPreviewSurface.ActualWidth : 1;
-                double height = customPreviewSurface.ActualHeight > 0 ? customPreviewSurface.ActualHeight : 1;
-                PreviewPoint point = PreviewMath.CalculateMarker(width, height, x, y);
-                customFocusMarker.Margin = new Thickness(point.X - customFocusMarker.Width / 2,
-                    point.Y - customFocusMarker.Height / 2, 0, 0);
+                try
+                {
+                    BitmapSource bitmap = LoadPreviewBitmap(selected.ImagePath);
+                    if (bitmap == null) return;
+                    dashboardPreviewBitmap = bitmap;
+                    dashboardPreviewTheme = selected;
+                    dashboardPreviewMutedFill = PreviewMath.UsesCustomFraming(selected.FramingEnabled,
+                        selected.PositionX, selected.PositionY, selected.Zoom, selected.PositionMode)
+                        ? CreateMutedImageFill(bitmap) : null;
+                    ApplyThemePreview(previewSurface, previewImageLayer, bitmap, selected, dashboardPreviewMutedFill);
+                    return;
+                }
+                catch { return; }
             }
+
+            try
+            {
+                BitmapSource bitmap = LoadPreviewBitmap(currentStatus.ActiveThemeImage);
+                if (bitmap == null) return;
+                ThemeOption activeTheme = new ThemeOption {
+                    FocusX = currentStatus.ActiveFocusX, FocusY = currentStatus.ActiveFocusY,
+                    PositionX = currentStatus.ActivePositionX, PositionY = currentStatus.ActivePositionY,
+                    Zoom = currentStatus.ActiveZoom, PositionMode = currentStatus.ActivePositionMode,
+                    FramingEnabled = currentStatus.ActiveFramingEnabled
+                };
+                dashboardPreviewBitmap = bitmap;
+                dashboardPreviewTheme = activeTheme;
+                dashboardPreviewMutedFill = PreviewMath.UsesCustomFraming(activeTheme.FramingEnabled,
+                    activeTheme.PositionX, activeTheme.PositionY, activeTheme.Zoom, activeTheme.PositionMode)
+                    ? CreateMutedImageFill(bitmap) : null;
+                ApplyThemePreview(previewSurface, previewImageLayer, bitmap, activeTheme, dashboardPreviewMutedFill);
+            }
+            catch { }
+        }
+
+        private void ReapplyDashboardPreview()
+        {
+            if (dashboardPreviewBitmap != null && dashboardPreviewTheme != null)
+                ApplyThemePreview(previewSurface, previewImageLayer, dashboardPreviewBitmap, dashboardPreviewTheme,
+                    dashboardPreviewMutedFill);
+        }
+
+        private void ClearDashboardPreview()
+        {
+            dashboardPreviewBitmap = null;
+            dashboardPreviewTheme = null;
+            dashboardPreviewMutedFill = null;
+            if (previewImageLayer != null)
+            {
+                previewImageLayer.Source = null;
+                previewImageLayer.Visibility = Visibility.Collapsed;
+            }
+            if (previewSurface != null) previewSurface.Background = BrushFrom("#E3E8EE");
         }
 
         private static Border CreatePreviewSurface(string automationName, double minimumHeight, double maximumHeight, double aspectRatio)
@@ -1063,7 +1280,15 @@ namespace CodexDreamSkinManager
 
         private static BitmapSource SetPreviewImage(Border surface, string path, double x, double y)
         {
-            if (surface == null || string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
+            BitmapSource bitmap = LoadPreviewBitmap(path);
+            if (surface == null || bitmap == null) return null;
+            ApplyPreviewBrush(surface, bitmap, x, y);
+            return bitmap;
+        }
+
+        private static BitmapSource LoadPreviewBitmap(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
             BitmapImage bitmap = new BitmapImage();
             bitmap.BeginInit();
             bitmap.CacheOption = BitmapCacheOption.OnLoad;
@@ -1071,8 +1296,18 @@ namespace CodexDreamSkinManager
             bitmap.UriSource = new Uri(path, UriKind.Absolute);
             bitmap.EndInit();
             bitmap.Freeze();
-            ApplyPreviewBrush(surface, bitmap, x, y);
             return bitmap;
+        }
+
+        private static Image CreatePreviewImageLayer(Border surface, string automationName)
+        {
+            Grid layers = surface == null ? null : surface.Child as Grid;
+            if (layers == null) throw new InvalidOperationException("预览图层结构无效。");
+            Image image = new Image { Stretch = Stretch.Fill, HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+            AutomationProperties.SetName(image, automationName);
+            layers.Children.Insert(0, image);
+            return image;
         }
 
         private static void ApplyPreviewBrush(Border surface, BitmapSource bitmap, double x, double y)
@@ -1086,6 +1321,71 @@ namespace CodexDreamSkinManager
             brush.ViewboxUnits = BrushMappingMode.RelativeToBoundingBox;
             brush.Viewbox = new Rect(crop.X, crop.Y, crop.Width, crop.Height);
             surface.Background = brush;
+        }
+
+        private static void ApplyFramingPreviewLayer(Border surface, Image image, BitmapSource bitmap,
+            double positionX, double positionY, double zoom, string positionMode)
+        {
+            if (surface == null || image == null || bitmap == null) return;
+            double viewportWidth = surface.ActualWidth > 0 ? surface.ActualWidth : 800;
+            double viewportHeight = surface.ActualHeight > 0 ? surface.ActualHeight :
+                (double.IsNaN(surface.Height) ? 330 : surface.Height);
+            PreviewLayout layout = PreviewMath.CalculateFramingLayout(bitmap.PixelWidth, bitmap.PixelHeight,
+                viewportWidth, viewportHeight, positionX, positionY, zoom, positionMode);
+            image.Source = bitmap;
+            image.Width = layout.Width;
+            image.Height = layout.Height;
+            image.Margin = new Thickness(layout.X, layout.Y, 0, 0);
+            image.Visibility = Visibility.Visible;
+        }
+
+        private static void ApplyThemePreview(Border surface, Image image, BitmapSource bitmap, ThemeOption theme,
+            Brush mutedFill = null)
+        {
+            if (surface == null || image == null || bitmap == null || theme == null) return;
+            if (PreviewMath.UsesCustomFraming(theme.FramingEnabled,
+                theme.PositionX, theme.PositionY, theme.Zoom, theme.PositionMode))
+            {
+                surface.Background = mutedFill ?? CreateMutedImageFill(bitmap);
+                ApplyFramingPreviewLayer(surface, image, bitmap,
+                    theme.PositionX, theme.PositionY, theme.Zoom, theme.PositionMode);
+                return;
+            }
+            image.Source = null;
+            image.Visibility = Visibility.Collapsed;
+            ApplyPreviewBrush(surface, bitmap, theme.FocusX, theme.FocusY);
+        }
+
+        private static Brush CreateMutedImageFill(BitmapSource bitmap)
+        {
+            if (bitmap == null || bitmap.PixelWidth < 1 || bitmap.PixelHeight < 1) return BrushFrom("#E3E8EE");
+            FormatConvertedBitmap converted = new FormatConvertedBitmap(bitmap, PixelFormats.Bgra32, null, 0);
+            int stride = converted.PixelWidth * 4;
+            byte[] pixels = new byte[stride * converted.PixelHeight];
+            converted.CopyPixels(pixels, stride, 0);
+            int stepX = Math.Max(1, converted.PixelWidth / 48);
+            int stepY = Math.Max(1, converted.PixelHeight / 48);
+            long red = 0, green = 0, blue = 0, count = 0;
+            for (int y = 0; y < converted.PixelHeight; y += stepY)
+            {
+                for (int x = 0; x < converted.PixelWidth; x += stepX)
+                {
+                    int offset = y * stride + x * 4;
+                    if (pixels[offset + 3] < 16) continue;
+                    blue += pixels[offset];
+                    green += pixels[offset + 1];
+                    red += pixels[offset + 2];
+                    count++;
+                }
+            }
+            if (count == 0) return BrushFrom("#E3E8EE");
+            const double imageWeight = 0.32;
+            byte r = (byte)Math.Round(235 * (1 - imageWeight) + (red / (double)count) * imageWeight);
+            byte g = (byte)Math.Round(240 * (1 - imageWeight) + (green / (double)count) * imageWeight);
+            byte b = (byte)Math.Round(244 * (1 - imageWeight) + (blue / (double)count) * imageWeight);
+            SolidColorBrush brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+            brush.Freeze();
+            return brush;
         }
 
         private static Border PanelBorder()
@@ -1117,9 +1417,13 @@ namespace CodexDreamSkinManager
             return box;
         }
 
-        private static Slider CreateSlider()
+        private static Slider CreateSlider(double minimum, double maximum, double value,
+            double tickFrequency, string automationName)
         {
-            return new Slider { Minimum = 0, Maximum = 100, Value = 50, TickFrequency = 5, IsSnapToTickEnabled = false };
+            Slider slider = new Slider { Minimum = minimum, Maximum = maximum, Value = value,
+                TickFrequency = tickFrequency, IsSnapToTickEnabled = false };
+            AutomationProperties.SetName(slider, automationName);
+            return slider;
         }
 
         private static Grid SliderLabel(string text, TextBlock value)
@@ -1239,11 +1543,56 @@ namespace CodexDreamSkinManager
             return new ItemsPanelTemplate(factory);
         }
 
-        private static Style SegmentedItemStyle()
+        private static Style SegmentedItemStyle(double minimumWidth, Thickness padding)
         {
+            FrameworkElementFactory chrome = new FrameworkElementFactory(typeof(Border));
+            chrome.Name = "SegmentChrome";
+            chrome.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
+            chrome.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+            chrome.SetValue(Border.BackgroundProperty, SurfaceBrush);
+            chrome.SetValue(Border.BorderBrushProperty, Brushes.Transparent);
+            chrome.SetValue(Border.PaddingProperty,
+                new TemplateBindingExtension(Control.PaddingProperty));
+
+            FrameworkElementFactory content = new FrameworkElementFactory(typeof(ContentPresenter));
+            content.Name = "SegmentContent";
+            content.SetValue(ContentPresenter.ContentProperty,
+                new TemplateBindingExtension(ContentControl.ContentProperty));
+            content.SetValue(ContentPresenter.ContentTemplateProperty,
+                new TemplateBindingExtension(ContentControl.ContentTemplateProperty));
+            content.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            content.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+            content.SetValue(TextElement.ForegroundProperty, TextBrush);
+            chrome.AppendChild(content);
+
+            ControlTemplate template = new ControlTemplate(typeof(ListBoxItem));
+            template.VisualTree = chrome;
+
+            Trigger hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hover.Setters.Add(new Setter(Border.BackgroundProperty, BrushFrom("#EEF1F4"), "SegmentChrome"));
+            hover.Setters.Add(new Setter(Border.BorderBrushProperty, AppBorderBrush, "SegmentChrome"));
+            template.Triggers.Add(hover);
+
+            Trigger selected = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true };
+            selected.Setters.Add(new Setter(Border.BackgroundProperty, SecondaryButtonPalette.NormalBackground, "SegmentChrome"));
+            selected.Setters.Add(new Setter(Border.BorderBrushProperty, SecondaryButtonPalette.HoverBorder, "SegmentChrome"));
+            selected.Setters.Add(new Setter(TextElement.ForegroundProperty, SecondaryButtonPalette.NormalForeground, "SegmentContent"));
+            selected.Setters.Add(new Setter(TextElement.FontWeightProperty, FontWeights.SemiBold, "SegmentContent"));
+            template.Triggers.Add(selected);
+
+            Trigger focus = new Trigger { Property = UIElement.IsKeyboardFocusedProperty, Value = true };
+            focus.Setters.Add(new Setter(Border.BorderBrushProperty, ButtonFocusBrush, "SegmentChrome"));
+            template.Triggers.Add(focus);
+
+            Trigger disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+            disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.55, "SegmentChrome"));
+            template.Triggers.Add(disabled);
+
             Style style = new Style(typeof(ListBoxItem));
-            style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(10, 7, 10, 7)));
-            style.Setters.Add(new Setter(FrameworkElement.MinWidthProperty, 56.0));
+            style.Setters.Add(new Setter(Control.TemplateProperty, template));
+            style.Setters.Add(new Setter(Control.PaddingProperty, padding));
+            style.Setters.Add(new Setter(FrameworkElement.MinWidthProperty, minimumWidth));
+            style.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(1, 0, 1, 0)));
             style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Center));
             style.Setters.Add(new Setter(FrameworkElement.CursorProperty, System.Windows.Input.Cursors.Hand));
             return style;
