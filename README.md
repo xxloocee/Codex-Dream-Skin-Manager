@@ -2,12 +2,12 @@
 
 基于 [Fei-Away/Codex-Dream-Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 开发的 Windows 便携式 WPF 管理器，为其增加主题浏览、导入、应用、暂停、重置和紧急恢复操作界面。
 
-当前版本：`1.0.0`。项目仅支持 Windows，并以微软商店版 Codex 为目标环境。
+当前版本：`1.1.0`。项目仅支持 Windows，并以微软商店版 Codex 为目标环境。
 
 ## 下载
 
 正式版本从 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载
-`CodexDreamSkinManager-v1.0.0-windows.zip`。请解压并保留完整目录运行；单独复制 EXE
+`CodexDreamSkinManager-v1.1.0-windows.zip`。请解压并保留完整目录运行；单独复制 EXE
 会缺少必要的 `windows` 脚本和主题资源。发布页同时提供 SHA-256 校验文件。
 
 ## 项目来源与致谢
