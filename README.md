@@ -2,13 +2,16 @@
 
 基于 [Fei-Away/Codex-Dream-Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 开发的 Windows 便携式 WPF 管理器，为其增加主题浏览、导入、应用、暂停、重置和紧急恢复操作界面。
 
-当前版本：`1.1.0`。项目仅支持 Windows，并以微软商店版 Codex 为目标环境。
+当前版本：`1.2.0`。项目仅支持 Windows，并以微软商店版 Codex 为目标环境。
 
 ## 下载
 
 正式版本从 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载
-`CodexDreamSkinManager-v1.1.0-windows.zip`。请解压并保留完整目录运行；单独复制 EXE
-会缺少必要的 `windows` 脚本和主题资源。发布页同时提供 SHA-256 校验文件。
+`CodexDreamSkinManager-v1.2.0-setup.exe`（推荐安装版）或
+`CodexDreamSkinManager-v1.2.0-windows.zip`（便携版）。安装版默认安装到当前用户目录，
+不请求管理员权限，并创建开始菜单快捷方式；桌面快捷方式可在安装时选择。两种发布包都
+内置 Node.js，用户无需另行安装运行环境。便携版必须完整解压，不能只复制 EXE。
+发布页同时提供对应的 SHA-256 校验文件。
 
 ## 项目来源与致谢
 
@@ -34,7 +37,8 @@
 
 - Windows 10 或 Windows 11。
 - 微软商店版 Codex。
-- Node.js 22 或更高版本。
+- 运行正式发布包无需安装 Node.js；脚本会优先使用包内运行时。
+- 从源码构建时需要 Node.js 22 或更高版本，且安装目录中应包含 Node.js `LICENSE`。
 - 构建时需要 [Codex Dream Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 的 `windows` 目录作为底层脚本来源。
 - GitHub Actions 固定使用 Codex Dream Skin 提交 `3af1d6d62f3a0388cc640d2f497ac3100998938e`；本地构建应使用同一提交以复现 CI 产物。
 - 使用 Windows 自带的 .NET Framework 编译器，不需要安装 .NET SDK。
@@ -62,9 +66,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 `
 2. 复制外部项目的完整 Windows 脚本。
 3. 覆盖本项目维护的 `manager-actions.ps1`、`presets` 和可再分发默认图片。
 4. 在打包副本中加入图片位置、中心缩放和自由移动填充支持，并执行渲染行为测试。
-5. 附带本项目许可证，以及外部项目的软件许可证和 NOTICE。
-6. 对组合后的目录执行 PowerShell 隔离集成验证。
-7. 生成可直接运行的发布目录。
+5. 复制构建所用的 Node.js 可执行文件，运行脚本优先选择该包内路径。
+6. 附带本项目、Node.js 和外部项目的软件许可证与 NOTICE。
+7. 对组合后的目录执行 PowerShell 隔离集成验证。
+8. 生成可直接运行的发布目录。
 
 最终产物：
 
@@ -74,12 +79,25 @@ build\CodexDreamSkinManager\
 ├── LICENSE
 ├── THIRD_PARTY_NOTICES.md
 ├── THIRD_PARTY\
+│   ├── Codex-Dream-Skin\
+│   └── Node.js\
 └── windows\
     ├── scripts\
-    └── presets\
+    ├── presets\
+    └── runtime\node\node.exe
 ```
 
 运行 `build\CodexDreamSkinManager\CodexDreamSkinManager.exe`。不要只复制 EXE；旁边的 `windows` 目录是运行时依赖。
+
+生成安装包：
+
+```powershell
+$iscc = .\tools\prepare-inno-setup.ps1
+.\tools\package-installer.ps1 -IsccPath $iscc
+```
+
+安装包会生成到 `dist\CodexDreamSkinManager-v1.2.0-setup.exe`。Inno Setup 只用于构建，
+不会成为用户电脑上的运行依赖。
 
 仅执行测试：
 
@@ -134,7 +152,7 @@ build.ps1            统一测试、组装与构建入口
 ## 已知限制
 
 - WebP 可以保存和应用；WPF 能否直接预览取决于系统图像编解码器。
-- EXE 未进行商业代码签名，Windows 可能显示“未知发布者”。
+- EXE 和安装包未进行商业代码签名，Windows SmartScreen 可能显示“未知发布者”。
 - 外部 Codex Dream Skin 项目的完整测试仍有一个既有失败：桌面配置使用多行数组时没有按其测试预期拒绝；本项目的管理器测试不受影响。
 
 ## 参与贡献

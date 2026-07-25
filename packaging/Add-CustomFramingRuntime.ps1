@@ -10,17 +10,22 @@ function Replace-ExactlyOnce {
     [Parameter(Mandatory = $true)][string]$Text,
     [Parameter(Mandatory = $true)][string]$Old,
     [Parameter(Mandatory = $true)][string]$New,
-    [Parameter(Mandatory = $true)][string]$Label
+    [Parameter(Mandatory = $true)][string]$Label,
+    [int]$ExpectedCount = 1
   )
   $Text = $Text.Replace("`r`n", "`n")
   $Old = $Old.Replace("`r`n", "`n")
   $New = $New.Replace("`r`n", "`n")
-  $first = $Text.IndexOf($Old, [System.StringComparison]::Ordinal)
-  $last = $Text.LastIndexOf($Old, [System.StringComparison]::Ordinal)
-  if ($first -lt 0 -or $first -ne $last) {
-    throw "Cannot patch custom theme framing: expected one $Label anchor."
+  $count = 0
+  $searchFrom = 0
+  while (($match = $Text.IndexOf($Old, $searchFrom, [System.StringComparison]::Ordinal)) -ge 0) {
+    $count++
+    $searchFrom = $match + $Old.Length
   }
-  return $Text.Substring(0, $first) + $New + $Text.Substring($first + $Old.Length)
+  if ($count -ne $ExpectedCount) {
+    throw "Cannot patch custom theme framing: expected $ExpectedCount $Label anchor(s)."
+  }
+  return $Text.Replace($Old, $New)
 }
 
 function Write-Utf8NoBom {
@@ -81,6 +86,51 @@ $injector = Replace-ExactlyOnce $injector @'
 Write-Utf8NoBom $injectorPath $injector
 
 $common = Get-Content -LiteralPath $commonPath -Raw -Encoding UTF8
+$common = Replace-ExactlyOnce $common @'
+  $command = Get-Command node.exe -ErrorAction SilentlyContinue
+  if (-not $command) { $command = Get-Command node -ErrorAction SilentlyContinue }
+  if (-not $command) { throw "Node.js $MinimumMajor or newer is required and was not found in PATH." }
+  $versionProbe = Invoke-DreamSkinNative -FilePath $command.Source -ArgumentList @('-p', 'process.versions.node') -DiscardStderr
+'@ @'
+  $candidatePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'runtime\node\node.exe'
+  if (-not (Test-Path -LiteralPath $candidatePath -PathType Leaf)) {
+    $command = Get-Command node.exe -ErrorAction SilentlyContinue
+    if (-not $command) { $command = Get-Command node -ErrorAction SilentlyContinue }
+    if (-not $command) { throw "Node.js $MinimumMajor or newer is required and was not found in the package or PATH." }
+    $candidatePath = $command.Source
+  }
+  $versionProbe = Invoke-DreamSkinNative -FilePath $candidatePath -ArgumentList @('-p', 'process.versions.node') -DiscardStderr
+'@ 'packaged Node runtime preference'
+$common = Replace-ExactlyOnce $common @'
+  $pathProbe = Invoke-DreamSkinNative -FilePath $command.Source -ArgumentList @('-p', 'process.execPath') -DiscardStderr
+'@ @'
+  $pathProbe = Invoke-DreamSkinNative -FilePath $candidatePath -ArgumentList @('-p', 'process.execPath') -DiscardStderr
+'@ 'packaged Node runtime path probe'
+$common = Replace-ExactlyOnce $common @'
+    'scripts\verify-dream-skin.ps1'
+  )
+'@ @'
+    'scripts\verify-dream-skin.ps1',
+    'runtime\node\node.exe'
+  )
+'@ 'installed engine Node runtime requirement'
+$common = Replace-ExactlyOnce $common @'
+  foreach ($directoryName in @('assets', 'scripts')) {
+'@ @'
+  foreach ($directoryName in @('assets', 'scripts', 'runtime')) {
+'@ 'installed engine runtime directory copies' 2
+$common = Replace-ExactlyOnce $common @'
+      Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'assets'), (Join-Path $sourceRoot 'scripts') `
+'@ @'
+      Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'assets'), (Join-Path $sourceRoot 'scripts'), `
+        (Join-Path $sourceRoot 'runtime') `
+'@ 'installed engine source hash set'
+$common = Replace-ExactlyOnce $common @'
+      Get-ChildItem -LiteralPath (Join-Path $stagingRoot 'assets'), (Join-Path $stagingRoot 'scripts') `
+'@ @'
+      Get-ChildItem -LiteralPath (Join-Path $stagingRoot 'assets'), (Join-Path $stagingRoot 'scripts'), `
+        (Join-Path $stagingRoot 'runtime') `
+'@ 'installed engine staged hash set'
 $common = Replace-ExactlyOnce $common @'
   try { Wait-Process -Id $processId -Timeout 5 -ErrorAction Stop } catch {}
 '@ @'
@@ -165,31 +215,24 @@ $paths = Invoke-DreamSkinTrayWrite {
 '@ 'tray operation lock helper'
 $tray = Replace-ExactlyOnce $tray @'
       Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
-      $session = Get-DreamSkinLiveSessionContext -StateRoot $StateRoot
+      Start-DreamSkinPowerShell -Script $startScript -Arguments @('-Port', "$Port", '-PromptRestart')
 '@ @'
       Invoke-DreamSkinTrayWrite {
         Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
       }
-      $session = Get-DreamSkinLiveSessionContext -StateRoot $StateRoot
-'@ 'tray apply pause write'
+      Start-DreamSkinPowerShell -Script $startScript -Arguments @('-Port', "$Port", '-PromptRestart')
+'@ 'tray apply and double-click pause writes' 2
 $tray = Replace-ExactlyOnce $tray @'
-        Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
-        $session = Get-DreamSkinLiveSessionContext -StateRoot $StateRoot
+    $pauseAction = {
+      Set-DreamSkinPaused -Paused $nextPaused -StateRoot $StateRoot | Out-Null
+    }.GetNewClosure()
 '@ @'
-        Invoke-DreamSkinTrayWrite {
-          Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
-        }
-        $session = Get-DreamSkinLiveSessionContext -StateRoot $StateRoot
-'@ 'tray resume pause write'
-$tray = Replace-ExactlyOnce $tray @'
-        Set-DreamSkinPaused -Paused $true -StateRoot $StateRoot | Out-Null
-        $removal = Invoke-DreamSkinLiveRemove -StateRoot $StateRoot
-'@ @'
-        $removal = Invoke-DreamSkinTrayWrite {
-          Set-DreamSkinPaused -Paused $true -StateRoot $StateRoot | Out-Null
-          Invoke-DreamSkinLiveRemove -StateRoot $StateRoot
-        }
-'@ 'tray pause write'
+    $pauseAction = {
+      Invoke-DreamSkinTrayWrite {
+        Set-DreamSkinPaused -Paused $nextPaused -StateRoot $StateRoot | Out-Null
+      }
+    }.GetNewClosure()
+'@ 'tray pause toggle write'
 $tray = Replace-ExactlyOnce $tray @'
           $null = Set-DreamSkinActiveTheme -ImagePath $dialog.FileName -Theme $null -StateRoot $StateRoot
           Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
@@ -215,15 +258,6 @@ $tray = Replace-ExactlyOnce $tray @'
             Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
           }
 '@ 'tray saved theme write'
-$tray = Replace-ExactlyOnce $tray @'
-      Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
-      Start-DreamSkinPowerShell -Script $startScript -Arguments @('-Port', "$Port", '-PromptRestart')
-'@ @'
-      Invoke-DreamSkinTrayWrite {
-        Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
-      }
-      Start-DreamSkinPowerShell -Script $startScript -Arguments @('-Port', "$Port", '-PromptRestart')
-'@ 'tray double click pause write'
 Write-Utf8NoBom $trayPath $tray
 
 $renderer = Get-Content -LiteralPath $rendererPath -Raw -Encoding UTF8
@@ -461,6 +495,11 @@ Write-Utf8NoBom $cssPath ($css.TrimEnd() + $cssExtension + [Environment]::NewLin
 
 foreach ($assertion in @(
   @{ Path = $injectorPath; Text = 'positionX: normalizedRange(art.positionX' },
+  @{ Path = $commonPath; Text = "'runtime\node\node.exe'" },
+  @{ Path = $commonPath; Text = 'Invoke-DreamSkinNative -FilePath $candidatePath' },
+  @{ Path = $commonPath; Text = "@('assets', 'scripts', 'runtime')" },
+  @{ Path = $commonPath; Text = "(Join-Path `$sourceRoot 'runtime')" },
+  @{ Path = $commonPath; Text = "(Join-Path `$stagingRoot 'runtime')" },
   @{ Path = $commonPath; Text = 'Wait-Process -Id $processId -Timeout 15' },
   @{ Path = $commonPath; Text = '$exitDeadline = (Get-Date).AddSeconds(5)' },
   @{ Path = $startPath; Text = '$runtimeFingerprint = Get-DreamSkinRuntimeFingerprint' },

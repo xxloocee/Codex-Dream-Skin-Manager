@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
   [switch]$TestsOnly,
-  [string]$SkillRoot = (Join-Path $env:USERPROFILE 'Desktop\CodexDreamSkin\windows')
+  [string]$SkillRoot = (Join-Path $env:USERPROFILE 'Desktop\CodexDreamSkin\windows'),
+  [string]$NodeExecutable
 )
 
 $ErrorActionPreference = 'Stop'
@@ -10,6 +11,27 @@ $build = Join-Path $root 'build'
 New-Item -ItemType Directory -Force -Path $build | Out-Null
 $packageRoot = Join-Path $build 'CodexDreamSkinManager'
 $packageWindows = Join-Path $packageRoot 'windows'
+
+if (-not $NodeExecutable) {
+  $nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
+  if (-not $nodeCommand) { $nodeCommand = Get-Command node -ErrorAction SilentlyContinue }
+  if (-not $nodeCommand) { throw 'Node.js 22 or newer is required to build the package.' }
+  $NodeExecutable = $nodeCommand.Source
+}
+$nodeExecutableFullPath = [System.IO.Path]::GetFullPath($NodeExecutable)
+if (-not (Test-Path -LiteralPath $nodeExecutableFullPath -PathType Leaf)) {
+  throw "The Node.js executable is missing: $nodeExecutableFullPath"
+}
+$nodeLicensePath = Join-Path (Split-Path -Parent $nodeExecutableFullPath) 'LICENSE'
+if (-not (Test-Path -LiteralPath $nodeLicensePath -PathType Leaf)) {
+  throw "The Node.js license is missing beside the executable: $nodeLicensePath"
+}
+$nodeVersion = "$(& $nodeExecutableFullPath -p 'process.versions.node' 2>$null)".Trim()
+$nodeMajor = 0
+if ($LASTEXITCODE -ne 0 -or
+    -not [int]::TryParse(($nodeVersion -split '\.')[0], [ref]$nodeMajor) -or $nodeMajor -lt 22) {
+  throw "Node.js 22 or newer is required to build the package; found '$nodeVersion'."
+}
 
 function Assert-NoReparsePointInPath([string]$Path, [string]$Boundary) {
   $fullPath = [System.IO.Path]::GetFullPath($Path)
@@ -56,7 +78,12 @@ function Assert-NoReparsePointTree([string]$RootPath) {
   }
 }
 
-function New-RunnableWindowsPackage([string]$SourceRoot, [string]$DestinationRoot) {
+function New-RunnableWindowsPackage(
+  [string]$SourceRoot,
+  [string]$DestinationRoot,
+  [string]$RuntimeNode,
+  [string]$RuntimeLicense
+) {
   $source = [System.IO.Path]::GetFullPath($SourceRoot)
   $destination = [System.IO.Path]::GetFullPath($DestinationRoot)
   $dependencyRoot = Split-Path -Parent $source
@@ -109,24 +136,34 @@ function New-RunnableWindowsPackage([string]$SourceRoot, [string]$DestinationRoo
     -Destination (Join-Path $destination 'assets\dream-reference.jpg') -Force
 
   $packageDirectory = Split-Path -Parent $destination
+  $runtimeNodeDirectory = Join-Path $destination 'runtime\node'
+  $packagedNode = Join-Path $runtimeNodeDirectory 'node.exe'
   $thirdPartyDirectory = Join-Path $packageDirectory 'THIRD_PARTY\Codex-Dream-Skin'
+  $thirdPartyNodeDirectory = Join-Path $packageDirectory 'THIRD_PARTY\Node.js'
   $packagedLicense = Join-Path $thirdPartyDirectory 'LICENSE'
   $packagedNotice = Join-Path $thirdPartyDirectory 'NOTICE.md'
+  $packagedNodeLicense = Join-Path $thirdPartyNodeDirectory 'LICENSE'
   $packagedProjectLicense = Join-Path $packageDirectory 'LICENSE'
   $packageNotices = Join-Path $packageDirectory 'THIRD_PARTY_NOTICES.md'
   foreach ($packageWritePath in @(
       $packageDirectory,
+      $runtimeNodeDirectory,
+      $packagedNode,
       $thirdPartyDirectory,
+      $thirdPartyNodeDirectory,
       $packagedLicense,
       $packagedNotice,
+      $packagedNodeLicense,
       $packagedProjectLicense,
       $packageNotices
     )) {
     Assert-NoReparsePointInPath -Path $packageWritePath -Boundary $buildRoot
   }
-  New-Item -ItemType Directory -Force -Path $thirdPartyDirectory | Out-Null
+  New-Item -ItemType Directory -Force -Path $runtimeNodeDirectory, $thirdPartyDirectory, $thirdPartyNodeDirectory | Out-Null
+  Copy-Item -LiteralPath $RuntimeNode -Destination $packagedNode -Force
   Copy-Item -LiteralPath $dependencyLicense -Destination $packagedLicense -Force
   Copy-Item -LiteralPath $dependencyNotice -Destination $packagedNotice -Force
+  Copy-Item -LiteralPath $RuntimeLicense -Destination $packagedNodeLicense -Force
   Copy-Item -LiteralPath $projectLicense -Destination $packagedProjectLicense -Force
   Copy-Item -LiteralPath (Join-Path $root 'THIRD_PARTY_NOTICES.md') `
     -Destination $packageNotices -Force
@@ -135,7 +172,8 @@ function New-RunnableWindowsPackage([string]$SourceRoot, [string]$DestinationRoo
     'scripts\manager-actions.ps1',
     'scripts\apply-theme-and-recover.ps1',
     'scripts\runtime-version.ps1',
-    'presets\catalog.json'
+    'presets\catalog.json',
+    'runtime\node\node.exe'
   )
   foreach ($relativePath in $requiredPackageFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $destination $relativePath) -PathType Leaf)) {
@@ -146,6 +184,10 @@ function New-RunnableWindowsPackage([string]$SourceRoot, [string]$DestinationRoo
   if ((Get-FileHash -Algorithm SHA256 -LiteralPath $packagedDefaultImage).Hash -ne
       (Get-FileHash -Algorithm SHA256 -LiteralPath $replacementDefaultImage).Hash) {
     throw 'The assembled manager package contains an unexpected default theme image.'
+  }
+  if ((Get-FileHash -Algorithm SHA256 -LiteralPath $packagedNode).Hash -ne
+      (Get-FileHash -Algorithm SHA256 -LiteralPath $RuntimeNode).Hash) {
+    throw 'The assembled manager package contains an unexpected Node.js executable.'
   }
 }
 
@@ -222,9 +264,15 @@ $integrationTest = Join-Path $root 'tests\manager-actions.integration.ps1'
 if (-not (Test-Path -LiteralPath $SkillRoot -PathType Container)) {
   throw "The CodexDreamSkin Windows package is required for integration tests: $SkillRoot"
 }
-New-RunnableWindowsPackage -SourceRoot $SkillRoot -DestinationRoot $packageWindows
+New-RunnableWindowsPackage -SourceRoot $SkillRoot -DestinationRoot $packageWindows `
+  -RuntimeNode $nodeExecutableFullPath -RuntimeLicense $nodeLicensePath
 $runtimeFramingTest = Join-Path $root 'tests\custom-framing-runtime.test.mjs'
-& node $runtimeFramingTest $packageWindows
+$packagedNode = Join-Path $packageWindows 'runtime\node\node.exe'
+& $packagedNode $runtimeFramingTest $packageWindows
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$portableNodeTest = Join-Path $root 'tests\portable-node-runtime.test.ps1'
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $portableNodeTest `
+  -SkillRoot $packageWindows -NodeSource $nodeExecutableFullPath
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $packagedManagerScript = Join-Path $packageWindows 'scripts\manager-actions.ps1'
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $integrationTest `

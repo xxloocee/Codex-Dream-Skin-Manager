@@ -13,6 +13,14 @@
 
 Codex Dream Skin 是非官方定制项目，与 OpenAI 不存在隶属、认可或赞助关系。OpenAI、Codex 和 ChatGPT 的商标、产品名称、标识及商业外观不因上述软件许可证而获得授权。
 
+## Node.js
+
+正式发布包包含 [Node.js](https://nodejs.org/) 的 Windows x64 可执行文件，用于运行随包附带的 JavaScript 工具。GitHub Actions 当前固定使用 Node.js `22.22.2`；本地构建会复制 `build.ps1 -NodeExecutable` 指定的 Node.js 22 或更高版本。
+
+Node.js 按其许可证和随附的第三方许可条款提供。发布目录中会附带：
+
+- `THIRD_PARTY/Node.js/LICENSE`
+
 ## Built-in skin asset disclaimer
 
 本软件内置的相关皮肤素材仅供非营利演示、学习与交流使用，不代表素材所涉及的作者、人物、角色、品牌或权利人参与、认可或赞助本项目。相关图片、人物肖像、角色形象、商标及其他权利归各自权利人所有，且不属于本项目根 MIT License 的授权范围。

@@ -25,16 +25,37 @@ jobs:
           ref: 3af1d6d62f3a0388cc640d2f497ac3100998938e
           path: .dependencies/Codex-Dream-Skin
 
+      - name: Set up packaged Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+          architecture: x64
+
       - name: Test and build runnable package
         shell: powershell
         run: |
           .\build.ps1 `
-            -SkillRoot (Join-Path $PWD '.dependencies\Codex-Dream-Skin\windows')
+            -SkillRoot (Join-Path $PWD '.dependencies\Codex-Dream-Skin\windows') `
+            -NodeExecutable (Get-Command node.exe).Source
+
+      - name: Prepare Inno Setup
+        shell: powershell
+        run: |
+          .\tools\prepare-inno-setup.ps1 | Out-Null
+
+      - name: Build Windows installer
+        shell: powershell
+        run: |
+          .\tools\package-installer.ps1 `
+            -IsccPath (Join-Path $PWD 'build\.tools\InnoSetup\ISCC.exe')
 
       - name: Upload runnable package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: CodexDreamSkinManager-windows
-          path: build/CodexDreamSkinManager/
+          path: |
+            build/CodexDreamSkinManager/
+            dist/*-setup.exe
+            dist/*-setup.sha256
           if-no-files-found: error
           retention-days: 14
