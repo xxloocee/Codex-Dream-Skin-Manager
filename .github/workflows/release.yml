@@ -30,6 +30,12 @@ jobs:
           ref: 3af1d6d62f3a0388cc640d2f497ac3100998938e
           path: .dependencies/Codex-Dream-Skin
 
+      - name: Set up packaged Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+          architecture: x64
+
       - name: Validate release tag
         id: version
         shell: powershell
@@ -62,6 +68,10 @@ jobs:
           if (-not $readme.Contains($expectedArchive)) {
             throw "README download name does not match the release archive: $expectedArchive"
           }
+          $expectedInstaller = "CodexDreamSkinManager-v$version-setup.exe"
+          if (-not $readme.Contains($expectedInstaller)) {
+            throw "README download name does not match the installer: $expectedInstaller"
+          }
           git fetch origin main --no-tags
           git merge-base --is-ancestor $env:GITHUB_SHA origin/main
           if ($LASTEXITCODE -ne 0) {
@@ -74,7 +84,8 @@ jobs:
         shell: powershell
         run: |
           .\build.ps1 `
-            -SkillRoot (Join-Path $PWD '.dependencies\Codex-Dream-Skin\windows')
+            -SkillRoot (Join-Path $PWD '.dependencies\Codex-Dream-Skin\windows') `
+            -NodeExecutable (Get-Command node.exe).Source
 
       - name: Create versioned release archive
         shell: powershell
@@ -83,12 +94,27 @@ jobs:
         run: |
           .\tools\package-release.ps1 -Version $env:RELEASE_VERSION
 
+      - name: Prepare Inno Setup
+        shell: powershell
+        run: |
+          .\tools\prepare-inno-setup.ps1 | Out-Null
+
+      - name: Create Windows installer
+        shell: powershell
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          .\tools\package-installer.ps1 `
+            -Version $env:RELEASE_VERSION `
+            -IsccPath (Join-Path $PWD 'build\.tools\InnoSetup\ISCC.exe')
+
       - name: Upload release package artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: CodexDreamSkinManager-v${{ steps.version.outputs.version }}-windows
           path: |
             dist/*.zip
+            dist/*.exe
             dist/*.sha256
           if-no-files-found: error
           retention-days: 30
@@ -104,15 +130,18 @@ jobs:
           $version = $env:RELEASE_VERSION
           $archive = "dist\CodexDreamSkinManager-v$version-windows.zip"
           $checksum = "dist\CodexDreamSkinManager-v$version-windows.sha256"
+          $installer = "dist\CodexDreamSkinManager-v$version-setup.exe"
+          $installerChecksum = "dist\CodexDreamSkinManager-v$version-setup.sha256"
           $previousErrorActionPreference = $ErrorActionPreference
           $ErrorActionPreference = 'SilentlyContinue'
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           $releaseExists = $LASTEXITCODE -eq 0
           $ErrorActionPreference = $previousErrorActionPreference
           if ($releaseExists) {
-            gh release upload $tag $archive $checksum --clobber --repo $env:GITHUB_REPOSITORY
+            gh release upload $tag $archive $checksum $installer $installerChecksum `
+              --clobber --repo $env:GITHUB_REPOSITORY
           } else {
-            gh release create $tag $archive $checksum `
+            gh release create $tag $archive $checksum $installer $installerChecksum `
               --repo $env:GITHUB_REPOSITORY `
               --verify-tag `
               --title "Codex Dream Skin Manager v$version" `

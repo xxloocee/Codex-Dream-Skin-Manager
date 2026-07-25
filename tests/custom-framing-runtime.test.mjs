@@ -54,6 +54,7 @@ function execute(config, options = {}) {
   const body = new FakeElement(1200, 800);
   const head = new FakeElement();
   const main = new FakeElement(1000, 500);
+  const sidebar = new FakeElement(240, 800);
   main.classList.add("main-surface");
   const homeLevelOne = new FakeElement();
   const homeLevelTwo = new FakeElement();
@@ -78,6 +79,7 @@ function execute(config, options = {}) {
     createElement: () => new FakeElement(),
     querySelector: (selector) => {
       if (selector === "main.main-surface" || selector === "main" || selector === '[role="main"]') return main;
+      if (selector === "aside.app-shell-left-panel") return sidebar;
       if (selector === '[role="main"]:has([data-testid="home-icon"])') return options.home ? main : null;
       if (selector === ".dream-home > div:first-child > div:first-child > div:first-child") {
         return main.classList.contains("dream-home") ? homeArt : null;

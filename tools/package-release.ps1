@@ -18,9 +18,11 @@ $requiredFiles = @(
   'THIRD_PARTY_NOTICES.md',
   'THIRD_PARTY\Codex-Dream-Skin\LICENSE',
   'THIRD_PARTY\Codex-Dream-Skin\NOTICE.md',
+  'THIRD_PARTY\Node.js\LICENSE',
   'windows\scripts\manager-actions.ps1',
   'windows\scripts\apply-theme-and-recover.ps1',
-  'windows\presets\catalog.json'
+  'windows\presets\catalog.json',
+  'windows\runtime\node\node.exe'
 )
 foreach ($relativePath in $requiredFiles) {
   if (-not (Test-Path -LiteralPath (Join-Path $package $relativePath) -PathType Leaf)) {
