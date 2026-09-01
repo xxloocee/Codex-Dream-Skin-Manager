@@ -2,12 +2,22 @@
 param(
   [ValidatePattern('^\d+\.\d+\.\d+$')]
   [string]$Version,
-  [string]$PackageRoot = (Join-Path $PSScriptRoot '..\build\CodexDreamSkinManager'),
-  [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\dist'),
+  [string]$PackageRoot,
+  [string]$OutputDirectory,
   [string]$IsccPath
 )
 
 $ErrorActionPreference = 'Stop'
+$scriptRoot = $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($scriptRoot)) {
+  $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+if ([string]::IsNullOrWhiteSpace($PackageRoot)) {
+  $PackageRoot = Join-Path $scriptRoot '..\build\CodexDreamSkinManager'
+}
+if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
+  $OutputDirectory = Join-Path $scriptRoot '..\dist'
+}
 $expectedCompilerSha256 = '0A8757031B33777E4C9CBFFEE40F11A5062B36D25CBE144C1DB73B6102B80AD7'
 $expectedSignerOrganization = 'Pyrsys B.V.'
 
@@ -44,7 +54,7 @@ function Assert-OfficialInnoSetupCompiler {
 $package = [System.IO.Path]::GetFullPath($PackageRoot)
 $output = [System.IO.Path]::GetFullPath($OutputDirectory)
 $executable = Join-Path $package 'CodexDreamSkinManager.exe'
-$iss = Join-Path $PSScriptRoot '..\packaging\CodexDreamSkinManager.iss'
+$iss = Join-Path $scriptRoot '..\packaging\CodexDreamSkinManager.iss'
 
 foreach ($requiredPath in @(
     $executable,

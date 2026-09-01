@@ -8,6 +8,10 @@ param(
   [string]$ThemeDirectory,
   [string]$ImagePath,
   [string]$Name,
+  [string]$ThemeId = 'custom',
+  [string]$Category = 'custom',
+  [string[]]$Tags = @(),
+  [string]$TagsJson = '',
   [string]$RequestPath,
   [ValidateSet('auto','light','dark')][string]$Appearance = 'auto',
   [ValidateRange(0.0, 1.0)][double]$FocusX = 0.5,
@@ -18,13 +22,43 @@ param(
   [ValidateSet('locked','free')][string]$PositionMode = 'locked',
   [ValidateSet('true','false')][string]$FramingEnabled = 'false',
   [ValidateSet('auto','left','right','center','none')][string]$SafeArea = 'auto',
-  [ValidateSet('auto','ambient','banner','off')][string]$TaskMode = 'auto',
+  [ValidateSet('auto','ambient','banner','full','off')][string]$TaskMode = 'auto',
   [ValidatePattern('^$|^#[0-9A-Fa-f]{6}$')][string]$Accent = '',
   [switch]$KeepCurrent,
   [ValidateRange(1, 30)][int]$LockTimeoutSeconds = 30
 )
 
 $ErrorActionPreference = 'Stop'
+if ($TagsJson) {
+  try {
+    $tagsJsonText = $TagsJson.Trim()
+    # PowerShell 5.1 unwraps a one-item JSON array into a scalar. Keep the
+    # parsed result wrapped, but first require array syntax so a JSON string
+    # cannot be accepted as a tag list by accident.
+    if (-not $tagsJsonText.StartsWith('[') -or -not $tagsJsonText.EndsWith(']')) {
+      throw 'tags JSON must be an array.'
+    }
+    # Use -InputObject instead of the pipeline: Windows PowerShell 5.1 emits
+    # a JSON array as one Object[] pipeline item, which otherwise turns
+    # [1,2] into a single tag containing "1 2".
+    $parsedValue = ConvertFrom-Json -InputObject $tagsJsonText -ErrorAction Stop
+    if ($null -eq $parsedValue) {
+      $parsedTags = @()
+    } elseif ($parsedValue -is [System.Array]) {
+      $parsedTags = @($parsedValue)
+    } else {
+      # PowerShell 5.1 unwraps a one-item JSON array into its scalar value.
+      # The bracket check above proves the source was still an array.
+      $parsedTags = @($parsedValue)
+    }
+    if (@($parsedTags | Where-Object { $null -eq $_ }).Count -gt 0) {
+      throw 'tags JSON must be an array.'
+    }
+    $Tags = @($parsedTags | ForEach-Object { "$_" })
+  } catch {
+    throw '主题标签 JSON 无效。'
+  }
+}
 $scripts = Join-Path $SkillRoot 'scripts'
 . (Join-Path $scripts 'common-windows.ps1')
 . (Join-Path $scripts 'theme-windows.ps1')
@@ -84,6 +118,32 @@ function ConvertTo-ManagerTheme {
   }
 }
 
+function ConvertTo-ManagerPresetOption {
+  param(
+    [Parameter(Mandatory = $true)][object]$Preset,
+    [int]$Order = 0
+  )
+  $tags = @()
+  foreach ($tag in @($Preset.tags)) {
+    if (-not [string]::IsNullOrWhiteSpace("$tag")) { $tags += "$tag" }
+  }
+  return ConvertTo-ManagerTheme -Id "$($Preset.id)" -ThemeName "$($Preset.name)" `
+    -ThemeImage "$($Preset.imagePath)" -Directory '' -Preset $true `
+    -Category $(if ($Preset.category) { "$($Preset.category)" } else { 'uncategorized' }) `
+    -Tags $tags -Source 'preset' -Order $Order `
+    -ThemeAppearance $(if ($Preset.appearance) { "$($Preset.appearance)" } else { 'auto' }) `
+    -ThemeFocusX $(if ($null -ne $Preset.focusX) { [double]$Preset.focusX } else { 0.5 }) `
+    -ThemeFocusY $(if ($null -ne $Preset.focusY) { [double]$Preset.focusY } else { 0.5 }) `
+    -ThemePositionX $(if ($null -ne $Preset.positionX) { [double]$Preset.positionX } else { 0.0 }) `
+    -ThemePositionY $(if ($null -ne $Preset.positionY) { [double]$Preset.positionY } else { 0.0 }) `
+    -ThemeZoom $(if ($null -ne $Preset.zoom) { [double]$Preset.zoom } else { 1.0 }) `
+    -ThemePositionMode $(if ($Preset.positionMode) { "$($Preset.positionMode)" } else { 'locked' }) `
+    -ThemeFramingEnabled ([bool]$Preset.framingEnabled) `
+    -ThemeSafeArea $(if ($Preset.safeArea) { "$($Preset.safeArea)" } else { 'auto' }) `
+    -ThemeTaskMode $(if ($Preset.taskMode) { "$($Preset.taskMode)" } else { 'auto' }) `
+    -ThemeAccent $(if ($Preset.accent) { "$($Preset.accent)" } else { '' })
+}
+
 function Test-ManagerThemeFraming {
   param([object]$Theme)
   if (-not $Theme -or -not $Theme.art) { return $false }
@@ -129,7 +189,7 @@ function Read-ManagerPresetCatalog {
     $safeArea = if ($entry.safeArea) { "$($entry.safeArea)" } else { 'auto' }
     $taskMode = if ($entry.taskMode) { "$($entry.taskMode)" } else { 'auto' }
     if ($appearance -notin @('auto','light','dark') -or $safeArea -notin @('auto','left','right','center','none') -or
-      $taskMode -notin @('auto','ambient','banner','off')) { throw "内置主题参数无效：$id" }
+      $taskMode -notin @('auto','ambient','banner','full','off')) { throw "内置主题参数无效：$id" }
     $accent = "$($entry.accent)"
     if ($accent -and $accent -notmatch '^#[0-9A-Fa-f]{6}$') { throw "内置主题强调色无效：$id" }
     $focusX = if ($null -ne $entry.focusX) { [double]$entry.focusX } else { 0.5 }
@@ -139,15 +199,166 @@ function Read-ManagerPresetCatalog {
       throw "内置主题焦点无效：$id"
     }
     $seen[$id] = $true
+    $themeContract = $entry | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $themeContract | Add-Member -NotePropertyName schemaVersion -NotePropertyValue 1 -Force
+    $themeContract | Add-Member -NotePropertyName id -NotePropertyValue "preset-$id" -Force
+    $themeContract | Add-Member -NotePropertyName name -NotePropertyValue $name -Force
+    $themeContract | Add-Member -NotePropertyName image -NotePropertyValue $imageName -Force
+    $themeContract | Add-Member -NotePropertyName category -NotePropertyValue $category -Force
+    $themeContract | Add-Member -NotePropertyName tags -NotePropertyValue @($tags) -Force
+    $themeContract | Add-Member -NotePropertyName appearance -NotePropertyValue $appearance -Force
+    $themeContract | Add-Member -NotePropertyName art -NotePropertyValue ([pscustomobject][ordered]@{
+      focusX = $focusX
+      focusY = $focusY
+      safeArea = $safeArea
+      taskMode = $taskMode
+    }) -Force
+    if (-not $themeContract.PSObject.Properties['palette']) {
+      $themeContract | Add-Member -NotePropertyName palette -NotePropertyValue ([pscustomobject]@{})
+    }
+    if ($accent) {
+      $themeContract.palette | Add-Member -NotePropertyName accent `
+        -NotePropertyValue $accent.ToUpperInvariant() -Force
+    }
     $result += [ordered]@{
       id = "preset-$id"; name = $name; imagePath = $imagePath; themeDirectory = ''; isPreset = $true
       category = $category; tags = @($tags); source = 'preset'; order = $index; addedAt = ''
       appearance = $appearance; focusX = $focusX; focusY = $focusY; safeArea = $safeArea
       positionX = 0.0; positionY = 0.0; zoom = 1.0; positionMode = 'locked'; framingEnabled = $false
-      taskMode = $taskMode; accent = $accent.ToUpperInvariant()
+      taskMode = $taskMode; accent = $accent.ToUpperInvariant(); themeContract = $themeContract
     }
   }
   return @($result)
+}
+
+function Get-ManagerDirectoryPresetEntries {
+  param([Parameter(Mandatory = $true)][string]$PresetRoot)
+  $result = @()
+  if (-not (Test-Path -LiteralPath $PresetRoot -PathType Container)) { return @() }
+  foreach ($directory in @(Get-ChildItem -LiteralPath $PresetRoot -Directory -Force -ErrorAction SilentlyContinue)) {
+    try {
+      $loaded = Read-DreamSkinTheme -ThemeDirectory $directory.FullName -SkipImageMetadata
+      $id = "$($loaded.Theme.id)"
+      if ($id -notmatch '^preset-[A-Za-z0-9_-]{1,72}$') { continue }
+      $tags = @($loaded.Theme.tags | Where-Object { -not [string]::IsNullOrWhiteSpace("$_") } |
+        ForEach-Object { "$_" })
+      $result += [ordered]@{
+        id = $id
+        name = if ($loaded.Theme.name) { "$($loaded.Theme.name)" } else { $directory.Name }
+        imagePath = $loaded.ImagePath
+        themeDirectory = ''
+        isPreset = $true
+        category = if ($loaded.Theme.category) { "$($loaded.Theme.category)" } else { 'uncategorized' }
+        tags = $tags
+        source = 'preset'
+        order = 1000 + $result.Count
+        addedAt = ''
+        appearance = if ($loaded.Theme.appearance) { "$($loaded.Theme.appearance)" } else { 'auto' }
+        focusX = if ($null -ne $loaded.Theme.art.focusX) { [double]$loaded.Theme.art.focusX } else { 0.5 }
+        focusY = if ($null -ne $loaded.Theme.art.focusY) { [double]$loaded.Theme.art.focusY } else { 0.5 }
+        positionX = if ($null -ne $loaded.Theme.art.positionX) { [double]$loaded.Theme.art.positionX } else { 0.0 }
+        positionY = if ($null -ne $loaded.Theme.art.positionY) { [double]$loaded.Theme.art.positionY } else { 0.0 }
+        zoom = if ($null -ne $loaded.Theme.art.zoom) { [double]$loaded.Theme.art.zoom } else { 1.0 }
+        positionMode = if ($loaded.Theme.art.positionMode) { "$($loaded.Theme.art.positionMode)" } else { 'locked' }
+        framingEnabled = Test-ManagerThemeFraming -Theme $loaded.Theme
+        safeArea = if ($loaded.Theme.art.safeArea) { "$($loaded.Theme.art.safeArea)" } else { 'auto' }
+        taskMode = if ($loaded.Theme.art.taskMode) { "$($loaded.Theme.art.taskMode)" } else { 'auto' }
+        accent = if ($loaded.Theme.palette.accent) { "$($loaded.Theme.palette.accent)" } else { '' }
+        themeContract = $loaded.Theme
+      }
+    } catch {
+      # A malformed optional preset must not hide the catalog or saved themes.
+    }
+  }
+  return @($result)
+}
+
+function Get-ManagerPresetCandidates {
+  param([Parameter(Mandatory = $true)][string]$PresetRoot)
+  $candidates = @()
+  $catalog = $null
+  try { $catalog = Read-ManagerPresetCatalog -PresetRoot $PresetRoot } catch {}
+  if ($null -ne $catalog) {
+    $candidates += @($catalog)
+  } else {
+    foreach ($image in @(Get-ChildItem -LiteralPath $PresetRoot -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|webp)$' })) {
+      $id = [System.IO.Path]::GetFileNameWithoutExtension($image.Name)
+      $fallback = [ordered]@{
+        id = "preset-$id"
+        name = (Get-Culture).TextInfo.ToTitleCase(($id -replace '-', ' '))
+        imagePath = $image.FullName
+        category = 'uncategorized'
+        tags = @()
+        appearance = 'auto'
+        focusX = 0.5
+        focusY = 0.5
+        positionX = 0.0
+        positionY = 0.0
+        zoom = 1.0
+        positionMode = 'locked'
+        framingEnabled = $false
+        safeArea = 'auto'
+        taskMode = 'auto'
+        accent = ''
+      }
+      $candidates += $fallback
+    }
+  }
+  $candidates += @(Get-ManagerDirectoryPresetEntries -PresetRoot $PresetRoot)
+  $unique = @()
+  $seen = @{}
+  foreach ($candidate in $candidates) {
+    $id = "$($candidate.id)"
+    if (-not $id -or $seen.ContainsKey($id)) { continue }
+    $seen[$id] = $true
+    $unique += $candidate
+  }
+  return @($unique)
+}
+
+function Get-ManagerPresetByImagePath {
+  param(
+    [Parameter(Mandatory = $true)][string]$PresetRoot,
+    [Parameter(Mandatory = $true)][string]$ImagePath
+  )
+  try { $target = [System.IO.Path]::GetFullPath($ImagePath) } catch { return $null }
+  foreach ($candidate in @(Get-ManagerPresetCandidates -PresetRoot $PresetRoot)) {
+    try {
+      $candidatePath = [System.IO.Path]::GetFullPath("$($candidate.imagePath)")
+      if ([string]::Equals($candidatePath, $target, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $candidate
+      }
+    } catch {}
+  }
+  return $null
+}
+
+function ConvertTo-ManagerPresetThemeContract {
+  param([Parameter(Mandatory = $true)][object]$Preset)
+  if ($Preset.themeContract) {
+    return ($Preset.themeContract | ConvertTo-Json -Depth 12 | ConvertFrom-Json)
+  }
+  $theme = [pscustomobject][ordered]@{
+    schemaVersion = 1
+    id = "$($Preset.id)"
+    name = "$($Preset.name)"
+    image = ''
+    category = if ($Preset.category) { "$($Preset.category)" } else { 'uncategorized' }
+    tags = @($Preset.tags)
+    appearance = if ($Preset.appearance) { "$($Preset.appearance)" } else { 'auto' }
+    art = [pscustomobject][ordered]@{
+      focusX = if ($null -ne $Preset.focusX) { [double]$Preset.focusX } else { 0.5 }
+      focusY = if ($null -ne $Preset.focusY) { [double]$Preset.focusY } else { 0.5 }
+      safeArea = if ($Preset.safeArea) { "$($Preset.safeArea)" } else { 'auto' }
+      taskMode = if ($Preset.taskMode) { "$($Preset.taskMode)" } else { 'auto' }
+    }
+    palette = [pscustomobject]@{}
+  }
+  if ($Preset.accent) {
+    $theme.palette | Add-Member -NotePropertyName accent -NotePropertyValue "$($Preset.accent)" -Force
+  }
+  return $theme
 }
 
 function Get-ManagerWriteMutexName {
@@ -197,9 +408,11 @@ function New-ManagerCustomTheme {
   param([Parameter(Mandatory = $true)][string]$ThemeName)
   $theme = [pscustomobject][ordered]@{
     schemaVersion = 1
-    id = 'custom'
+    id = if ($ThemeId) { $ThemeId } else { 'custom' }
     name = $ThemeName
     image = ''
+    category = if ($Category) { $Category } else { 'custom' }
+    tags = @($Tags)
     appearance = $Appearance
     art = [pscustomobject][ordered]@{
       focusX = $FocusX
@@ -225,7 +438,9 @@ function Save-ManagerThemeDirectly {
   param(
     [Parameter(Mandatory = $true)][string]$SourceImage,
     [Parameter(Mandatory = $true)][string]$ThemeName,
-    [Parameter(Mandatory = $true)][object]$Theme
+    [Parameter(Mandatory = $true)][object]$Theme,
+    [string]$SafeCssPath,
+    [string]$LicensePath
   )
   $trimmed = $ThemeName.Trim()
   if (-not $trimmed -or $trimmed.Length -gt 80 -or $trimmed -match '[\u0000-\u001f]') {
@@ -256,6 +471,21 @@ function Save-ManagerThemeDirectly {
     $Theme.name = $trimmed
     $Theme.image = $imageName
     Write-DreamSkinTheme -ThemeDirectory $temporary -Theme $Theme
+    if ($SafeCssPath) {
+      $safeCssSource = [System.IO.Path]::GetFullPath($SafeCssPath)
+      Assert-DreamSkinNoReparseComponents -Path $safeCssSource
+      Assert-DreamSkinSafeCssFile -Path $safeCssSource
+      Copy-Item -LiteralPath $safeCssSource -Destination (Join-Path $temporary 'theme.css') -Force
+      Assert-DreamSkinSafeCssFile -Path (Join-Path $temporary 'theme.css')
+    }
+    if ($LicensePath) {
+      $licenseSource = [System.IO.Path]::GetFullPath($LicensePath)
+      Assert-DreamSkinNoReparseComponents -Path $licenseSource
+      if (-not (Test-Path -LiteralPath $licenseSource -PathType Leaf) -or
+        (Get-Item -LiteralPath $licenseSource).Length -lt 1 -or
+        (Get-Item -LiteralPath $licenseSource).Length -gt 64KB) { throw '主题 LICENSE.txt 无效。' }
+      Copy-Item -LiteralPath $licenseSource -Destination (Join-Path $temporary 'LICENSE.txt') -Force
+    }
     $null = Read-DreamSkinTheme -ThemeDirectory $temporary
     Move-Item -LiteralPath $temporary -Destination $destination
     Assert-DreamSkinNoReparseComponents -Path $destination
@@ -345,7 +575,7 @@ function ConvertTo-ManagerBatchTheme {
   $categoryValue = if ($Item.category) { "$($Item.category)" } else { 'custom' }
   $tagsValue = @($Item.tags | ForEach-Object { "$_".Trim() })
   if ($appearanceValue -notin @('auto','light','dark') -or $safeAreaValue -notin @('auto','left','right','center','none') -or
-    $taskModeValue -notin @('auto','ambient','banner','off')) { throw '主题外观参数无效。' }
+    $taskModeValue -notin @('auto','ambient','banner','full','off')) { throw '主题外观参数无效。' }
   if ($categoryValue -notin @('dream','nature','cyber','minimal','dark','warm','custom','uncategorized')) { throw '主题分类无效。' }
   if ($tagsValue.Count -gt 8 -or @($tagsValue | Where-Object { -not $_ -or $_.Length -gt 20 }).Count -gt 0) { throw '主题标签无效。' }
   $focusXValue = if ($null -ne $Item.focusX) { [double]$Item.focusX } else { 0.5 }
@@ -654,29 +884,45 @@ switch ($Action) {
     $paused = Test-DreamSkinPaused -StateRoot $StateRoot
     $statusKind = if ($identity.Running -and $paused) { 'paused' } else { $identity.Kind }
     $themes = @()
+    $presetIds = @{}
     $catalogMessage = ''
     $presetRoot = Join-Path $SkillRoot 'presets'
     if (Test-Path -LiteralPath $presetRoot -PathType Container) {
       $catalogThemes = $null
       try { $catalogThemes = Read-ManagerPresetCatalog -PresetRoot $presetRoot } catch { $catalogMessage = $_.Exception.Message }
       if ($null -ne $catalogThemes) {
-        $themes += @($catalogThemes)
-      } else {
-        foreach ($image in Get-ChildItem -LiteralPath $presetRoot -File | Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|webp)$' }) {
-          $id = [System.IO.Path]::GetFileNameWithoutExtension($image.Name)
-          $displayName = (Get-Culture).TextInfo.ToTitleCase(($id -replace '-', ' '))
-          $themes += ConvertTo-ManagerTheme -Id "preset-$id" -ThemeName $displayName `
-            -ThemeImage $image.FullName -Directory '' -Preset $true -Category 'uncategorized' `
-            -Tags @() -Source 'preset' -Order $themes.Count
+        foreach ($catalogTheme in @($catalogThemes)) {
+          $option = ConvertTo-ManagerPresetOption -Preset $catalogTheme -Order $themes.Count
+          $themes += $option
+          $presetIds["$($option.id)"] = $true
         }
+      } else {
+        foreach ($candidate in @(Get-ManagerPresetCandidates -PresetRoot $presetRoot)) {
+          if ($presetIds.ContainsKey("$($candidate.id)")) { continue }
+          $option = ConvertTo-ManagerPresetOption -Preset $candidate -Order $themes.Count
+          $themes += $option
+          $presetIds["$($option.id)"] = $true
+        }
+      }
+      foreach ($directoryPreset in @(Get-ManagerDirectoryPresetEntries -PresetRoot $presetRoot)) {
+        $directoryPresetId = "$($directoryPreset.id)"
+        if ($presetIds.ContainsKey($directoryPresetId)) { continue }
+        $option = ConvertTo-ManagerPresetOption -Preset $directoryPreset -Order $themes.Count
+        $themes += $option
+        $presetIds[$directoryPresetId] = $true
       }
     }
     foreach ($saved in @(Get-DreamSkinSavedThemes -StateRoot $StateRoot -SkipImageMetadata)) {
+      # Older installations staged official presets under themes/. Keep those
+      # files for runtime compatibility, but expose the catalog entry only once
+      # and never classify it as a deletable user theme.
       $loaded = Read-DreamSkinTheme -ThemeDirectory $saved.Path -SkipImageMetadata
+      if ($presetIds.ContainsKey("$($saved.Id)")) { continue }
       $themes += ConvertTo-ManagerTheme -Id $saved.Id -ThemeName $saved.Name `
         -ThemeImage $loaded.ImagePath -Directory $saved.Path -Preset $false `
         -Category $(if ($loaded.Theme.category) { "$($loaded.Theme.category)" } else { 'custom' }) `
-        -Tags @($loaded.Theme.tags) -Source 'saved' -Order (1000 + $themes.Count) -AddedAt "$($saved.LastWriteTimeUtc)" `
+        -Tags @($loaded.Theme.tags | Where-Object { -not [string]::IsNullOrWhiteSpace("$_") }) -Source 'saved' `
+        -Order (1000 + $themes.Count) -AddedAt "$($saved.LastWriteTimeUtc)" `
         -ThemeAppearance $(if ($loaded.Theme.appearance) { "$($loaded.Theme.appearance)" } else { 'auto' }) `
         -ThemeFocusX $(if ($null -ne $loaded.Theme.art.focusX) { [double]$loaded.Theme.art.focusX } else { 0.5 }) `
         -ThemeFocusY $(if ($null -ne $loaded.Theme.art.focusY) { [double]$loaded.Theme.art.focusY } else { 0.5 }) `
@@ -735,12 +981,29 @@ switch ($Action) {
       if ($ThemeDirectory) {
         $result = Use-DreamSkinSavedTheme -ThemeDirectory $ThemeDirectory -StateRoot $StateRoot
       } elseif ($ImagePath) {
-        $result = Set-DreamSkinActiveTheme -ImagePath $ImagePath `
-          -Theme (New-ManagerCustomTheme -ThemeName $Name) -Name $Name -StateRoot $StateRoot
+        $presetRoot = Join-Path $SkillRoot 'presets'
+        $preset = if (Test-Path -LiteralPath $presetRoot -PathType Container) {
+          Get-ManagerPresetByImagePath -PresetRoot $presetRoot -ImagePath $ImagePath
+        } else { $null }
+        if ($preset) {
+          $presetTheme = ConvertTo-ManagerPresetThemeContract -Preset $preset
+          $presetName = if ($preset.name) { "$($preset.name)" } else { $Name }
+          $result = Set-DreamSkinActiveTheme -ImagePath $ImagePath -Theme $presetTheme `
+            -Name $presetName -StateRoot $StateRoot
+        } else {
+          $result = Set-DreamSkinActiveTheme -ImagePath $ImagePath `
+            -Theme (New-ManagerCustomTheme -ThemeName $Name) -Name $Name -StateRoot $StateRoot
+        }
       } else { throw 'ApplyTheme requires ThemeDirectory or ImagePath.' }
       Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
       Remove-ManagerDuplicateImageArchives
-      [ordered]@{ name = "$($result.Theme.name)"; imagePath = "$($result.ImagePath)" } | ConvertTo-Json -Depth 4
+      [ordered]@{
+        id = if ($result.Theme.id) { "$($result.Theme.id)" } else { '' }
+        name = "$($result.Theme.name)"
+        imagePath = "$($result.ImagePath)"
+        category = if ($result.Theme.category) { "$($result.Theme.category)" } else { '' }
+        tags = @($result.Theme.tags)
+      } | ConvertTo-Json -Depth 8
     }
   }
   'DeleteTheme' {
@@ -831,7 +1094,8 @@ switch ($Action) {
           }
           $batchTheme | Add-Member -NotePropertyName managerFingerprintVersion -NotePropertyValue $ManagerFingerprintVersion -Force
           $batchTheme | Add-Member -NotePropertyName managerFingerprint -NotePropertyValue $fingerprint -Force
-          $savedBatchTheme = Save-ManagerThemeDirectly -SourceImage $source -ThemeName $itemName -Theme $batchTheme
+          $savedBatchTheme = Save-ManagerThemeDirectly -SourceImage $source -ThemeName $itemName -Theme $batchTheme `
+            -SafeCssPath "$($item.safeCssPath)" -LicensePath "$($item.licensePath)"
           $known[$fingerprint] = $savedBatchTheme.Directory
           $imported++
           $results += [ordered]@{ name = $itemName; status = 'imported'; message = ''; themeDirectory = "$($savedBatchTheme.Directory)" }
@@ -846,33 +1110,20 @@ switch ($Action) {
   'ResetTheme' {
     Invoke-ManagerWriteLock {
       $presetRoot = Join-Path $SkillRoot 'presets'
-      $catalogThemes = @(Read-ManagerPresetCatalog -PresetRoot $presetRoot)
-      if ($catalogThemes.Count -lt 1) { throw '没有可用于重置的内置主题。' }
-      $defaultTheme = $catalogThemes[0]
-      $theme = [pscustomobject][ordered]@{
-        schemaVersion = 1
-        id = "$($defaultTheme.id)"
-        name = "$($defaultTheme.name)"
-        image = ''
-        category = "$($defaultTheme.category)"
-        tags = @($defaultTheme.tags)
-        appearance = "$($defaultTheme.appearance)"
-        art = [pscustomobject][ordered]@{
-          focusX = [double]$defaultTheme.focusX
-          focusY = [double]$defaultTheme.focusY
-          safeArea = "$($defaultTheme.safeArea)"
-          taskMode = "$($defaultTheme.taskMode)"
-        }
-        palette = [pscustomobject]@{}
-      }
-      if ($defaultTheme.accent) {
-        $theme.palette | Add-Member -NotePropertyName accent -NotePropertyValue "$($defaultTheme.accent)"
-      }
+      $defaultTheme = @(Get-ManagerPresetCandidates -PresetRoot $presetRoot) | Select-Object -First 1
+      if ($null -eq $defaultTheme) { throw '没有可用于重置的内置主题。' }
+      $theme = ConvertTo-ManagerPresetThemeContract -Preset $defaultTheme
       $result = Set-DreamSkinActiveTheme -ImagePath "$($defaultTheme.imagePath)" -Theme $theme `
         -Name "$($defaultTheme.name)" -StateRoot $StateRoot
       Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
       Remove-ManagerDuplicateImageArchives
-      [ordered]@{ name = "$($result.Theme.name)"; imagePath = "$($result.ImagePath)" } | ConvertTo-Json -Depth 4
+      [ordered]@{
+        id = if ($result.Theme.id) { "$($result.Theme.id)" } else { '' }
+        name = "$($result.Theme.name)"
+        imagePath = "$($result.ImagePath)"
+        category = if ($result.Theme.category) { "$($result.Theme.category)" } else { '' }
+        tags = @($result.Theme.tags)
+      } | ConvertTo-Json -Depth 8
     }
   }
   'Pause' {

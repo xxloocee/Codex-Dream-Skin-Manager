@@ -26,13 +26,15 @@ namespace CodexDreamSkinManager
         public string SafeArea = "auto";
         public string TaskMode = "auto";
         public string Accent = "";
+        public string SafeCssPath = "";
+        public string LicensePath = "";
     }
 
     internal static class ThemePackageService
     {
         private const long MaxPackageBytes = 32L * 1024 * 1024;
-        private const long MaxExpandedBytes = 48L * 1024 * 1024;
-        private const long MaxImageBytes = 16L * 1024 * 1024;
+        private const long MaxExpandedBytes = 64L * 1024 * 1024;
+        private const long MaxImageBytes = 10L * 1024 * 1024;
         private static readonly HashSet<string> AllowedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
             "dream", "nature", "cyber", "minimal", "dark", "warm", "custom", "uncategorized"
         };
@@ -43,20 +45,25 @@ namespace CodexDreamSkinManager
             if (!File.Exists(fullPackage)) throw new FileNotFoundException("主题包不存在。", fullPackage);
             if (new FileInfo(fullPackage).Length > MaxPackageBytes) throw new InvalidDataException("主题包超过 32 MB。 ");
             string fullRoot = Path.GetFullPath(extractionRoot);
+            AssertNoReparsePoint(fullRoot);
             Directory.CreateDirectory(fullRoot);
+            AssertNoReparsePoint(fullRoot);
 
             using (FileStream stream = File.OpenRead(fullPackage))
             using (ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Read))
             {
                 if (archive.Entries.Count < 2 || archive.Entries.Count > 4)
-                    throw new InvalidDataException("主题包只能包含清单和主题图片。 ");
+                    throw new InvalidDataException("主题包只能包含清单、主题图片及可选的 CSS/LICENSE。 ");
                 long expanded = 0;
                 ZipArchiveEntry manifestEntry = null;
+                HashSet<string> seenEntries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (ZipArchiveEntry entry in archive.Entries)
                 {
                     ValidateRootEntry(entry);
+                    if (!seenEntries.Add(entry.FullName))
+                        throw new InvalidDataException("主题包包含重复文件名。 ");
                     expanded += entry.Length;
-                    if (expanded > MaxExpandedBytes) throw new InvalidDataException("主题包解压后超过 48 MB。 ");
+                    if (expanded > MaxExpandedBytes) throw new InvalidDataException("主题包解压后超过 64 MB。 ");
                     if (string.Equals(entry.FullName, "manifest.json", StringComparison.OrdinalIgnoreCase))
                     {
                         if (manifestEntry != null) throw new InvalidDataException("主题包包含重复清单。 ");
@@ -70,14 +77,27 @@ namespace CodexDreamSkinManager
                 string imageName = ReadString(manifest, "image", "");
                 ValidateImageEntryName(imageName);
                 ZipArchiveEntry imageEntry = null;
+                ZipArchiveEntry cssEntry = null;
+                ZipArchiveEntry licenseEntry = null;
                 foreach (ZipArchiveEntry entry in archive.Entries)
+                {
                     if (string.Equals(entry.FullName, imageName, StringComparison.OrdinalIgnoreCase)) imageEntry = entry;
+                    else if (string.Equals(entry.FullName, "theme.css", StringComparison.OrdinalIgnoreCase)) cssEntry = entry;
+                    else if (string.Equals(entry.FullName, "LICENSE.txt", StringComparison.OrdinalIgnoreCase)) licenseEntry = entry;
+                    else if (!string.Equals(entry.FullName, "manifest.json", StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("主题包包含未注册文件。 ");
+                }
                 if (imageEntry == null || imageEntry.Length < 1 || imageEntry.Length > MaxImageBytes)
-                    throw new InvalidDataException("主题包图片缺失、为空或超过 16 MB。 ");
-                if (archive.Entries.Count != 2) throw new InvalidDataException("主题包包含未引用文件。 ");
+                    throw new InvalidDataException("主题包图片缺失、为空或超过 10 MB。 ");
+                if (cssEntry != null && (cssEntry.Length < 1 || cssEntry.Length > 256 * 1024))
+                    throw new InvalidDataException("主题包 theme.css 为空或超过 256 KB。 ");
+                if (licenseEntry != null && (licenseEntry.Length < 1 || licenseEntry.Length > 64 * 1024))
+                    throw new InvalidDataException("主题包 LICENSE.txt 为空或超过 64 KB。 ");
 
                 string targetDirectory = Path.Combine(fullRoot, "cdskin-" + Guid.NewGuid().ToString("N"));
+                AssertNoReparsePoint(targetDirectory);
                 Directory.CreateDirectory(targetDirectory);
+                AssertNoReparsePoint(targetDirectory);
                 string targetImage = Path.GetFullPath(Path.Combine(targetDirectory, imageName));
                 if (!targetImage.StartsWith(targetDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("主题包图片路径越界。 ");
@@ -87,6 +107,22 @@ namespace CodexDreamSkinManager
                     using (FileStream output = new FileStream(targetImage, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                         input.CopyTo(output);
                     data.ImagePath = targetImage;
+                    if (cssEntry != null)
+                    {
+                        string targetCss = Path.Combine(targetDirectory, "theme.css");
+                        using (Stream input = cssEntry.Open())
+                        using (FileStream output = new FileStream(targetCss, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                            input.CopyTo(output);
+                        data.SafeCssPath = targetCss;
+                    }
+                    if (licenseEntry != null)
+                    {
+                        string targetLicense = Path.Combine(targetDirectory, "LICENSE.txt");
+                        using (Stream input = licenseEntry.Open())
+                        using (FileStream output = new FileStream(targetLicense, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                            input.CopyTo(output);
+                        data.LicensePath = targetLicense;
+                    }
                     return data;
                 }
                 catch
@@ -103,19 +139,26 @@ namespace CodexDreamSkinManager
             ValidateData(data);
             string sourceImage = Path.GetFullPath(data.ImagePath);
             if (!File.Exists(sourceImage)) throw new FileNotFoundException("导出主题图片不存在。", sourceImage);
+            AssertNoReparsePoint(sourceImage);
             FileInfo imageInfo = new FileInfo(sourceImage);
-            if (imageInfo.Length < 1 || imageInfo.Length > MaxImageBytes) throw new InvalidDataException("导出主题图片为空或超过 16 MB。 ");
+            if (imageInfo.Length < 1 || imageInfo.Length > MaxImageBytes) throw new InvalidDataException("导出主题图片为空或超过 10 MB。 ");
             string extension = Path.GetExtension(sourceImage).ToLowerInvariant();
             if (extension != ".jpg" && extension != ".jpeg" && extension != ".png" && extension != ".webp")
                 throw new InvalidDataException("导出主题图片格式不受支持。 ");
             string imageName = "art" + extension;
+            string safeCssSource = string.IsNullOrWhiteSpace(data.SafeCssPath) ? "" : Path.GetFullPath(data.SafeCssPath);
+            string licenseSource = string.IsNullOrWhiteSpace(data.LicensePath) ? "" : Path.GetFullPath(data.LicensePath);
+            if (safeCssSource != "") ValidateAuxiliaryFile(safeCssSource, "theme.css", 256 * 1024);
+            if (licenseSource != "") ValidateAuxiliaryFile(licenseSource, "LICENSE.txt", 64 * 1024);
             string fullPackage = Path.GetFullPath(packagePath);
             string directory = Path.GetDirectoryName(fullPackage);
+            AssertNoReparsePoint(directory);
             Directory.CreateDirectory(directory);
+            AssertNoReparsePoint(directory);
             string temporary = Path.Combine(directory, ".cdskin-" + Guid.NewGuid().ToString("N") + ".tmp");
             try
             {
-                using (FileStream stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+                    using (FileStream stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
                 using (ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Create))
                 {
                     ZipArchiveEntry manifestEntry = archive.CreateEntry("manifest.json", CompressionLevel.Optimal);
@@ -124,6 +167,18 @@ namespace CodexDreamSkinManager
                     ZipArchiveEntry imageEntry = archive.CreateEntry(imageName, CompressionLevel.Optimal);
                     using (Stream input = File.OpenRead(sourceImage))
                     using (Stream output = imageEntry.Open()) input.CopyTo(output);
+                    if (safeCssSource != "")
+                    {
+                        ZipArchiveEntry cssEntry = archive.CreateEntry("theme.css", CompressionLevel.Optimal);
+                        using (Stream input = File.OpenRead(safeCssSource))
+                        using (Stream output = cssEntry.Open()) input.CopyTo(output);
+                    }
+                    if (licenseSource != "")
+                    {
+                        ZipArchiveEntry licenseEntry = archive.CreateEntry("LICENSE.txt", CompressionLevel.Optimal);
+                        using (Stream input = File.OpenRead(licenseSource))
+                        using (Stream output = licenseEntry.Open()) input.CopyTo(output);
+                    }
                 }
                 if (File.Exists(fullPackage)) File.Replace(temporary, fullPackage, null);
                 else File.Move(temporary, fullPackage);
@@ -144,6 +199,30 @@ namespace CodexDreamSkinManager
             if (string.Equals(extension, ".zip", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(extension, ".cdskin", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("主题包不能嵌套压缩包。 ");
+        }
+
+        private static void AssertNoReparsePoint(string path)
+        {
+            string current = Path.GetFullPath(path);
+            while (!string.IsNullOrWhiteSpace(current))
+            {
+                if (File.Exists(current) || Directory.Exists(current))
+                {
+                    FileAttributes attributes = File.GetAttributes(current);
+                    if ((attributes & FileAttributes.ReparsePoint) != 0)
+                        throw new InvalidDataException("主题包目录不能是链接或 reparse point。 ");
+                }
+                DirectoryInfo parent = Directory.GetParent(current);
+                current = parent == null ? null : parent.FullName;
+            }
+        }
+
+        private static void ValidateAuxiliaryFile(string path, string name, long maxBytes)
+        {
+            if (!File.Exists(path)) throw new FileNotFoundException("导出主题的 " + name + " 不存在。", path);
+            AssertNoReparsePoint(path);
+            long length = new FileInfo(path).Length;
+            if (length < 1 || length > maxBytes) throw new InvalidDataException("导出主题的 " + name + " 大小无效。 ");
         }
 
         private static Dictionary<string, object> ReadManifest(ZipArchiveEntry entry)
@@ -208,7 +287,7 @@ namespace CodexDreamSkinManager
                 throw new InvalidDataException("主题包图片移动模式无效。 ");
             if (data.SafeArea != "auto" && data.SafeArea != "left" && data.SafeArea != "right" && data.SafeArea != "center" && data.SafeArea != "none")
                 throw new InvalidDataException("主题包安全区无效。 ");
-            if (data.TaskMode != "auto" && data.TaskMode != "ambient" && data.TaskMode != "banner" && data.TaskMode != "off")
+            if (data.TaskMode != "auto" && data.TaskMode != "ambient" && data.TaskMode != "banner" && data.TaskMode != "full" && data.TaskMode != "off")
                 throw new InvalidDataException("主题包任务模式无效。 ");
             if (!string.IsNullOrEmpty(data.Accent) && !System.Text.RegularExpressions.Regex.IsMatch(data.Accent, "^#[0-9A-F]{6}$"))
                 throw new InvalidDataException("主题包强调色无效。 ");

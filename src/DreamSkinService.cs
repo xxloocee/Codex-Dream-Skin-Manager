@@ -187,7 +187,11 @@ namespace CodexDreamSkinManager
                 throw new ArgumentOutOfRangeException("items", "一次只能导入 1 到 50 个主题。");
             string stateRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexDreamSkin");
             string requestsRoot = Path.Combine(stateRoot, "requests");
+            AssertNoReparsePoint(Path.GetDirectoryName(stateRoot), "主题状态目录父目录");
+            Directory.CreateDirectory(stateRoot);
+            AssertNoReparsePoint(stateRoot, "主题状态目录");
             Directory.CreateDirectory(requestsRoot);
+            AssertNoReparsePoint(requestsRoot, "主题请求目录");
             string id = Guid.NewGuid().ToString("N");
             string temporary = Path.Combine(requestsRoot, ".request-" + id + ".tmp");
             string request = Path.Combine(requestsRoot, "request-" + id + ".json");
@@ -203,7 +207,8 @@ namespace CodexDreamSkinManager
                         { "positionX", item.PositionX }, { "positionY", item.PositionY }, { "zoom", item.Zoom },
                         { "positionMode", item.PositionMode }, { "framingEnabled", item.FramingEnabled },
                         { "taskMode", item.TaskMode }, { "accent", item.Accent }, { "category", item.Category },
-                        { "tags", (item.Tags ?? new List<string>()).ToArray() }
+                        { "tags", (item.Tags ?? new List<string>()).ToArray() },
+                        { "safeCssPath", item.SafeCssPath }, { "licensePath", item.LicensePath }
                     });
                 }
                 Dictionary<string, object> payload = new Dictionary<string, object> { { "schemaVersion", 1 }, { "items", rows.ToArray() } };
@@ -285,6 +290,16 @@ namespace CodexDreamSkinManager
             {
                 args.Add(P("-ImagePath")); args.Add(V(theme.ImagePath));
                 args.Add(P("-Name")); args.Add(V(theme.Name));
+                args.Add(P("-ThemeId")); args.Add(V(theme.Id));
+                args.Add(P("-Category")); args.Add(V(theme.Category));
+                // PowerShell 5.1 does not reliably bind multiple native argv
+                // values to a string[] parameter. Use an explicit JSON array
+                // so tags remain lossless (including commas and non-ASCII text).
+                if (theme.Tags != null && theme.Tags.Count > 0)
+                {
+                    args.Add(P("-TagsJson"));
+                    args.Add(V(new JavaScriptSerializer().Serialize(theme.Tags.ToArray())));
+                }
                 args.Add(P("-Appearance")); args.Add(V(theme.Appearance));
                 args.Add(P("-FocusX")); args.Add(V(theme.FocusX.ToString(CultureInfo.InvariantCulture)));
                 args.Add(P("-FocusY")); args.Add(V(theme.FocusY.ToString(CultureInfo.InvariantCulture)));
@@ -296,6 +311,22 @@ namespace CodexDreamSkinManager
                 args.Add(P("-SafeArea")); args.Add(V(theme.SafeArea));
                 args.Add(P("-TaskMode")); args.Add(V(theme.TaskMode));
                 args.Add(P("-Accent")); args.Add(V(theme.Accent));
+            }
+        }
+
+        private static void AssertNoReparsePoint(string path, string label)
+        {
+            string current = Path.GetFullPath(path);
+            while (!string.IsNullOrWhiteSpace(current))
+            {
+                if (Directory.Exists(current))
+                {
+                    FileAttributes attributes = File.GetAttributes(current);
+                    if ((attributes & FileAttributes.ReparsePoint) != 0)
+                        throw new IOException(label + "不能是链接或 reparse point。");
+                }
+                DirectoryInfo parent = Directory.GetParent(current);
+                current = parent == null ? null : parent.FullName;
             }
         }
 

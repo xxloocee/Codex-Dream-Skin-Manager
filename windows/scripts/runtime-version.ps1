@@ -2,16 +2,28 @@ function Get-DreamSkinRuntimeFingerprint {
   param([Parameter(Mandatory = $true)][string]$SkillRoot)
   try {
     $currentInjector = [System.IO.Path]::GetFullPath((Join-Path $SkillRoot 'scripts\injector.mjs'))
-    $runtimeFiles = @(
+    $baseRuntimeFiles = @(
       $currentInjector,
       (Join-Path $SkillRoot 'assets\renderer-inject.js'),
       (Join-Path $SkillRoot 'assets\dream-skin.css')
     )
+    $extendedRuntimeFiles = @(
+      (Join-Path $SkillRoot 'assets\selectors.json'),
+      (Join-Path $SkillRoot 'assets\safe-css-validator.mjs'),
+      (Join-Path $SkillRoot 'assets\theme-package-validator.mjs'),
+      (Join-Path $SkillRoot 'scripts\image-metadata.mjs')
+    )
+    # Treat the generated validator set as one versioned unit. A legacy engine
+    # either has all of it or is fingerprinted by the original three files.
+    $runtimeFiles = if (@($extendedRuntimeFiles | Where-Object {
+      -not (Test-Path -LiteralPath $_ -PathType Leaf)
+    }).Count -eq 0) { $baseRuntimeFiles + $extendedRuntimeFiles } else { $baseRuntimeFiles }
     $componentHashes = @()
     foreach ($runtimeFile in $runtimeFiles) {
       if (-not (Test-Path -LiteralPath $runtimeFile -PathType Leaf)) { return '' }
       $componentHashes += (Get-FileHash -LiteralPath $runtimeFile -Algorithm SHA256).Hash.ToLowerInvariant()
     }
+    if ($componentHashes.Count -lt 3) { return '' }
     $sha = [System.Security.Cryptography.SHA256]::Create()
     try {
       $bytes = [System.Text.Encoding]::UTF8.GetBytes(($componentHashes -join '|'))

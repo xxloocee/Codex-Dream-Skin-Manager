@@ -471,7 +471,7 @@ namespace CodexDreamSkinManager
             safeAreaCombo = CreateCombo(new[] { "自动", "左侧", "右侧", "居中", "关闭" }, 0);
             fields.Children.Add(safeAreaCombo);
             fields.Children.Add(FieldLabel("任务页模式"));
-            taskModeCombo = CreateCombo(new[] { "自动", "氛围", "横幅", "关闭" }, 0);
+            taskModeCombo = CreateCombo(new[] { "自动", "氛围", "横幅", "完整", "关闭" }, 0);
             fields.Children.Add(taskModeCombo);
 
             fields.Children.Add(FieldLabel("主题强调色"));
@@ -961,7 +961,8 @@ namespace CodexDreamSkinManager
                 PositionX = data.PositionX, PositionY = data.PositionY, Zoom = data.Zoom,
                 PositionMode = data.PositionMode, FramingEnabled = data.FramingEnabled,
                 TaskMode = data.TaskMode, Accent = data.Accent, Category = data.Category,
-                Tags = new List<string>(data.Tags ?? new List<string>())
+                Tags = new List<string>(data.Tags ?? new List<string>()),
+                SafeCssPath = data.SafeCssPath, LicensePath = data.LicensePath
             };
         }
 
@@ -1035,6 +1036,12 @@ namespace CodexDreamSkinManager
                     PositionMode = theme.PositionMode, FramingEnabled = theme.FramingEnabled,
                     TaskMode = theme.TaskMode, Accent = theme.Accent
                 };
+                if (!string.IsNullOrWhiteSpace(theme.ThemeDirectory)) {
+                    string css = Path.Combine(theme.ThemeDirectory, "theme.css");
+                    string license = Path.Combine(theme.ThemeDirectory, "LICENSE.txt");
+                    if (File.Exists(css)) data.SafeCssPath = css;
+                    if (File.Exists(license)) data.LicensePath = license;
+                }
                 ThemePackageService.WritePackage(dialog.FileName, data);
                 SetMessage("主题包已导出：" + Path.GetFileName(dialog.FileName), false);
             }
@@ -1670,7 +1677,7 @@ namespace CodexDreamSkinManager
         private static string MapCategory(int index) { string[] values = { "all", "dream", "nature", "cyber", "minimal", "dark", "warm", "uncategorized" }; return values[Math.Max(0, Math.Min(index, values.Length - 1))]; }
         private static string MapSource(int index) { return index == 1 ? "preset" : index == 2 ? "saved" : "all"; }
         private static string MapSafeArea(int index) { string[] values = { "auto", "left", "right", "center", "none" }; return values[Math.Max(0, Math.Min(index, values.Length - 1))]; }
-        private static string MapTaskMode(int index) { string[] values = { "auto", "ambient", "banner", "off" }; return values[Math.Max(0, Math.Min(index, values.Length - 1))]; }
+        private static string MapTaskMode(int index) { string[] values = { "auto", "ambient", "banner", "full", "off" }; return values[Math.Max(0, Math.Min(index, values.Length - 1))]; }
 
         private static SolidColorBrush BrushFrom(string value)
         {

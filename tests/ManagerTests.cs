@@ -100,6 +100,32 @@ namespace CodexDreamSkinManager
                 finally { File.Delete(script); }
             });
 
+            Run("Binds theme tags as one PowerShell array parameter", delegate
+            {
+                ThemeOption theme = new ThemeOption {
+                    Id = "tagged",
+                    Name = "Tagged",
+                    ImagePath = "C:\\theme.png",
+                    Category = "dream",
+                    Appearance = "auto",
+                    Tags = new List<string> { "云层", "柔光" }
+                };
+                List<ScriptArgument> arguments = new List<ScriptArgument>();
+                MethodInfo addThemeArguments = typeof(DreamSkinService).GetMethod(
+                    "AddThemeArguments", BindingFlags.Static | BindingFlags.NonPublic);
+                if (addThemeArguments == null) throw new Exception("AddThemeArguments was not found.");
+                addThemeArguments.Invoke(null, new object[] { arguments, theme });
+                int tagsParameterCount = 0;
+                int tagsParameterIndex = -1;
+                for (int index = 0; index < arguments.Count; index++)
+                {
+                    if (arguments[index].Text == "-TagsJson") { tagsParameterCount++; tagsParameterIndex = index; }
+                }
+                AssertEqual("1", tagsParameterCount.ToString());
+                AssertTrue(tagsParameterIndex >= 0 && tagsParameterIndex + 1 < arguments.Count);
+                AssertEqual("[\"云层\",\"柔光\"]", arguments[tagsParameterIndex + 1].Text);
+            });
+
             Run("Maps status JSON", delegate
             {
                 DreamSkinStatus status = DreamSkinService.ParseStatus("{\"isRunning\":true,\"isPaused\":false,\"activeThemeId\":\"forest-mist\",\"activeTheme\":\"森林薄雾\",\"activeFocusX\":0.7,\"activeFocusY\":0.4,\"activePositionX\":0.2,\"activePositionY\":-0.1,\"activeZoom\":1.3,\"activePositionMode\":\"free\",\"activeFramingEnabled\":true,\"themes\":[]}");
@@ -353,7 +379,7 @@ namespace CodexDreamSkinManager
                 {
                     string image = CreateJpeg(root, "art.jpg");
                     string package = Path.Combine(root, "valid.cdskin");
-                    CreateCdskin(package, "{\"formatVersion\":1,\"id\":\"sample\",\"name\":\"示例主题\",\"image\":\"art.jpg\",\"category\":\"custom\",\"tags\":[\"测试\"],\"appearance\":\"dark\",\"art\":{\"focusX\":0.7,\"focusY\":0.4,\"positionX\":0.35,\"positionY\":-0.25,\"zoom\":1.6,\"positionMode\":\"free\",\"safeArea\":\"left\",\"taskMode\":\"ambient\"},\"palette\":{\"accent\":\"#112233\"}}", image, null);
+                    CreateCdskin(package, "{\"formatVersion\":1,\"id\":\"sample\",\"name\":\"示例主题\",\"image\":\"art.jpg\",\"category\":\"custom\",\"tags\":[\"测试\"],\"appearance\":\"dark\",\"art\":{\"focusX\":0.7,\"focusY\":0.4,\"positionX\":0.35,\"positionY\":-0.25,\"zoom\":1.6,\"positionMode\":\"free\",\"safeArea\":\"left\",\"taskMode\":\"full\"},\"palette\":{\"accent\":\"#112233\"}}", image, null);
                     Type serviceType = typeof(MainWindow).Assembly.GetType("CodexDreamSkinManager.ThemePackageService", true);
                     MethodInfo read = serviceType.GetMethod("ReadPackage", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
                     object data = read.Invoke(null, new object[] { package, Path.Combine(root, "extract") });
@@ -365,6 +391,7 @@ namespace CodexDreamSkinManager
                     AssertClose(-0.25, Convert.ToDouble(ReadMemberObject(data, "PositionY")));
                     AssertClose(1.6, Convert.ToDouble(ReadMemberObject(data, "Zoom")));
                     AssertEqual("free", ReadMember(data, "PositionMode"));
+                    AssertEqual("full", ReadMember(data, "TaskMode"));
                     AssertTrue(Convert.ToBoolean(ReadMemberObject(data, "FramingEnabled")));
                     AssertTrue(Contains(ReadMemberObject(data, "Tags") as IEnumerable, "测试"));
                     AssertTrue(File.Exists(ReadMember(data, "ImagePath")));
@@ -421,6 +448,10 @@ namespace CodexDreamSkinManager
                     string extraFiles = Path.Combine(root, "extra-files.cdskin");
                     CreateCdskin(extraFiles, manifest, image, "extra.txt", "extra-2.txt", "extra-3.txt");
                     AssertInvocationThrows(read, new object[] { extraFiles, Path.Combine(root, "extract-c") });
+
+                    string caseDuplicate = Path.Combine(root, "case-duplicate.cdskin");
+                    CreateCdskin(caseDuplicate, manifest, image, "ART.JPG");
+                    AssertInvocationThrows(read, new object[] { caseDuplicate, Path.Combine(root, "extract-c2") });
 
                     string stringTags = Path.Combine(root, "string-tags.cdskin");
                     CreateCdskin(stringTags, manifest.Replace("\"appearance\":\"auto\"", "\"tags\":\"abc\",\"appearance\":\"auto\""), image, null);
@@ -787,7 +818,7 @@ namespace CodexDreamSkinManager
 
             Run("Publishes semantic application version", delegate
             {
-                AssertEqual("1.2.0.0", typeof(Program).Assembly.GetName().Version.ToString());
+                AssertEqual("1.2.1.0", typeof(Program).Assembly.GetName().Version.ToString());
             });
 
             Run("Converts focus percentage", delegate
@@ -805,6 +836,12 @@ namespace CodexDreamSkinManager
                 options.Zoom = double.NaN;
                 AssertThrows(delegate { options.Validate(); });
                 options.Zoom = 1;
+                options.FocusX = double.NaN;
+                AssertThrows(delegate { options.Validate(); });
+                options.FocusX = 0.5;
+                options.FocusY = 1.1;
+                AssertThrows(delegate { options.Validate(); });
+                options.FocusY = 0.5;
                 options.PositionMode = "floating";
                 AssertThrows(delegate { options.Validate(); });
             });

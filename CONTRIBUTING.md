@@ -6,7 +6,7 @@
 
 - Windows 10/11。
 - Node.js 22+。
-- 本项目与 [Codex Dream Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 的本地副本。
+- 本项目仓库已包含同步后的 `windows/` 与 `macos/` 运行时；如需比较上游变更，再配置 [Codex Dream Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 远端即可。
 - 不需要 .NET SDK；构建使用 Windows 自带的 .NET Framework 编译器。
 
 ## 开发流程
@@ -18,7 +18,14 @@
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 `
-  -SkillRoot "..\Codex-Dream-Skin\windows"
+  -SkillRoot ".\windows"
+```
+
+macOS 运行时测试需要在 macOS 上执行；若机器未安装官方 Codex，可跳过需签名客户端的集成段：
+
+```bash
+cd macos
+NODE="$(command -v node)" CODEX_DREAM_SKIN_SKIP_SIGNED_RUNTIME_TESTS=1 npm test
 ```
 
 5. 如果修改 UI，请附上截图并说明已验证的窗口尺寸或交互路径。
