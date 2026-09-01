@@ -54,7 +54,7 @@ jobs:
           }
           $readme = Get-Content -LiteralPath 'README.md' -Raw -Encoding UTF8
           $readmeVersionMatch = [regex]::Match($readme,
-            '(?m)^.*?`(\d+\.\d+\.\d+)`.*Windows.*Codex.*$')
+            '(?m)^\s*管理器版本：\s*`(\d+\.\d+\.\d+)`')
           if (-not $readmeVersionMatch.Success) {
             throw 'README current version is missing.'
           }
