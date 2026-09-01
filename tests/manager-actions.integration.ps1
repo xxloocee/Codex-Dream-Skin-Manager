@@ -8,7 +8,16 @@ $ErrorActionPreference = 'Stop'
 $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('dream-skin-manager-integration-' + [guid]::NewGuid().ToString('N'))
 $stateRoot = Join-Path $testRoot 'state'
 $fixtureSkillRoot = Join-Path $testRoot 'windows'
+$sourceSkillRoot = [System.IO.Path]::GetFullPath($SkillRoot)
+$sourceInjectorPath = Join-Path $sourceSkillRoot 'scripts\injector.mjs'
+$sourceInjectorHashBefore = if (Test-Path -LiteralPath $sourceInjectorPath -PathType Leaf) {
+  (Get-FileHash -LiteralPath $sourceInjectorPath -Algorithm SHA256).Hash
+} else { '' }
 Copy-Item -LiteralPath $SkillRoot -Destination $fixtureSkillRoot -Recurse
+$fixtureSkillRoot = [System.IO.Path]::GetFullPath($fixtureSkillRoot)
+if ([string]::Equals($sourceSkillRoot, $fixtureSkillRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+  throw 'Integration fixture must not alias the supplied SkillRoot.'
+}
 $SkillRoot = $fixtureSkillRoot
 . (Join-Path $SkillRoot 'scripts\runtime-version.ps1')
 
@@ -84,6 +93,12 @@ try {
   Assert-Equal 'preset' $catalogTheme[0].source 'Catalog source was not returned.'
   Assert-Equal 'locked' $catalogTheme[0].positionMode 'Legacy catalog themes did not default to locked movement.'
   Assert-Equal $false $catalogTheme[0].framingEnabled 'Legacy catalog themes unexpectedly enabled custom framing.'
+  $presetRows = @($initial.themes | Where-Object { $_.isPreset })
+  $duplicatePresetIds = @($presetRows | Group-Object id | Where-Object { $_.Count -gt 1 })
+  Assert-Equal 0 $duplicatePresetIds.Count 'Status returned duplicate preset identities.'
+  Assert-Equal 0 @($presetRows | Where-Object { $_.themeDirectory }).Count 'Preset rows exposed a deletable saved-theme directory.'
+  $gothicRow = @($presetRows | Where-Object { $_.id -eq 'preset-gothic-void-crusade' })
+  Assert-Equal 1 $gothicRow.Count 'Directory preset package was not returned by Status.'
   Write-Host 'PASS: preset catalog metadata is returned by status'
   $null = Invoke-Manager -Arguments (@(
       '-Action', 'ApplyTheme', '-ImagePath', $catalogTheme[0].imagePath,
@@ -100,13 +115,37 @@ try {
   Assert-Equal 'left' $appliedPreset.art.safeArea 'Preset safe area was not applied.'
   Assert-Equal 'ambient' $appliedPreset.art.taskMode 'Preset task mode was not applied.'
   Assert-Equal '#7788CC' $appliedPreset.palette.accent 'Preset accent was not applied.'
+  Assert-Equal 'preset-catalog-one' $appliedPreset.id 'Preset identity was not preserved on apply.'
+  Assert-Equal 'dream' $appliedPreset.category 'Preset category was not preserved on apply.'
+  Assert-True (@($appliedPreset.tags) -contains '柔光') 'Preset tags were not preserved on apply.'
   Write-Host 'PASS: preset visual parameters are applied to the active theme'
-  $null = Invoke-Manager -Arguments (@(
-      '-Action', 'ApplyTheme', '-ImagePath', $catalogThemeTwo[0].imagePath,
-      '-Name', $catalogThemeTwo[0].name, '-Appearance', $catalogThemeTwo[0].appearance,
-      '-FocusX', "$($catalogThemeTwo[0].focusX)", '-FocusY', "$($catalogThemeTwo[0].focusY)",
-      '-SafeArea', $catalogThemeTwo[0].safeArea, '-TaskMode', $catalogThemeTwo[0].taskMode
+  $null = Invoke-Manager -Arguments (@('-Action', 'ApplyTheme', '-ImagePath', $gothicRow[0].imagePath) + $common)
+  $appliedGothic = [System.IO.File]::ReadAllText((Join-Path $stateRoot 'active-theme\theme.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+  Assert-Equal 'preset-gothic-void-crusade' $appliedGothic.id 'Directory preset identity was not preserved on apply.'
+  Assert-Equal 'Codex Dream Skin' $appliedGothic.promoTitle 'Directory preset metadata was not preserved on apply.'
+  Assert-Equal '#c8a55a' $appliedGothic.colors.accent 'Directory preset palette metadata was not preserved on apply.'
+  Write-Host 'PASS: packaged preset metadata is applied without staging a saved theme'
+  $customTagsImage = Join-Path $testRoot 'custom-tags.jpg'
+  Copy-Item -LiteralPath $catalogImages[0].FullName -Destination $customTagsImage -Force
+  # Keep the image valid but make its content unique so ApplyTheme does not
+  # intentionally resolve it back to the matching built-in preset metadata.
+  $customTagsStream = [System.IO.File]::Open($customTagsImage, [System.IO.FileMode]::Append)
+  try { $customTagsStream.WriteByte(0) } finally { $customTagsStream.Dispose() }
+  $multiTagResult = Invoke-Manager -Arguments (@(
+      '-Action', 'ImportTheme', '-ImagePath', $customTagsImage,
+      '-Name', '带标签主题', '-Appearance', 'auto',
+      '-TagsJson', '[1,2]', '-KeepCurrent'
     ) + $common)
+  $multiTagTheme = [System.IO.File]::ReadAllText((Join-Path $multiTagResult.themeDirectory 'theme.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+  Assert-True (@($multiTagTheme.tags) -contains '1' -and @($multiTagTheme.tags) -contains '2') 'TagsJson did not bind multiple tags.'
+  $singleTagResult = Invoke-Manager -Arguments (@(
+      '-Action', 'ImportTheme', '-ImagePath', $customTagsImage,
+      # Numeric JSON avoids native PowerShell quote stripping while still
+      # exercising the PowerShell 5.1 single-element-array unwrapping bug.
+      '-Name', '单标签主题', '-TagsJson', '[1]', '-KeepCurrent'
+    ) + $common)
+  $singleTaggedTheme = [System.IO.File]::ReadAllText((Join-Path $singleTagResult.themeDirectory 'theme.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+  Assert-True (@($singleTaggedTheme.tags).Count -eq 1 -and @($singleTaggedTheme.tags)[0] -eq '1') 'TagsJson did not preserve a single tag under Windows PowerShell.'
   $null = Invoke-Manager -Arguments (@('-Action', 'Pause') + $common)
   $null = Invoke-Manager -Arguments (@('-Action', 'ResetTheme') + $common)
   $resetStatus = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
@@ -488,8 +527,22 @@ try {
   $engineInjector = Join-Path $engineRoot 'scripts\injector.mjs'
   [System.IO.File]::WriteAllText($sourceInjector, 'setInterval(() => {}, 1000);', [System.Text.UTF8Encoding]::new($false))
   Copy-Item -LiteralPath $sourceInjector -Destination $engineInjector -Force
-  Copy-Item -LiteralPath (Join-Path $SkillRoot 'assets\renderer-inject.js') -Destination (Join-Path $engineRoot 'assets\renderer-inject.js') -Force
-  Copy-Item -LiteralPath (Join-Path $SkillRoot 'assets\dream-skin.css') -Destination (Join-Path $engineRoot 'assets\dream-skin.css') -Force
+  foreach ($runtimeAsset in @(
+    'assets\renderer-inject.js',
+    'assets\dream-skin.css',
+    'assets\selectors.json',
+    'assets\safe-css-validator.mjs',
+    'assets\theme-package-validator.mjs',
+    'scripts\image-metadata.mjs'
+  )) {
+    $sourceRuntimeAsset = Join-Path $SkillRoot $runtimeAsset
+    if (Test-Path -LiteralPath $sourceRuntimeAsset -PathType Leaf) {
+      $engineRuntimeAsset = Join-Path $engineRoot $runtimeAsset
+      $engineRuntimeDirectory = [System.IO.Path]::GetDirectoryName($engineRuntimeAsset)
+      New-Item -ItemType Directory -Force -Path $engineRuntimeDirectory | Out-Null
+      Copy-Item -LiteralPath $sourceRuntimeAsset -Destination $engineRuntimeAsset -Force
+    }
+  }
   $engineProcess = $null
   try {
     $engineProcess = Start-Process -FilePath (Get-Command node.exe).Source `
@@ -557,6 +610,11 @@ try {
   }
   Assert-Equal $true $rejectedCorruptState 'Status accepted a corrupt state file.'
   Write-Host 'PASS: status rejects corrupt state files'
+  if ($sourceInjectorHashBefore) {
+    $sourceInjectorHashAfter = (Get-FileHash -LiteralPath $sourceInjectorPath -Algorithm SHA256).Hash
+    Assert-Equal $sourceInjectorHashBefore $sourceInjectorHashAfter 'Integration test modified the supplied SkillRoot injector.'
+    Write-Host 'PASS: integration fixture leaves the supplied runtime injector unchanged'
+  }
 } finally {
   Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

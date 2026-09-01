@@ -3,11 +3,21 @@ param(
   [Parameter(Mandatory = $true)]
   [ValidatePattern('^\d+\.\d+\.\d+$')]
   [string]$Version,
-  [string]$PackageRoot = (Join-Path $PSScriptRoot '..\build\CodexDreamSkinManager'),
-  [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\dist')
+  [string]$PackageRoot,
+  [string]$OutputDirectory
 )
 
 $ErrorActionPreference = 'Stop'
+$scriptRoot = $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($scriptRoot)) {
+  $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+if ([string]::IsNullOrWhiteSpace($PackageRoot)) {
+  $PackageRoot = Join-Path $scriptRoot '..\build\CodexDreamSkinManager'
+}
+if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
+  $OutputDirectory = Join-Path $scriptRoot '..\dist'
+}
 $package = [System.IO.Path]::GetFullPath($PackageRoot)
 $output = [System.IO.Path]::GetFullPath($OutputDirectory)
 $executable = Join-Path $package 'CodexDreamSkinManager.exe'

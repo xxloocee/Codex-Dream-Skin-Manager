@@ -4,6 +4,9 @@ param(
   [string]$ThemeDirectory,
   [string]$ImagePath,
   [string]$Name,
+  [string]$ThemeId = 'custom',
+  [string]$Category = 'custom',
+  [string]$TagsJson = '',
   [ValidateSet('auto','light','dark')][string]$Appearance = 'auto',
   [ValidateRange(0.0, 1.0)][double]$FocusX = 0.5,
   [ValidateRange(0.0, 1.0)][double]$FocusY = 0.5,
@@ -13,7 +16,7 @@ param(
   [ValidateSet('locked','free')][string]$PositionMode = 'locked',
   [ValidateSet('true','false')][string]$FramingEnabled = 'false',
   [ValidateSet('auto','left','right','center','none')][string]$SafeArea = 'auto',
-  [ValidateSet('auto','ambient','banner','off')][string]$TaskMode = 'auto',
+  [ValidateSet('auto','ambient','banner','full','off')][string]$TaskMode = 'auto',
   [ValidatePattern('^$|^#[0-9A-Fa-f]{6}$')][string]$Accent = ''
 )
 
@@ -120,13 +123,17 @@ try {
       $applyArguments += @('-ThemeDirectory', $ThemeDirectory)
     } else {
       $applyArguments += @(
-        '-ImagePath', $ImagePath, '-Name', $Name, '-Appearance', $Appearance,
+        '-ImagePath', $ImagePath, '-Name', $Name, '-ThemeId', $ThemeId, '-Category', $Category,
+        '-Appearance', $Appearance,
         '-FocusX', "$FocusX", '-FocusY', "$FocusY", '-SafeArea', $SafeArea,
         '-PositionX', "$PositionX", '-PositionY', "$PositionY", '-Zoom', "$Zoom",
         '-PositionMode', $PositionMode,
         '-FramingEnabled', "$FramingEnabled",
         '-TaskMode', $TaskMode
       )
+      if (-not [string]::IsNullOrWhiteSpace($TagsJson)) {
+        $applyArguments += @('-TagsJson', $TagsJson)
+      }
       if (-not [string]::IsNullOrWhiteSpace($Accent)) {
         $applyArguments += @('-Accent', $Accent)
       }

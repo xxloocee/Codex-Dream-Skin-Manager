@@ -1,21 +1,24 @@
 # Codex Dream Skin Manager
 
-基于 [Fei-Away/Codex-Dream-Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 开发的 Windows 便携式 WPF 管理器，为其增加主题浏览、导入、应用、暂停、重置和紧急恢复操作界面。
+基于 [Fei-Away/Codex-Dream-Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 开发的跨平台主题管理项目：Windows 保留本项目的 WPF 可视化管理器，macOS 复用上游菜单栏客户端，并共享同一套运行时、主题契约和图片 framing 能力。
 
-当前版本：`1.2.0`。项目仅支持 Windows，并以微软商店版 Codex 为目标环境。
+管理器版本：`1.2.1`；同步运行时版本：`1.5.16`。运行时支持 Windows 和 macOS；WPF 管理器仍是 Windows 专用界面，macOS 提供上游菜单栏界面及一个共享状态/framing 契约的 `manager-actions-macos.sh` 动作适配层。
 
 ## 下载
 
 正式版本从 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载
-`CodexDreamSkinManager-v1.2.0-setup.exe`（推荐安装版）或
-`CodexDreamSkinManager-v1.2.0-windows.zip`（便携版）。安装版默认安装到当前用户目录，
+`CodexDreamSkinManager-v1.2.1-setup.exe`（推荐安装版）或
+`CodexDreamSkinManager-v1.2.1-windows.zip`（便携版）。安装版默认安装到当前用户目录，
 不请求管理员权限，并创建开始菜单快捷方式；桌面快捷方式可在安装时选择。两种发布包都
 内置 Node.js，用户无需另行安装运行环境。便携版必须完整解压，不能只复制 EXE。
 发布页同时提供对应的 SHA-256 校验文件。
 
+macOS 端当前沿用仓库内同步的上游菜单栏客户端与脚本运行时，使用方法见
+[`macos/README.md`](macos/README.md)；Windows 发布包仍由本项目的 WPF 管理器负责。
+
 ## 项目来源与致谢
 
-本项目复用 Codex Dream Skin 的 Windows 脚本、主题运行机制和恢复流程，并在此基础上增加可视化管理界面与主题管理能力；构建和运行边界仍以该上游项目为基础。
+本项目复用 Codex Dream Skin 的 Windows/macOS 运行时、主题机制和恢复流程，并在此基础上增加 Windows 可视化管理界面与主题管理能力；构建和运行边界仍以该上游项目为基础。
 
 本软件的操作界面由群友“花落情已逝”基于上述上游项目开发。感谢 [Fei-Away](https://github.com/Fei-Away) 及 Codex Dream Skin 的所有贡献者提供底层换肤能力，也感谢“花落情已逝”完成本项目的可视化操作体验。
 
@@ -35,37 +38,29 @@
 
 ## 环境要求
 
-- Windows 10 或 Windows 11。
-- 微软商店版 Codex。
-- 运行正式发布包无需安装 Node.js；脚本会优先使用包内运行时。
+- Windows 10 或 Windows 11（WPF 管理器）。
+- macOS 13 Ventura 或更高版本（上游原生菜单栏客户端）。
+- 对应平台的 Codex 客户端。
+- Windows 发布包内置 Node.js；macOS 脚本使用官方 Codex 客户端自带的已签名 Node.js，无需另装全局 Node.js。
 - 从源码构建时需要 Node.js 22 或更高版本，且安装目录中应包含 Node.js `LICENSE`。
-- 构建时需要 [Codex Dream Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 的 `windows` 目录作为底层脚本来源。
-- GitHub Actions 固定使用 Codex Dream Skin 提交 `3af1d6d62f3a0388cc640d2f497ac3100998938e`；本地构建应使用同一提交以复现 CI 产物。
+- Windows 构建默认使用仓库内已同步的 `windows/` 运行时；传入 `-SkillRoot` 时可针对其他上游快照做兼容性验证。
 - 使用 Windows 自带的 .NET Framework 编译器，不需要安装 .NET SDK。
 
 ## 构建与运行
-
-先准备两个项目目录，例如：
-
-```text
-github\
-├── Codex-Dream-Skin\
-└── CodexDreamSkinManager\
-```
 
 在本项目根目录执行：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 `
-  -SkillRoot "..\Codex-Dream-Skin\windows"
+  -SkillRoot ".\windows"
 ```
 
 构建脚本会：
 
-1. 编译并执行 50 项 C# 测试。
-2. 复制外部项目的完整 Windows 脚本。
+1. 编译并执行 53 项 C# 测试。
+2. 复制已同步的上游 Windows 运行时。
 3. 覆盖本项目维护的 `manager-actions.ps1`、`presets` 和可再分发默认图片。
-4. 在打包副本中加入图片位置、中心缩放和自由移动填充支持，并执行渲染行为测试。
+4. 校验共享运行时中的图片位置、缩放和移动模式契约，并执行渲染行为测试。
 5. 复制构建所用的 Node.js 可执行文件，运行脚本优先选择该包内路径。
 6. 附带本项目、Node.js 和外部项目的软件许可证与 NOTICE。
 7. 对组合后的目录执行 PowerShell 隔离集成验证。
@@ -96,7 +91,7 @@ $iscc = .\tools\prepare-inno-setup.ps1
 .\tools\package-installer.ps1 -IsccPath $iscc
 ```
 
-安装包会生成到 `dist\CodexDreamSkinManager-v1.2.0-setup.exe`。Inno Setup 只用于构建，
+安装包会生成到 `dist\CodexDreamSkinManager-v1.2.1-setup.exe`。Inno Setup 只用于构建，
 不会成为用户电脑上的运行依赖。
 
 仅执行测试：
@@ -104,7 +99,7 @@ $iscc = .\tools\prepare-inno-setup.ps1
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 `
   -TestsOnly `
-  -SkillRoot "..\Codex-Dream-Skin\windows"
+  -SkillRoot ".\windows"
 ```
 
 ## 操作语义
@@ -130,11 +125,17 @@ src/                 WPF 应用、服务层和数据模型
 tests/               C# 单元/界面结构测试与 PowerShell 集成测试
 windows/scripts/     本项目维护的管理动作脚本
 windows/presets/     内置主题目录与图片
-packaging/           对打包运行时进行严格锚点扩展
+macos/scripts/       上游 macOS 运行时与跨平台管理动作适配层
+runtime/             双端唯一可编辑的渲染器、CSS、校验器和图片元数据解析器
+packaging/           共享运行时契约校验
 assets/              应用图标
 tools/               项目维护工具
 build.ps1            统一测试、组装与构建入口
 ```
+
+修改 `runtime/` 后运行 `node tools/sync-runtime-assets.mjs`，它会生成
+`windows/assets` 和 `macos/assets` 的一致副本。macOS 端的动作入口为
+`macos/scripts/manager-actions-macos.sh`，输出的状态 JSON 与 Windows 管理器使用相同的主题 framing 字段。
 
 架构边界保持简单：WPF 只负责交互和状态展示，`DreamSkinService` 负责管理动作协议，PowerShell 脚本负责 Windows 状态和主题文件写入。管理器不会直接修改 Codex 官方安装文件。
 
@@ -163,4 +164,4 @@ build.ps1            统一测试、组装与构建入口
 
 本项目采用 [MIT License](LICENSE) 开源。你可以使用、复制、修改、合并、发布和再分发本项目代码，但必须保留原版权声明和许可证文本。
 
-构建产物会同时携带本项目 LICENSE。来自 Codex Dream Skin 的软件文件按其独立 MIT License 提供，对应许可证和 NOTICE 位于发布目录的 `THIRD_PARTY` 中。外部项目中未明确授权再分发的 `dream-reference.jpg` 不会进入发布包，而是由本项目维护的中性图片替换。官方 CI 产物固定使用上述依赖提交；本地构建的实际依赖版本由传入的 `-SkillRoot` 决定。详情见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+构建产物会同时携带本项目 LICENSE。来自 Codex Dream Skin 的软件文件按其独立 MIT License 提供，对应许可证和 NOTICE 位于发布目录的 `THIRD_PARTY` 中。外部项目中未明确授权再分发的 `dream-reference.jpg` 不会进入发布包，而是由本项目维护的中性图片替换。Windows/macOS 运行时版本以仓库内同步的 `upstream/main` 快照为准；本地传入 `-SkillRoot` 仅用于兼容性验证。详情见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

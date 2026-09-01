@@ -2,7 +2,7 @@
 
 ## Codex Dream Skin
 
-构建产物包含来自 [Codex Dream Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 的 Windows 脚本和相关软件文件。GitHub Actions 生成的官方 CI 产物固定来源提交为 `3af1d6d62f3a0388cc640d2f497ac3100998938e`；本地构建的实际来源由传入 `build.ps1` 的 `-SkillRoot` 决定。
+构建产物包含来自 [Codex Dream Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 的 Windows/macOS 运行时和相关软件文件。仓库内同步的运行时来源为上游 `main` 提交 `e0341de`（发布版本 `v1.5.16`）；本地传入 `build.ps1` 的 `-SkillRoot` 仅用于兼容性验证。
 
 这些软件文件按上游 MIT License 提供。发布目录中会附带：
 

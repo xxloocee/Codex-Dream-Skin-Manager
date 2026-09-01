@@ -1,0 +1,240 @@
+# Windows Changelog
+
+## 1.5.16 — 2026-09-02
+
+### 新增
+
+- 托盘新增 System / English / 中文语言选择，选择会持久保存，并覆盖状态、主题操作、更新、恢复/卸载和一键换肤流程；System 会根据系统 UI 语言自动选择中文或英文（#351）。
+
+### 修复
+
+- 完整补齐 Codex 26.818 主题兼容（#373，感谢 @QingYe-05 的 Windows 实机源码证据）：托盘“更换背景图”现在保留当前 `theme.json`、颜色、构图参数和已验证的 `theme.css`；共享 renderer 同时清除 sticky composer 的两层原生渐变、约束 Markdown 宽表、映射真实用户气泡，并改善流式思考、命令详情、新版动作按钮、横向壁纸和顶部栏的可读性；固定品牌/状态伪文案不再覆盖原生界面。
+- 修复新版 Codex 把输入框壳迁移到 `_ComposerLayoutRoot_` 后，Dream Skin 误把 `_ComposerLayoutFooter_` 标记为 composer、导致主题输入框样式只落在底部工具栏的问题；同时排除 `/avatar-overlay` 与 Pet composition surface，并在发现旧注入时执行移除与验证，避免主题壁纸污染透明 Pet 窗口形成矩形背景。
+- 修复 Chromium 136 及更高版本上 Dream Skin 完全打不开 CDP、主题一点都不生效的问题（#235、#363）：Chromium 会忽略指向默认数据目录的 `--remote-debugging-port`，而 Windows 启动器此前只在显式传入 `-ProfilePath` 时才追加 `--user-data-dir`，而出厂路径里没有任何调用方传过它——这个分支恒为假。现在默认创建并复用 `%LOCALAPPDATA%\CodexDreamSkin\cdp-profile`，与官方 Codex profile 隔离，不修改 WindowsApps；显式 `-ProfilePath` 仍可覆盖。注意首次使用受管 profile 需要在该 profile 内重新登录一次 Codex，之后会持久保留。
+- 修复 Windows 首次或冷启动状态下从 DreamSkin.cc 一键换肤被错误拒绝的问题。客户端现在会在下载主题包前安全启动并验证当前主题；如果官方 Codex 未提供可用 CDP 端点，则在任何主题库或活动主题写入前返回明确失败。
+- 修复透明或极端显式强调色下按钮文字对比度不稳定的问题：共享渲染器现在按真实 composer 面板表面和最坏背景计算前景色，并正确处理 alpha 与 RGB 夹取（#351）。
+- 修复 Windows 启动失败后只留下颜色、背景等部分外观状态的问题（#354、#357）：新增有界持久 journal 和三方恢复，保留较新的用户编辑；一键换肤在慢启动、超时或渲染未确认时不强杀仍运行的子进程，也不留下混合的活动主题文件，并提供可区分的有界失败原因。该修复处理本地失败启动的状态一致性，不改变官方 Codex 的 CDP 能力。
+- 修复 Windows PowerShell 5.1 在中文、日文等非 ASCII 临时目录下读取
+  bundled Node.js `process.execPath` 时受控制台代码页影响，导致安装器错误
+  报告「Node.js executable path could not be validated」的问题。路径探针现在
+  通过 ASCII Base64 传输原始 UTF-8 字节并严格解码，仍保留签名、版本和文件
+  存在性校验；无效探针不会回退到未经确认的候选路径（#337）。
+
+- Windows 路径穿越校验此前会把合法的、以 `.` 开头的主题文件名也当作可疑路径拒绝；现在能正确区分它们与真正的 `..` 路径穿越（#296）。
+- Windows 运行时加载主题前强制校验 `schemaVersion` 必须是数字 `1`，拒绝缺失或未来版本的 schema（#299）。
+- 主题包 manifest 时间戳校验拒绝不合法的 RFC 3339 值（#297），双平台共享。
+
+### 内部
+
+- 同步 v1.5.16 版本号，发布 #373 在 v1.5.15 中遗漏的完整 Codex 26.818 兼容修复。
+- 同步 v1.5.15 版本号，发布 Codex 26.814-26.818 composer 根节点与 Pet 透明 surface 兼容修复、原生侧栏图标颜色保留，以及受限 Safe CSS composer 边框桥接（#372、#368、#366）。
+- 同步 v1.5.14 版本号，发布 Windows 一键换肤冷启动会话基线修复（#352、#360）。
+- 同步 v1.5.13 版本号，发布本轮双端语言、对比度和 Windows 失败启动外观回滚修复。
+- 同步 v1.5.12 版本号，发布上述修复。
+- README / SECURITY.md 补充说明换肤期间本机回环 CDP 调试口未做身份验证这一既有安全边界（#18）。
+- CI 新增对 shared runtime 与 tools 目录的测试覆盖（#300）。
+- 修复共享的 `image-metadata.mjs` 生成源与 macOS 产物不同步的问题：Windows 一侧此前完全没有拿到 `readRawDimensions` 拆分后的能力，现已随双端产物重新生成补上。
+
+- 修复 Codex Desktop 26.727 设置页改用新版导航标记后，被注入器误判为非 ChatGPT 页面并报 `No page matched the expected ChatGPT shell markers` 的问题。双端共享契约现识别 `data-settings-panel-slug="general-settings"`，同时保留旧版外观设置锚点和严格的 `app:` 来源校验；首页与任务页的 L1 校验边界不变。
+- 修复 Codex Desktop 26.727 更新后主区域、顶栏和顶部渐隐仍保持原生白底，或注入被错误报告为成功的问题（#320、#322、#326、#330）。共享选择器现同时识别旧结构与新版 app-shell 标记，首页和普通任务页必须达到完整 L1 可见性后才会提交成功。
+- 同 ID 社区主题再次导入时原地升级，不再生成重复的 `id-2` / `id-3` 目录；仅在身份与完整语义指纹都匹配时清理旧后缀副本，缺失或非法 ID 使用双端一致的稳定映射（#318）。
+- 主题目录替换增加持久化 journal 与 commit marker。PowerShell 进程被强制终止或系统重启后，托盘启动和下一次导入会恢复未提交的旧主题；只有已持久提交且指纹匹配的新主题会被保留，损坏或冲突证据 fail-closed。
+- 社区 Safe CSS 与网站合同对齐：保留注册壁纸、支持有界组合玻璃滤镜，并修复搜索框出现在输入框前时漏标真实 composer 的问题。
+- 修复 Windows 上从 Chrome/Edge 点击 DreamSkin.cc「一键换肤」无法稳定唤起或完成的问题（#307）。安装器持久注册项不再把 64 位浏览器不可访问的 `{sysnative}` 写入 HKCU `dreamskin://` handler；handler 同时接受网页规范链接和 Windows/浏览器归一化后的 `dreamskin://apply/?version=...` 形式；应用阶段与 macOS 对齐为 `colors` 合同、可见首页验证和首次失败后的激活 + `--once` 重试，并加固 watcher 进程关闭与成功提示。
+- 修复安装器遇到 Codex `config.toml` 中合法多行数组时直接拒绝写入的问题（#313）。配置编辑器现在按 TOML 结构扫描 table header，安全跨过普通多行数组并保持原字节风格；未闭合数组、括号不匹配，以及 Dream Skin 需要改写的目标 key 自身为多行值时仍会在写入前 fail-closed。
+- 修复 v1.5.6 安装器在部分 Windows 10/11 环境中校验自带 Node.js 签名时，PowerShell 自动加载 `Microsoft.PowerShell.Security` / `Get-AuthenticodeSignature` 失败而中止安装的问题（#313、#314）。签名校验现在会在执行 `node.exe` 前显式加载安全模块，并在模块名加载失败时回退到 `$PSHOME` 下的系统模块清单路径；签名状态和发行者校验仍保持 fail-closed。
+- 修复社区主题一键换肤和 ZIP 导入拒绝 `backdrop-filter: blur(var(--ds-theme-surface-blur))` 的问题（#307、#312）。Safe CSS 仍只允许 `none`、0-20px blur 或注册的主题 blur 变量，不放宽到任意 filter 函数。
+- 修复 Codex Desktop 26.721.x 首页在 `home-icon` 延迟渲染时被误判为注入校验失败的问题（#307）。Windows 校验现在与 macOS 一样复用已由首页内容信号解析出的 `[role="main"]` 容器；严格的 `home-icon` 路径仍优先，旧版行为不变。
+
+### 内部
+
+- 同步 v1.5.11 版本号，发布 Codex 26.727 设置页识别修复。
+
+## 1.5.6 — 2026-07-26
+
+### 安全
+
+- 修复 Node.js 运行时可被环境变量重定向、导致全部校验器被整体旁路的问题。`Get-DreamSkinNodeRuntime` 接受 `$env:CODEX_DREAM_SKIN_NODE` 指定的任意路径,而"校验"方式是执行候选二进制读取版本号——恶意程序在任何检查发生之前就已运行,校验本身即是执行。该运行时承载本项目全部校验逻辑:Safe CSS 白名单、主题包 manifest 与 SHA-256 校验、图片尺寸与解码炸弹限制,以及注入器。任何能写入 `HKCU\Environment` 的进程(无需管理员权限)都可让四者全部跑在自己的 `node.exe` 上,社区主题赖以把关的 Safe CSS 白名单随之失效。现已移除环境变量覆盖;新增 Authenticode 签名校验,在候选二进制被执行**之前**验证签名状态与签发者;已安装的引擎始终优先使用自带的、经引擎清单哈希校验的运行时。macOS 侧从来没有这个问题——它钉死 ChatGPT 包内路径、做代码签名校验并比对 team ID,不接受任何覆盖。此前的回归测试断言该环境变量**必须存在**,反而把不安全形态锁定在原地;现改为断言相反的性质,并额外锁定"自带运行时优先于 PATH"与"验签先于执行"两项顺序。
+- 修复主题展示文案里的 `$` 破坏注入载荷的问题,与 macOS 同源同修:六处占位符替换改为函数形式,新增载荷完整性断言。详见 macOS changelog 同批条目。
+
+### 修复
+
+- 修复皮肤已正常显示、却在约 90 秒后被强制关闭并重启 Codex 的问题(#267)。启动脚本在自己拉起 Codex 的情况下,把**任何**验证失败都当作重启 Codex 的理由;而 `verifySession` 是整体判定,`Browser.getWindowForTarget` 在部分 Codex 版本上对真实、可见的窗口也返回无用结果。用户看到的是:主题应用成功、界面正常、可交互,一分多钟后 Codex 突然自己重启并恢复官方外观。把用户正在使用的、工作正常的窗口杀掉,比保持"未验证"状态糟糕得多。现在验证循环会记录渲染器是否报告皮肤已安装、有样式、文档可见、视口正常且外壳结构完整;若是,回滚照常停止注入器并删除状态文件(不会有任何东西声称该会话已验证),但**保留 Codex 继续运行**并说明原因。文档隐藏、结构缺失、样式未注入等真正损坏的会话仍然会回滚重启。macOS 从来不做强制重启,本次修复使 Windows 与之对齐。注意这条不依赖 CDP 错误码分类——即使遇到未被识别的错误(如报告中的 `This operation was aborted`),损害面同样被限制。
+- 修复 Codex 26.721.x 上换肤永远失败的问题。CDP `Browser.getWindowForTarget` 在 Chrome/150 上对真实、聚焦、可见的窗口也返回 `-32000`,而 Windows 侧仅识别 `-32601`、且原生窗口检查没有降级通道,导致校验永久报错。macOS 已于 1.5.4 修正(#256),Windows 未同步。现与 macOS 采用同一分类语义,并把 CDP 数字错误码传播到分类器,不再仅依赖错误文案匹配。`documentVisible`、视口尺寸与结构检查仍是硬性条件,真正隐藏的窗口依旧拒绝通过——被豁免的只是这个本就无信息量的原生窗口信号。原有回归测试把 `-32000` 判负当作正确行为锁定,已一并修正。
+
+## 1.5.5 — 2026-07-25
+
+### 修复
+
+- 随 macOS 版本号推进,Windows 侧仅更新版本常量与对应断言,无功能改动。该版修复的是 macOS 菜单栏应用的焦点竞态(`LSUIElement` 弹窗关闭后系统不归还焦点),Windows 托盘的焦点语义不同,不适用。
+
+## 1.5.4 — 2026-07-25
+
+### 修复
+
+- 随 macOS 版本号推进,Windows 侧仅更新版本常量与对应断言,无功能改动。该版的 CDP `-32000` 修复当时只落在 macOS,Windows 上同一个缺陷一直存在到本次修复(见上方未发布条目)。
+
+## 1.5.3 — 2026-07-25
+
+### 修复
+
+- 随 macOS 版本号推进,Windows 侧仅更新版本常量与对应断言,无功能改动。该版修复的是 macOS shell 脚本中裸变量紧邻全角标点在 `set -u` 下崩溃的问题,PowerShell 的变量展开规则不同,不受同类影响。
+
+## 1.5.2 — 2026-07-25
+
+### 修复
+
+- 修复 Codex 26.721+ 首页/新建任务页只剩壁纸、内容完全不可见的问题（#244）：新版官方客户端把首页内容列从 home-route 首个子节点的后代改成了它的兄弟节点，首个子节点现在只包着通常为空的原生 `.home-banners` 插槽。旧版 `min-height: 100%` / `flex: 0 0 440px` 规则仍按旧嵌套把该插槽撑满整列，把真实内容挤出视口。新增仅在 `.home-banners` 存在时生效的覆盖规则（不影响旧版 DOM），并把注入器的 hero 校验探针改为优先检查该插槽的兄弟节点，修复后 `verifySession` 不再因此报 "Initial theme verification failed"。
+
+## 1.5.1 — 2026-07-25
+
+### 修复
+
+- 渲染验证不再把仅有 CDP/DOM 的后台 target 当成真实换肤成功：每个目标必须绑定到非最小化且具有有效边界的原生窗口，同时要求文档处于可见状态、viewport 尺寸合理、对应界面锚点具有可见面积。L0 只豁免普通 shell 结构，并仍须显示设置页或首页锚点；Browser window API 不可用、无窗口、零尺寸或隐藏 renderer 均 fail closed，启动流程会沿用现有回滚而不宣称皮肤已激活。
+
+## 1.5.0 — 2026-07-25
+
+### 新增
+
+- 支持从 DreamSkin.cc 的兼容主题页面一键唤起客户端换肤。安装器按当前用户注册严格的 `dreamskin://apply?version=ver_...` 协议；客户端只连接固定官方 API，拒绝重定向，要求详情中的 `applyCompatible` 是严格的 JSON `true`，并在原生确认后核对版本、包大小、实际下载字节数与 SHA-256，再复用现有 ZIP、manifest、图片和 Safe CSS 校验导入并应用。并发请求会被拒绝，临时下载始终清理；启动失败时尝试恢复此前活动主题。链接不能携带任意 URL、文件路径或命令，也不存在静默应用参数。
+
+## 1.4.0 — 2026-07-24
+
+### 新增
+
+- 发布流程改为由 `main` 上的版本变更自动创建对应 tag、构建并公开 DMG/Setup 资产；版本未变化的普通合并只做幂等跳过，`workflow_dispatch` 可安全重试未完成的同一版本。
+
+- 系统托盘新增普通 `.zip` 主题包导入与主题目录快捷入口；正式 Studio 包和仅供可信本地内容使用的简化包均须包含非空 `theme.json`、不超过 10 MiB 的背景图及非空 `theme.css`。导入只写入已保存主题，不自动改变活动主题。基于 .NET `ZipArchive` 逐条受限解压，限制 32 MiB 压缩文件、32 个条目和 64 MiB 解压总量，并拒绝 `.dreamskin`、路径穿越、链接/reparse、Windows 保留路径、嵌套压缩包及未通过负载校验的内容。正式包会校验平台、最低客户端版本、逐文件大小与 SHA-256，并要求 `theme.css` 与 `safe-css` capability 一致；Safe CSS 在导入及每次应用时按本地白名单重新校验后执行，预留签名不验证。重复内容不再写入，同 ID 冲突自动保存为新标识；现有已保存的无 CSS 旧主题仍可切换但不会注入附加 CSS，同时保留手动移动完整主题目录的工作流。
+
+### 修复
+
+- 对齐正式 Studio 主题合同：注入器完整保留 `#rgb`、`#rgba`、`#rrggbbaa` 与 RGB/A 颜色，文案统一按 Unicode code point 执行名称 80、其余受支持字段 120 的限制；浅色自动外观不再覆盖显式十色，并补齐 `taskMode=full` 的完整画面与基础可读性遮罩。
+- 处理 Codex Store `26.715.10079.0` 的 owl runtime 兼容性断点（#235）：继续优先使用清单派生 AUMID 的系统包激活；只有进程命令行明确证实 `--remote-debugging-port` 被转换成 `codex://...path=` 时，才保留启动前记录的 Codex PID、关闭本轮新增进程，并对同一个已验证 Store 包内的精确 `app\ChatGPT.exe` 尝试原始参数启动。该回退只在本机 ACL 允许且 production runtime 实际开放 CDP 时生效；Access Denied、参数仍未保留或最终没有可信监听都会给出对应错误并正常回滚。实机反馈已在 `26.715.10079.0` 确认 ACL 拒绝，并在 `26.721.3404.0` 确认参数保留但无监听，因此当前能力定位为诊断加固，不宣称受影响 owl 版本已恢复兼容。
+- 新策略不接管 WindowsApps 权限、不复制或修改官方二进制、`app.asar` 或签名；旧版仍走原有包激活路径。新增参数转发/协议重定向识别、Store 目标约束、兼容旧版、直启回退与 Access Denied 错误回归测试。
+
+## 1.3.3 — 2026-07-23
+
+### 修复
+
+- 启动编排三处加固（#222）：① 启动后的一次性验证改为 90 秒重试窗口——慢机器上 Codex 首屏尚未渲染完时不再被误判失败，进而不再连带停掉刚拉起的 watcher、也不再把 Codex 无调试口重启（此前皮肤因此完全不出现）；② 启动失败回滚改用自有进程对象停止注入器并把等待延长到 15 秒——过早判定「did not stop」曾遗留互相清除对方运行时的双 watcher；③ 端点归属校验放宽到任一已注册 OpenAI.Codex 版本——商店自动更新中途换包目录后，不再拒认仍在运行的健康皮肤会话（`verify-dream-skin.ps1` 同步生效，托盘经由 start 脚本自动继承全部修复）。新增回归断言锁定重试窗口、回滚等待与版本回退逻辑。
+- 修复 `--verify` 缺少 `--theme-dir` 参数的隐性错配：注入器在无该参数时回退到引擎 `assets` 内置主题作为期望值，源码安装下 watcher 应用的是暂存激活主题，二者永不一致——验证从一开始就注定失败（重试窗口暴露了这一点）。start 与 `verify-dream-skin.ps1` 现与 watcher 使用同一 `--theme-dir`（macOS 包装器一直如此），并新增断言防回退。
+
+## 1.3.2 — 2026-07-23
+
+### 修复
+
+- 与 macOS 同修：1.3.1 统一 runtime 的路由门控使用了嵌套 `:has()`（CSS 规范禁止，浏览器整条丢弃），导致宽幅画作退化为首页横幅卡、任务页氛围背景失效。契约新增无 `:has()` 的 `home-route-css` 别名并等价改写全部 41 处规则；双端产物同一份源码编译，Windows 侧随包生效。
+- Windows 回归套件中锁定旧嵌套选择器的断言同步更新，并新增编译产物「嵌套 `:has()`」回归测试。
+
+## 1.3.1 — 2026-07-23
+
+### 修复
+
+- Gothic Void Crusade 预设的 `appearance` 从 `auto` 固定为 `dark`（与 macOS 同步，#134 引入时误用了 auto）：暗色专属背景不再跟随客户端浅色外壳渲染。已在用该预设的用户需重新切换一次该主题才会拿到修复。
+- Windows Release 构建不再依赖 Chocolatey 精简版 Inno Setup 是否附带非官方翻译目录；固定并校验 Inno 6.7.1 官方简体中文语言文件后从隔离 staging 编译，保证 CI 与 Release runner 都能生成双语 Setup.exe。
+- 收起或重建左侧栏时不再因找不到 `aside.app-shell-left-panel` 而整页卸掉皮肤；只要主内容壳层仍在就继续应用当前主题，避免闪回 Codex 原生配色。透明辅助窗口仍会清理残留样式。
+- 托盘「暂停皮肤」现在与 macOS 一致：写入暂停标记后立刻通过 CDP 执行 `injector --remove` 卸下当前窗口皮肤，不再只等 watcher 轮询；「继续显示皮肤」会清除暂停并重新应用。
+- Windows 注入器补齐与 macOS 相同的窗口内操作浮层（loading / 成功 / 失败）；暂停、继续与重新应用时在 Codex 主区显示「正在暂停皮肤…」「正在应用皮肤…」等进度，不再只有托盘气泡。
+- 源码安装/主题库初始化会把 macOS 同款「Gothic Void Crusade / 哥特虚空远征」播种到已保存主题（`presets/preset-gothic-void-crusade`），可与源码中的「桥本有菜」参考主题一并在托盘切换；公开 Setup.exe 只携带并默认播种 Gothic Void Crusade。
+- 同步 macOS 的首页建议卡图标居中修复（#176 / #181 核心部分）：原生 span 的 `justify-start` 使 grid + `place-items` 无法居中图标徽章内的字形，改为 flex 强制居中。
+
+### 改进
+
+- 托盘、安装器与开始菜单/自启快捷方式的 ICO 改绘为 DreamSkin 品牌 mark，与 dreamskin.cc 网站 favicon 同源：纸白圆角方、发丝描边、墨色对角半区与青色圆点（#217）。
+- 皮肤 runtime 双端统一（#216）：与 macOS 共用 `tools/selectors.json` 选择器契约与单源渲染器，双端注入产物由工具链编译并强制字节一致；运行时只写 `data-dream-*` 属性与 CSS 变量，锚点缺失场景降级 L0。
+
+## 1.3.0 — 2026-07-19
+
+### 发布
+
+- 新增面向普通用户的 Inno Setup 安装包；安装器内置经过 SHA-256 校验的 Node.js 运行时，按当前用户安装，不需要源码目录或全局 Node.js。
+- 新增 SmartScreen 未签名发行包的图形界面放行说明。只在确认文件来自项目 Release 后使用“更多信息 → 仍要运行”，不要求关闭 Defender 或执行 PowerShell 放行命令。
+- 新增手动覆盖更新流程与状态保留说明；主题、图片和配置备份不会因更新安装器而删除。
+- 新增 Release workflow：校验 tag 与双端版本一致性，构建 Setup.exe、生成 SHA-256 校验和并创建待审核的 Draft Release。
+- Setup.exe 只把安装目录中的 payload 作为不可变种子，实际执行统一来自 `%LOCALAPPDATA%\CodexDreamSkin\engine`；同版本缺文件时会自动修复，升级时先安全关闭旧托盘并原子替换引擎。
+- 托盘新增正式图标、点击检查更新、打开 DreamSkin.cc 与登录启动开关；不做后台联网，登录启动在安装向导中默认不勾选。
+- 卸载确认后先调用受管恢复引擎；只有 Codex 外观、CDP 与运行状态安全恢复成功才删除安装文件，失败会中止卸载并保留修复入口。
+- 安装、启动、托盘与恢复均使用 `RemoteSigned`，不再要求普通用户执行 `.ps1`、修改 Execution Policy 或安装全局 Node.js。
+- Release 构建会用固定 SHA-256 核验的 Gothic Void Crusade 替换源码中的人物参考素材；Setup.exe 同时携带项目 LICENSE/NOTICE 与 Node.js 自带许可证。
+
+## 1.2.0 — 2026-07-17
+
+### 新增
+
+- Windows 安装器会先校验并原子复制运行所需的 `assets/` 与 `scripts/` 到 `%LOCALAPPDATA%\CodexDreamSkin\engine`，启动、恢复和托盘快捷方式统一指向该受管副本；安装完成后可移动或删除源码克隆。重装前若旧托盘仍在运行，安装器会明确要求退出，避免新旧脚本混用。
+- 渲染层支持通用自适应图像主题：本地 Canvas 采样图像亮度、主色、焦点和比例，为壁纸层提供自适应色彩与构图建议；支持 `appearance: auto | light | dark`、`art.focusX/focusY`（`0..1`）、`art.safeArea: auto | left | right | center | none`、`art.taskMode: auto | ambient | banner | off`。外观壳仍由显式主题或原生外观信号决定。
+- 显式外观与艺术元数据优先于分析结果；超宽图默认任务横幅，普通比例图默认环境背景，`off` 可关闭任务页图像。分析完全在渲染器本地完成，不上传图片。
+- Windows 发行 payload 直接读取受管 `theme.json`，完整支持与 macOS 一致的外观、焦点、安全区和任务页模式契约，不再依赖预先设置的 renderer 全局变量。
+- 新增纯 PowerShell/Windows Forms 系统托盘入口，可快速查看状态、应用或暂停皮肤、更换背景、保存和切换主题、打开图片文件夹，以及执行完整恢复；不引入第三方依赖。
+- 新增 `%LOCALAPPDATA%\CodexDreamSkin` 主题仓库，用户图片会复制到受管目录，活动主题和已保存主题均保持图片与配置自包含。
+- Windows 首次安装会把 UI-free 的 2560 × 1440「桥本有菜」设为活动主题并播种到「已保存主题」，无需再从 macOS 目录手动导入。
+
+### 修复
+
+- 安装器在完成受管运行时副本的 SHA-256 校验后，仅清除其中 PowerShell 脚本的下载区标记；启动、恢复、托盘快捷方式和托盘子进程改用 `RemoteSigned`，不再组合隐藏 PowerShell 与 `ExecutionPolicy Bypass` 触发常见 LNK 启发式告警，同时继续服从系统和企业组策略。
+- 保留 Codex 原生固定顶栏的定位与层级，避免打开任务侧边面板后开关被推出主区、导致面板无法关闭。
+- 暗色外观下，原生顶部菜单栏现在使用深色半透明可读性层，并提高菜单按钮与图标的文字对比度，避免浅色壁纸让导航项难以辨认。
+- 渲染层现在只在检测到完整 Codex 主界面壳层时启用皮肤；宠物等透明辅助窗口会主动清理主题背景与装饰节点，避免出现遮挡宠物的矩形背景框。
+- 16:9 及更宽图像现在作为侧栏与主区共享的单张整窗背景；首页、任务、插件、计划任务和 Pull Requests 路由使用同一透明顶栏与连续表面，不再在卡片或任务层重复裁切图片。
+- 移除主区原生顶部渐隐和 composer 后方底部渐隐；浅色与深色 composer 均只保留一个可读表面，避免出现双层输入框或不连续底板。
+- watcher 可在不重启 Codex 的情况下响应主题文件和暂停标记变化，重载 renderer 后仍保持当前应用或暂停状态。
+- watcher 会为已连接的 renderer 注册带 generation 检查的 early payload；后续 reload/navigation 优先在新文档建立皮肤，CDP 不支持时仍保留 load-event 兜底注入。
+- watcher 改用主题 JSON 与图片字节的 SHA-256 修订值识别热更新，并以轻量 stat 快速路径配合 30 秒强哈希审计，避免每 1.2 秒重读整张图片；同步读取图片尺寸后再构建首帧 payload，避免宽屏主题先以错误比例闪现。
+- 主题导入与注入均拒绝空图片和超过 16 MB 的图片；注入前还会拒绝任一边超过 16384px 或总像素超过 50MP 的声明尺寸，降低压缩炸弹风险。完整恢复会终止托盘进程，暂停菜单使用独立闭包值，避免旧托盘重新应用皮肤或连续点击状态反转错误。
+- 托盘导入新背景时会重置为 `auto` 焦点、安全区、任务模式和外观，不再错误继承上一张预设的人物位置；从「已保存主题」切换时仍保留该主题的显式元数据。
+- PowerShell 主题仓库除词法路径包含检查外，还会逐级拒绝 junction、符号链接等 reparse point；已保存主题不能借链接逃出受管目录。
+- 主题仓库会在创建受管目录以及关键图片复制/移动的前后拒绝 reparse point，暂停标记写入前也会检查路径；状态文件仍写入受管根目录并使用 UTF-8 原子替换。导入在复制前复用 Node 图片元数据解析器拒绝超过 16384px 或 50MP 的图片。
+- `appearance: auto` 优先读取原生计算后的 `color-scheme`，只有缺少可信原生信号时才回退到系统 `prefers-color-scheme`；横幅任务页与环境任务页共用连续整窗壁纸，不再单独截一块图。
+- 启动会先完成 state 校验和重启确认，再清除暂停标记；取消重启提示或遇到校验失败时，已有的暂停 watcher 会继续保持暂停。
+- 原生 `color-scheme` 采样会抑制并排空临时 class 变更产生的 observer 记录，不再每约 180ms 自触发一次完整 renderer ensure。
+- 安装不再把用户的 `appearanceTheme` 强制改成 `light`；检测到旧版精确托管的浅色三元组时才按已有备份安全迁移，当前安装的恢复也不会覆盖用户后来选择的外观。
+- `--verify`、`--once` 和 `--remove` 现在显式把预期 Browser ID 传入一次性目标发现，不再因引用越域的 CLI 变量而等待超时并导致启动验证回滚。
+- 记录中的 injector PID 若仍存活但身份不匹配，启动与恢复会保留 state 并中止，不再归档后继续操作未知进程。
+- Windows PowerShell 5.1 现在使用同目录临时备份调用 `File.Replace`，避免空备份参数被绑定为非法路径而导致现有 `config.toml` 无法更新。
+- 修复 Windows PowerShell 5.1 下注入器/Node 一旦向 stderr 输出（崩溃堆栈、超时报错、Node 警告）就把启动脚本炸成 `NativeCommandError` 的问题：现在原生命令统一经 `Invoke-DreamSkinNative` 执行，verify 失败时 `verify.log` 能真正写出本次输出与退出码，回滚清除注入的路径也不再被 stderr 干扰误判。
+- 带引号键名和 CRLF 的 `[desktop]` 配置现在可以逐字节往返恢复；新版 Codex 写入的非冲突 `[desktop.*]` 子表会原样保留，仅在子表与 Dream Skin 必须管理的标量键冲突时拒绝修改。
+- Codex 的启动、失败回滚和恢复重开统一通过已注册 Store 包清单中的 AppUserModelId 激活，不再直接执行可能被 WindowsApps 权限拒绝的 `ChatGPT.exe`；CDP 和自定义 profile 参数仍通过系统包激活接口传递。
+- 安装与 `-RestoreBaseTheme` 现在严格按 UTF-8 读取，保留原换行风格，并以无 BOM、同目录原子替换方式写回 `config.toml`，避免中文项目名称乱码或导致 Codex 无法启动。
+- 遇到带 BOM/无 BOM 的 UTF-16、NUL 字符、无效 UTF-8 或写入期间被其他程序改动的配置时停止修改，不再静默转码或覆盖较新的内容。
+- 安装会在当前注册包或 state 记录的旧 Codex 仍运行时明确提示先关闭；配置临时文件写完后会在原子替换前再次核对原始字节，进一步缩小并发覆盖窗口。
+- 配置恢复只修改 `[desktop]` 内的外观键，不再误碰其他 section 的同名配置；新增 `-RecoverConfigBackup` 用于显式恢复安装前原始文件，并先保存当前文件。
+- 完成配置恢复后会归档本轮安装前备份，使下一次安装重新保存当时的配置，避免重复安装使用过期主题值。
+- schema 3 记录的旧 injector PID 只有在 Node 精确路径、脚本命令行、端口、Browser ID 和进程启动时间匹配时才会停止；兼容旧 state 时仍要求原 state 含脚本路径和端口，且 PID 仍匹配 `node.exe`、脚本与 watch 参数，无法确认便归档而不结束进程。
+- 启动验证失败会停止 injector、清理状态，并把本次新开的 Codex 恢复为无调试口的普通启动。
+- Restore 使用状态中记录的端口，先关闭运行态再写配置；失败时保留 state 并尽量正常重开 Codex，不再留下半完成状态或静默报告假成功。
+- Store 更新后若旧版本仍持有已保存的 CDP，会按 state 中的精确路径关闭；检测到新旧版本同时运行时安全停止并提示人工处理。
+- 支持带注释或引号的 `[desktop]` 表头与目标键；遇到转义同义键、多行字符串/数组、dotted key 或重复目标键时会在写入前明确停止，避免把合法但无法安全行编辑的 TOML 改坏。
+- Store 更新后的旧路径只有在 Appx full name、family name、安装目录和可执行文件仍能与系统注册包匹配时才允许自动关闭；无法证明归属时保留状态并要求手动关闭。
+- Store 更新时，仍在运行且身份有效的旧版本 CDP 会直接热重应用；旧版本若未开启 CDP，则在获得现有重启授权后关闭并启动当前注册版本，避免并行打开两个 Codex。
+- 遇到 `[desktop.*]` 子表时会在写配置前停止，避免外观标量键与 TOML 子表冲突；热重应用验证失败时会尽力移除本次残余样式。
+- Restore 不再要求当前环境仍能找到 Node；schema 3 清理会严格匹配安装时记录的 Node 路径，Node 已升级或卸载也不影响安全恢复。
+- 截图验证不再派发 Escape、移动鼠标或额外等待 300ms，避免验证过程改变当前窗口状态。
+
+### 安全
+
+- Codex 以 `--remote-debugging-address=127.0.0.1` 启动；同时校验监听 PID 对应精确的官方 Store 可执行文件。
+- 说明：loopback 可阻止局域网访问，但 CDP 不验证同一 Windows 用户下的其他本地进程；不用皮肤时建议执行 Restore 关闭调试会话。
+- Appx 发现要求 `SignatureKind=Store` 且不是 development mode，同名开发包或侧载包不会被当作官方 Codex 启动或关闭。
+- injector 只连接相同端口、page ID 与路径一致的 loopback WebSocket，并在注入前确认真实 Codex shell DOM 标记。
+- watcher 绑定启动时的 CDP Browser ID，并持续持有 Browser WebSocket 作为身份锚；原浏览器关闭或端口被复用时直接退出，不会连接到新端点。
+- CDP HTTP、WebSocket 建连与命令均加入超时，HTTP 探测拒绝重定向，异常目标不会无限挂起或把探测带离 loopback。
+- injector 收到畸形 JSON 或 `null`、字符串、数字等非对象 CDP 帧时会安全关闭会话，不再因直接读取消息字段而抛出未处理异常。
+- injector 日志与验证文件不再记录窗口标题、页面路由、页面文本或被拒绝 URL 的内容，只保留临时 target ID、结构标记和布局结果。
+- 快捷方式不再静默携带 `-RestartExisting`；需要重启时先向用户确认。
+- install、start、restore 和 verify 使用当前用户互斥锁，避免双击或并发命令竞争端口、配置和 state。
+
+### 改进
+
+- 预置主题的稳定 ID 从 `preset-romantic-rose` 更名为 `preset-arina-hashimoto`；初始化只清理旧预置目录，继续保留用户自建主题。
+- 默认端口被占用时自动在后续 100 个端口内选择空闲端口；显式指定的冲突端口仍安全失败。
+- injector 会等待首轮注入完成再判定启动成功；目标异常时使用有上限的指数退避和限频日志，减少后台唤醒和日志膨胀。
+- 明确要求 Node.js 22 或更新版本，并记录 `process.execPath`，兼容 PATH 中的启动转发程序。
+- 带空格或结尾反斜杠的测试 profile 路径现在按 Windows 命令行规则引用。
+
+### 测试
+
+- 增加渲染层辅助窗口与 early-bootstrap 回归测试，覆盖主窗口正常注入、透明辅助窗口清理残余样式、shell guard、generation 切换、computed-scheme observer 排空，以及辅助目标随后成为完整主界面时可重新启用皮肤。
+- 增加本地 HTTP/CDP fixture，逐项执行 `--verify`、`--once` 和 `--remove`，确认一次性目标发现会校验 Browser ID 且不再访问未定义变量。
+- 增加受管主题初始化、换图、保存、切换、暂停标记、payload 配置嵌入、整窗 CSS 和托盘菜单静态回归检查。
+- 增加中文项目路径、CRLF/LF、UTF-16 与歧义 TOML 拒绝、并发写检测、section 隔离、精确恢复、Appx/state 身份、状态归档、payload 构造、Browser ID 和不安全 CDP URL 的回归检查。
+- injector 自检覆盖非对象 CDP 帧拒绝和截图流程不派发 renderer 输入事件。

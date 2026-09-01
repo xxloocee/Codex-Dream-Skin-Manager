@@ -61,6 +61,8 @@ namespace CodexDreamSkinManager
         public string Accent = "";
         public string Category = "custom";
         public List<string> Tags = new List<string>();
+        public string SafeCssPath = "";
+        public string LicensePath = "";
     }
 
     internal sealed class BatchImportResultItem
@@ -454,7 +456,10 @@ namespace CodexDreamSkinManager
         {
             if (string.IsNullOrWhiteSpace(Name)) throw new ArgumentException("请输入主题名称。");
             if (string.IsNullOrWhiteSpace(ImagePath)) throw new ArgumentException("请选择背景图片。");
-            if (double.IsNaN(PositionX) || double.IsInfinity(PositionX) ||
+            if (double.IsNaN(FocusX) || double.IsInfinity(FocusX) ||
+                double.IsNaN(FocusY) || double.IsInfinity(FocusY) ||
+                FocusX < 0 || FocusX > 1 || FocusY < 0 || FocusY > 1 ||
+                double.IsNaN(PositionX) || double.IsInfinity(PositionX) ||
                 double.IsNaN(PositionY) || double.IsInfinity(PositionY) ||
                 double.IsNaN(Zoom) || double.IsInfinity(Zoom) ||
                 PositionX < -1 || PositionX > 1 || PositionY < -1 || PositionY > 1 || Zoom < 1 || Zoom > 2)

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [string]$ToolRoot = (Join-Path $PSScriptRoot '..\build\.tools\InnoSetup'),
+  [string]$ToolRoot,
   [string]$Version = '6.7.3',
   [string]$BootstrapSha256 = '9C73C3BAE7ED48D44112A0F48E66742C00090BDB5BEF71D9D3C056C66E97B732',
   [string]$CompilerSha256 = '0A8757031B33777E4C9CBFFEE40F11A5062B36D25CBE144C1DB73B6102B80AD7',
@@ -8,6 +8,13 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$scriptRoot = $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($scriptRoot)) {
+  $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+if ([string]::IsNullOrWhiteSpace($ToolRoot)) {
+  $ToolRoot = Join-Path $scriptRoot '..\build\.tools\InnoSetup'
+}
 
 function Assert-NoReparsePoint {
   param([Parameter(Mandatory)][string]$Path)
@@ -49,7 +56,7 @@ function Assert-OfficialExecutable {
 }
 
 $tool = [System.IO.Path]::GetFullPath($ToolRoot)
-$workspace = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$workspace = [System.IO.Path]::GetFullPath((Join-Path $scriptRoot '..'))
 $buildRoot = [System.IO.Path]::GetFullPath((Join-Path $workspace 'build')).TrimEnd('\')
 if (-not $tool.StartsWith(($buildRoot + '\'), [System.StringComparison]::OrdinalIgnoreCase)) {
   throw "Inno Setup tool root must remain inside build: $tool"

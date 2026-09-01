@@ -1,0 +1,52 @@
+name: Cross-platform runtime
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shared-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Check synchronized runtime assets
+        run: node tools/sync-runtime-assets.mjs --check
+      - name: Run shared renderer and selector tests
+        run: |
+          node tools/renderer-runtime.test.mjs
+          node tools/check-selector-provenance.test.mjs
+          node tests/custom-framing-runtime.test.mjs .
+
+  macos-runtime:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Run macOS runtime tests
+        working-directory: macos
+        env:
+          CODEX_DREAM_SKIN_SKIP_SIGNED_RUNTIME_TESTS: "1"
+        run: NODE="$(command -v node)" npm test
+      - name: Validate manager adapter shell
+        run: bash -n macos/scripts/manager-actions-macos.sh macos/scripts/status-dream-skin-macos.sh macos/scripts/load-image-theme-macos.sh
+
+  windows-runtime:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Run Windows runtime regressions
+        shell: powershell
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\tests\run-tests.ps1

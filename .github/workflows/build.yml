@@ -18,24 +18,21 @@ jobs:
       - name: Check out manager
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Check out Codex Dream Skin dependency
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          repository: Fei-Away/Codex-Dream-Skin
-          ref: 3af1d6d62f3a0388cc640d2f497ac3100998938e
-          path: .dependencies/Codex-Dream-Skin
-
       - name: Set up packaged Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22.22.2
           architecture: x64
 
+      - name: Check synchronized cross-platform runtime assets
+        shell: bash
+        run: node tools/sync-runtime-assets.mjs --check
+
       - name: Test and build runnable package
         shell: powershell
         run: |
           .\build.ps1 `
-            -SkillRoot (Join-Path $PWD '.dependencies\Codex-Dream-Skin\windows') `
+            -SkillRoot (Join-Path $PWD 'windows') `
             -NodeExecutable (Get-Command node.exe).Source
 
       - name: Prepare Inno Setup

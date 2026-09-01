@@ -1,12 +1,18 @@
 [CmdletBinding()]
 param(
   [switch]$TestsOnly,
-  [string]$SkillRoot = (Join-Path $env:USERPROFILE 'Desktop\CodexDreamSkin\windows'),
+  [string]$SkillRoot,
   [string]$NodeExecutable
 )
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($root)) {
+  $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+if ([string]::IsNullOrWhiteSpace($SkillRoot)) {
+  $SkillRoot = Join-Path $root 'windows'
+}
 $build = Join-Path $root 'build'
 New-Item -ItemType Directory -Force -Path $build | Out-Null
 $packageRoot = Join-Path $build 'CodexDreamSkinManager'
@@ -125,19 +131,29 @@ function New-RunnableWindowsPackage(
   }
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
   Copy-Item -LiteralPath $source -Destination $destination -Recurse
+  # The repository carries the synchronized upstream Windows runtime. Overlay
+  # only manager-owned scripts/presets and the shared assets, keeping the
+  # caller's SkillRoot as a compatibility fallback for older builds.
   Copy-Item -Path (Join-Path $root 'windows\*') -Destination $destination -Recurse -Force
-  $framingPatch = Join-Path $root 'packaging\Add-CustomFramingRuntime.ps1'
-  if (-not (Test-Path -LiteralPath $framingPatch -PathType Leaf)) {
-    throw 'The custom framing runtime patch is missing.'
+  $canonicalRenderer = Join-Path $destination 'assets\renderer-inject.js'
+  $canonicalCss = Join-Path $destination 'assets\dream-skin.css'
+  if (-not (Test-Path -LiteralPath $canonicalRenderer -PathType Leaf) -or
+      -not (Test-Path -LiteralPath $canonicalCss -PathType Leaf)) {
+    throw 'The assembled package is missing the canonical shared renderer assets.'
   }
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $framingPatch -WindowsRoot $destination
-  if ($LASTEXITCODE -ne 0) { throw 'The custom framing runtime patch failed.' }
+  $rendererText = Get-Content -LiteralPath $canonicalRenderer -Raw -Encoding UTF8
+  $cssText = Get-Content -LiteralPath $canonicalCss -Raw -Encoding UTF8
+  if ($rendererText -notmatch 'data-dream-art-framing' -or
+      $cssText -notmatch 'data-dream-art-framing') {
+    throw 'The assembled package does not contain the shared framing contract.'
+  }
   Copy-Item -LiteralPath $replacementDefaultImage `
     -Destination (Join-Path $destination 'assets\dream-reference.jpg') -Force
 
   $packageDirectory = Split-Path -Parent $destination
   $runtimeNodeDirectory = Join-Path $destination 'runtime\node'
   $packagedNode = Join-Path $runtimeNodeDirectory 'node.exe'
+  $packagedNodeRuntimeLicense = Join-Path $runtimeNodeDirectory 'LICENSE'
   $thirdPartyDirectory = Join-Path $packageDirectory 'THIRD_PARTY\Codex-Dream-Skin'
   $thirdPartyNodeDirectory = Join-Path $packageDirectory 'THIRD_PARTY\Node.js'
   $packagedLicense = Join-Path $thirdPartyDirectory 'LICENSE'
@@ -149,6 +165,7 @@ function New-RunnableWindowsPackage(
       $packageDirectory,
       $runtimeNodeDirectory,
       $packagedNode,
+      $packagedNodeRuntimeLicense,
       $thirdPartyDirectory,
       $thirdPartyNodeDirectory,
       $packagedLicense,
@@ -161,6 +178,7 @@ function New-RunnableWindowsPackage(
   }
   New-Item -ItemType Directory -Force -Path $runtimeNodeDirectory, $thirdPartyDirectory, $thirdPartyNodeDirectory | Out-Null
   Copy-Item -LiteralPath $RuntimeNode -Destination $packagedNode -Force
+  Copy-Item -LiteralPath $RuntimeLicense -Destination $packagedNodeRuntimeLicense -Force
   Copy-Item -LiteralPath $dependencyLicense -Destination $packagedLicense -Force
   Copy-Item -LiteralPath $dependencyNotice -Destination $packagedNotice -Force
   Copy-Item -LiteralPath $RuntimeLicense -Destination $packagedNodeLicense -Force
@@ -173,7 +191,11 @@ function New-RunnableWindowsPackage(
     'scripts\apply-theme-and-recover.ps1',
     'scripts\runtime-version.ps1',
     'presets\catalog.json',
-    'runtime\node\node.exe'
+    'assets\renderer-inject.js',
+    'assets\dream-skin.css',
+    'assets\selectors.json',
+    'runtime\node\node.exe',
+    'runtime\node\LICENSE'
   )
   foreach ($relativePath in $requiredPackageFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $destination $relativePath) -PathType Leaf)) {
