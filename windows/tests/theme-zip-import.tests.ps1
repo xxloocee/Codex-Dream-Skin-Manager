@@ -427,7 +427,7 @@ try {
   New-TestZipFromDirectory -Source $missingIdSource -Archive $missingIdArchive
   $missingId = Import-DreamSkinThemeZip -ArchivePath $missingIdArchive -StateRoot $stateRoot
   if ($missingId.Status -cne 'Imported' -or
-    $missingId.Id -notmatch '^import-[0-9a-f]{24}$' -or -not $missingId.Renamed) {
+    $missingId.Id -cne 'import-10e124042175f47842530574' -or -not $missingId.Renamed) {
     throw 'A missing source theme id did not use the stable cross-platform semantic fallback id.'
   }
 

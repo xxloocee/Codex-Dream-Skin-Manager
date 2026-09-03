@@ -6,17 +6,15 @@ import { spawn } from "node:child_process";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const macosRoot = path.resolve(here, "..");
-const projectRoot = path.resolve(macosRoot, "..");
 const publisher = path.join(macosRoot, "scripts", "publish-theme-import.mjs");
 const recoveryWrapper = path.join(macosRoot, "scripts", "recover-theme-imports-macos.sh");
 const killHook = path.join(here, "theme-import-kill-hook.cjs");
 const fixtureImage = path.join(macosRoot, "assets", "portal-hero.png");
 const crossPlatformFixtureImage = path.join(
-  projectRoot,
-  "docs",
-  "images",
-  "gallery",
-  "skin-01.jpg",
+  macosRoot,
+  "presets",
+  "preset-gothic-void-crusade",
+  "background.jpg",
 );
 const tempRoot = await fs.mkdtemp(path.join("/tmp", "codex-dream-skin-publish-"));
 const themesRoot = path.join(tempRoot, "themes");
@@ -620,7 +618,7 @@ try {
   const missingIdStage = await makeStage("missing-id", undefined, fallbackVectorOptions);
   const missingId = await publish(missingIdStage);
   assert.equal(missingId.status, "imported");
-  assert.equal(missingId.id, "import-b009c788e6a9307c35ed281e");
+  assert.equal(missingId.id, "import-10e124042175f47842530574");
   assert.equal(missingId.renamed, true);
 
   const nonStringIdStage = await makeStage("non-string-id", 42, fallbackVectorOptions);
