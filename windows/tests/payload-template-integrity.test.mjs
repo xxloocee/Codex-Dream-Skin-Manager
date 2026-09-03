@@ -178,6 +178,18 @@ test("an ordinary theme name is unaffected by the fix", async () => {
   );
 });
 
+test("legacy Windows palette accent is normalized into shared colors", async () => {
+  const accent = "#C49A6C";
+  const loaded = await buildWith({ palette: { accent } });
+  const emitted = extractThemeArgument(loaded.payload);
+  assert.equal(loaded.theme.colorMode, "explicit");
+  assert.deepEqual(loaded.theme.explicitColorKeys, ["accent"]);
+  assert.equal(loaded.theme.colors.accent, accent);
+  assert.ok(!Object.hasOwn(loaded.theme, "palette"));
+  assert.equal(emitted.colors.accent, accent);
+  assert.deepEqual(emitted.explicitColorKeys, ["accent"]);
+});
+
 test("Windows payload uses the same compiled Safe CSS cascade as macOS", async () => {
   const themeDir = await fs.mkdtemp(path.join(os.tmpdir(), "dream-skin-safe-css-payload-"));
   try {

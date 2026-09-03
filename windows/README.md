@@ -9,7 +9,7 @@ Codex Dream Skin 通过本机回环 CDP 给官方 Codex Windows 桌面应用加�
 ## 运行要求
 
 - Windows 10 或更高版本（x64；安装器声明 Windows 10 为最低版本）。
-- 从 Microsoft Store 安装且已注册到当前用户的官方 `OpenAI.Codex` 或 `OpenAI.ChatGPT` 应用。Codex 桌面客户端已并入 ChatGPT，脚本会按这两个受控包名发现当前版本。
+- 从 Microsoft Store 安装且已注册到当前用户的 Codex/ChatGPT 统一客户端。当前已验证的 Store 包身份仍为 `OpenAI.Codex`，主程序为 `app\ChatGPT.exe`；独立的 `OpenAI.ChatGPT-Desktop`（ChatGPT Classic）不在支持范围。
 - Release Setup.exe 已内置 Node.js；只有从源码运行时才需要 `PATH` 中有 Node.js 22 或更高版本。
 - Windows PowerShell 5.1 或更高版本（安装器会在后台调用，普通用户不需要打开它）。
 
@@ -154,10 +154,10 @@ powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\restore-
 运行：
 
 ```powershell
-Get-AppxPackage -Name OpenAI.Codex,OpenAI.ChatGPT
+Get-AppxPackage -Name OpenAI.Codex
 ```
 
-脚本只接受已注册的官方 Store 包，不会从任意可执行文件路径启动 Codex。
+脚本只接受已注册的官方 `OpenAI.Codex` Store 包，并从清单确认其 `app\ChatGPT.exe`，不会从任意可执行文件路径启动 Codex。`OpenAI.ChatGPT-Desktop` 是不同的 Classic 客户端，不受本工具控制。
 
 ### 安装器要求关闭 Codex
 

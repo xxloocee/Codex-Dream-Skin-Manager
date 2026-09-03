@@ -525,14 +525,7 @@ namespace CodexDreamSkinManager
                 try
                 {
                     currentStatus = await service.GetStatusAsync();
-                    bool unhealthy = currentStatus.StatusKind == "mismatch" ||
-                        currentStatus.StatusKind == "uninspectable" || currentStatus.StatusKind == "error";
-                    bool pausedWhileRunning = currentStatus.IsRunning && currentStatus.IsPaused;
-                    statusText.Text = unhealthy ? "状态需要恢复" : pausedWhileRunning ? "皮肤已暂停" : currentStatus.IsRunning ? "皮肤运行中" : "皮肤未运行";
-                    statusText.Foreground = unhealthy ? DangerBrush : currentStatus.IsRunning ? pausedWhileRunning ? WarningBrush : SuccessBrush : MutedBrush;
-                    statusDot.Background = unhealthy ? DangerBrush : currentStatus.IsRunning ? pausedWhileRunning ? WarningBrush : SuccessBrush : MutedBrush;
-                    statusText.ToolTip = BuildStatusDetails(currentStatus);
-                    activeThemeText.Text = string.IsNullOrWhiteSpace(currentStatus.ActiveThemeName) ? "未选择" : CleanThemeName(currentStatus.ActiveThemeName);
+                    UpdateStatusDisplay(currentStatus);
                     PopulateThemes(currentStatus.Themes);
                     RefreshDashboardPreview();
                     UpdateActionState();
@@ -551,11 +544,19 @@ namespace CodexDreamSkinManager
                     else
                     {
                         currentStatus = previousStatus;
+                        // A post-operation read can race the watcher while it
+                        // reloads the newly selected theme. Keep the last
+                        // known state visible instead of replacing it with a
+                        // misleading generic failure label.
+                        UpdateStatusDisplay(currentStatus);
                     }
-                    if (reportErrors) SetMessage(ex.Message, true);
-                    statusText.Text = "状态读取失败";
-                    statusText.Foreground = DangerBrush;
-                    statusDot.Background = DangerBrush;
+                    if (reportErrors)
+                    {
+                        SetMessage(ex.Message, true);
+                        statusText.Text = "状态读取失败";
+                        statusText.Foreground = DangerBrush;
+                        statusDot.Background = DangerBrush;
+                    }
                     UpdateActionState();
                     return false;
                 }
@@ -566,6 +567,19 @@ namespace CodexDreamSkinManager
                 statusRefreshCount--;
                 UpdateActionState();
             }
+        }
+
+        private void UpdateStatusDisplay(DreamSkinStatus status)
+        {
+            if (status == null) status = new DreamSkinStatus();
+            bool unhealthy = status.StatusKind == "mismatch" ||
+                status.StatusKind == "uninspectable" || status.StatusKind == "error";
+            bool pausedWhileRunning = status.IsRunning && status.IsPaused;
+            statusText.Text = unhealthy ? "状态需要恢复" : pausedWhileRunning ? "皮肤已暂停" : status.IsRunning ? "皮肤运行中" : "皮肤未运行";
+            statusText.Foreground = unhealthy ? DangerBrush : status.IsRunning ? pausedWhileRunning ? WarningBrush : SuccessBrush : MutedBrush;
+            statusDot.Background = unhealthy ? DangerBrush : status.IsRunning ? pausedWhileRunning ? WarningBrush : SuccessBrush : MutedBrush;
+            statusText.ToolTip = BuildStatusDetails(status);
+            activeThemeText.Text = string.IsNullOrWhiteSpace(status.ActiveThemeName) ? "未选择" : CleanThemeName(status.ActiveThemeName);
         }
 
         private void PopulateThemes(List<ThemeOption> themes)

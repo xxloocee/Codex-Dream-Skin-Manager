@@ -40,6 +40,22 @@ function Assert-True {
 }
 
 try {
+  $common = @('-SkillRoot', $SkillRoot, '-StateRoot', $stateRoot)
+  $packagedInitial = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
+  Assert-Equal 'preset-paper-light' $packagedInitial.activeThemeId 'Packaged default metadata did not match the paper-light image.'
+  $arinaTheme = @($packagedInitial.themes | Where-Object { $_.id -eq 'preset-arina-hashimoto' })
+  Assert-Equal 1 $arinaTheme.Count 'Packaged catalog did not expose the Arina Hashimoto preset.'
+  $null = Invoke-Manager -Arguments (@(
+      '-Action', 'ApplyTheme', '-ImagePath', $arinaTheme[0].imagePath
+    ) + $common)
+  $arinaStatus = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
+  Assert-Equal 'preset-arina-hashimoto' $arinaStatus.activeThemeId 'Status initialization replaced the applied Arina Hashimoto theme.'
+  Assert-Equal (Get-FileHash -LiteralPath (Join-Path $SkillRoot 'presets\arina-hashimoto.jpg') -Algorithm SHA256).Hash `
+    (Get-FileHash -LiteralPath $arinaStatus.activeImage -Algorithm SHA256).Hash `
+    'Status initialization replaced the applied Arina Hashimoto image.'
+  Write-Host 'PASS: packaged default identity does not overwrite the Arina Hashimoto preset'
+  Remove-Item -LiteralPath $stateRoot -Recurse -Force
+
   $catalogImages = @(Get-ChildItem -LiteralPath (Join-Path $SkillRoot 'presets') -File |
     Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|webp)$' } | Select-Object -First 2)
   if ($catalogImages.Count -lt 2) { throw 'At least two preset images are required for the catalog test.' }
@@ -51,7 +67,6 @@ try {
     )
   }
   [System.IO.File]::WriteAllText((Join-Path $SkillRoot 'presets\catalog.json'), (($catalog | ConvertTo-Json -Depth 8) + "`r`n"), [System.Text.Encoding]::UTF8)
-  $common = @('-SkillRoot', $SkillRoot, '-StateRoot', $stateRoot)
   $concurrentStateRoot = Join-Path $testRoot 'concurrent-state'
   $concurrentOutputA = Join-Path $testRoot 'concurrent-a.json'
   $concurrentOutputB = Join-Path $testRoot 'concurrent-b.json'

@@ -886,25 +886,6 @@ try {
   }
   Assert-DreamSkinCodexDirectLaunchTarget -Codex $fakeInstall
 
-  $chatPackageRoot = Join-Path $temporaryRoot 'OpenAI.ChatGPT_1.2.3.4_x64__test'
-  $chatExecutable = Join-Path $chatPackageRoot 'app\ChatGPT.exe'
-  New-Item -ItemType Directory -Path (Split-Path -Parent $chatExecutable) -Force | Out-Null
-  [System.IO.File]::WriteAllBytes($chatExecutable, [byte[]]@())
-  $chatPackage = [pscustomobject]@{
-    Name = 'OpenAI.ChatGPT'
-    InstallLocation = $chatPackageRoot
-    PackageFullName = 'OpenAI.ChatGPT_1.2.3.4_x64__test'
-    PackageFamilyName = 'OpenAI.ChatGPT_test'
-    SignatureKind = 'Store'
-    IsDevelopmentMode = $false
-    Version = [version]'1.2.3.4'
-  }
-  $chatInstall = ConvertTo-DreamSkinCodexInstall -Package $chatPackage -Manifest $fakeManifest
-  if ($null -eq $chatInstall -or $chatInstall.AppUserModelId -cne 'OpenAI.ChatGPT_test!App' -or
-    -not (Test-DreamSkinPathEqual -Left $chatInstall.Executable -Right $chatExecutable)) {
-    throw 'Merged OpenAI.ChatGPT package identity conversion failed.'
-  }
-  Assert-DreamSkinCodexDirectLaunchTarget -Codex $chatInstall
   $invalidDirectTarget = [pscustomobject]@{
     PackageRoot = $fakeInstall.PackageRoot
     Executable = (Join-Path $fakeInstall.PackageRoot 'other\ChatGPT.exe')
@@ -1608,6 +1589,18 @@ try {
       nodePath = $node.Path
       port = $recordedInjectorPort
       browserId = $recordedInjectorBrowserId
+    }
+    $recordedInjectorStatePath = Join-Path $temporaryRoot 'recorded-injector-state.json'
+    Write-DreamSkinState -Path $recordedInjectorStatePath -State $recordedInjectorState
+    $recordedInjectorState = Read-DreamSkinState -Path $recordedInjectorStatePath
+    if (-not (Test-DreamSkinTimestampEqual -Left $recordedInjectorProcess.StartTime.ToUniversalTime().ToString('o') `
+        -Right $recordedInjectorState.injectorStartedAt)) {
+      throw 'UTC timestamp comparison rejected equivalent ISO and DateTime values.'
+    }
+    $localTimestamp = $recordedInjectorProcess.StartTime.ToLocalTime()
+    if (-not (Test-DreamSkinTimestampEqual -Left $recordedInjectorProcess.StartTime.ToUniversalTime().ToString('o') `
+        -Right $localTimestamp)) {
+      throw 'UTC timestamp comparison rejected equivalent UTC and local DateTime values.'
     }
     if (-not (Stop-DreamSkinRecordedInjector -State $recordedInjectorState)) {
       throw 'The identity-validated recorded injector did not report a successful stop.'

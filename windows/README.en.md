@@ -9,7 +9,7 @@ Codex Dream Skin loads an external theme into the official Codex Windows desktop
 ## Requirements
 
 - Windows 10 or newer on x64 (the installer declares Windows 10 as its minimum).
-- The official `OpenAI.Codex` or `OpenAI.ChatGPT` app installed from Microsoft Store and registered for the current user. Codex Desktop has merged into ChatGPT; the scripts discover either controlled package identity.
+- The unified Codex/ChatGPT client installed from Microsoft Store and registered for the current user. The currently verified Store package identity remains `OpenAI.Codex`, with `app\ChatGPT.exe` as its executable. The separate `OpenAI.ChatGPT-Desktop` (ChatGPT Classic) client is not supported.
 - Release Setup.exe bundles Node.js. Only source-based use needs Node.js 22 or
   newer on `PATH`.
 - Windows PowerShell 5.1 or newer (the installer invokes it in the background;
@@ -178,10 +178,10 @@ Run `node --version`, confirm that it reports version 22 or newer, and reopen Po
 Run:
 
 ```powershell
-Get-AppxPackage -Name OpenAI.Codex,OpenAI.ChatGPT
+Get-AppxPackage -Name OpenAI.Codex
 ```
 
-The scripts accept only a registered official Store package. They do not launch Codex from an arbitrary executable path.
+The scripts accept only a registered official `OpenAI.Codex` Store package and verify its manifest-declared `app\ChatGPT.exe`. They do not launch Codex from an arbitrary executable path. `OpenAI.ChatGPT-Desktop` is a separate Classic client and is not controlled by this tool.
 
 ### The installer asks you to close Codex
 

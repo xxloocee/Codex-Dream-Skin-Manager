@@ -20,7 +20,7 @@
 - Reload: use CDP `Page.reload`, wait, and confirm the injection marker returns.
 - Pet overlay: open a desktop pet and confirm its auxiliary window stays transparent with no skin background or decoration layer behind it.
 - Restore/reapply cycle: remove live skin, verify marker absent, apply again, verify marker present.
-- Update resilience: resolve the current `OpenAI.Codex` or `OpenAI.ChatGPT` Appx location dynamically for launch. A versioned path saved for cleanup must be revalidated against the registered package full/family identity before any process is stopped.
+- Update resilience: resolve the current `OpenAI.Codex` Appx location and its manifest-declared `app\ChatGPT.exe` dynamically for launch. A versioned path saved for cleanup must be revalidated against the registered package full/family identity before any process is stopped; `OpenAI.ChatGPT-Desktop` remains out of scope.
 - Restart consent: an existing normal Codex window is never force-closed without explicit CLI authorization or shortcut confirmation.
 - Shortcut policy: installed launch, restore, tray, and tray-child commands use `RemoteSigned` without `Bypass`; Internet-zone markers are removed only from hash-verified managed PowerShell copies.
 - Config safety: Chinese project names, LF/CRLF choice, quoted target keys, table-header comments, and unrelated TOML sections survive install/selective restore; ambiguous target shapes fail unchanged, exact recovery keeps a copy of the replaced current file, and install refuses both registered and state-recorded old Codex processes.

@@ -688,7 +688,10 @@ function Get-ManagerInjectorStatus {
     $matches = $matches -and [regex]::IsMatch($commandLine, $browserPattern)
   }
   $startedAt = Get-DreamSkinProcessStartedAt -ProcessId $processId
-  if ($State.injectorStartedAt) { $matches = $matches -and $startedAt -eq "$($State.injectorStartedAt)" }
+  if ($State.injectorStartedAt) {
+    $matches = $matches -and
+      (Test-DreamSkinTimestampEqual -Left $startedAt -Right $State.injectorStartedAt)
+  }
   if (-not $matches) {
     return [pscustomobject]@{ Kind = 'mismatch'; Message = "PID $processId 存在，但不是记录的 Dream Skin 注入器。"; Running = $false }
   }

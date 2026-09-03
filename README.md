@@ -2,13 +2,13 @@
 
 基于 [Fei-Away/Codex-Dream-Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 开发的跨平台主题管理项目：Windows 保留本项目的 WPF 可视化管理器，macOS 复用上游菜单栏客户端，并共享同一套运行时、主题契约和图片 framing 能力。
 
-管理器版本：`1.2.3`；同步运行时版本：`1.5.16`。运行时支持 Windows 和 macOS；WPF 管理器仍是 Windows 专用界面，macOS 提供上游菜单栏界面及一个共享状态/framing 契约的 `manager-actions-macos.sh` 动作适配层。
+管理器版本：`1.2.4`；同步运行时版本：`1.5.16`。运行时支持 Windows 和 macOS；WPF 管理器仍是 Windows 专用界面，macOS 提供上游菜单栏界面及一个共享状态/framing 契约的 `manager-actions-macos.sh` 动作适配层。
 
 ## 下载
 
 正式版本从 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载
-`CodexDreamSkinManager-v1.2.3-setup.exe`（推荐安装版）或
-`CodexDreamSkinManager-v1.2.3-windows.zip`（便携版）。安装版默认安装到当前用户目录，
+`CodexDreamSkinManager-v1.2.4-setup.exe`（推荐安装版）或
+`CodexDreamSkinManager-v1.2.4-windows.zip`（便携版）。安装版默认安装到当前用户目录，
 不请求管理员权限，并创建开始菜单快捷方式；桌面快捷方式可在安装时选择。两种发布包都
 内置 Node.js，用户无需另行安装运行环境。便携版必须完整解压，不能只复制 EXE。
 发布页同时提供对应的 SHA-256 校验文件。
@@ -57,7 +57,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 `
 
 构建脚本会：
 
-1. 编译并执行 53 项 C# 测试。
+1. 编译并执行 54 项 C# 测试。
 2. 复制已同步的上游 Windows 运行时。
 3. 覆盖本项目维护的 `manager-actions.ps1`、`presets` 和可再分发默认图片。
 4. 校验共享运行时中的图片位置、缩放和移动模式契约，并执行渲染行为测试。
@@ -91,7 +91,7 @@ $iscc = .\tools\prepare-inno-setup.ps1
 .\tools\package-installer.ps1 -IsccPath $iscc
 ```
 
-安装包会生成到 `dist\CodexDreamSkinManager-v1.2.3-setup.exe`。Inno Setup 只用于构建，
+安装包会生成到 `dist\CodexDreamSkinManager-v1.2.4-setup.exe`。Inno Setup 只用于构建，
 不会成为用户电脑上的运行依赖。
 
 仅执行测试：

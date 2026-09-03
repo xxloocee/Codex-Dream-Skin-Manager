@@ -2,7 +2,8 @@
 param(
   [switch]$TestsOnly,
   [string]$SkillRoot,
-  [string]$NodeExecutable
+  [string]$NodeExecutable,
+  [string]$OutputRoot
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,7 +16,22 @@ if ([string]::IsNullOrWhiteSpace($SkillRoot)) {
 }
 $build = Join-Path $root 'build'
 New-Item -ItemType Directory -Force -Path $build | Out-Null
-$packageRoot = Join-Path $build 'CodexDreamSkinManager'
+$formalPackageRoot = [System.IO.Path]::GetFullPath((Join-Path $build 'CodexDreamSkinManager'))
+if ($TestsOnly) {
+  # Never rebuild the package that a user may currently be running. A live
+  # packaged Node process can lock files while the test package is replaced,
+  # leaving the formal package in a partially copied state.
+  if (-not [string]::IsNullOrWhiteSpace($OutputRoot)) {
+    throw '-TestsOnly cannot be combined with -OutputRoot.'
+  }
+  $packageRoot = Join-Path $build ('CodexDreamSkinManager-tests-' + [guid]::NewGuid().ToString('N'))
+} elseif (-not [string]::IsNullOrWhiteSpace($OutputRoot)) {
+  # An alternate output is useful for validating a new build while the
+  # currently installed/running package remains in use.
+  $packageRoot = [System.IO.Path]::GetFullPath($OutputRoot)
+} else {
+  $packageRoot = $formalPackageRoot
+}
 $packageWindows = Join-Path $packageRoot 'windows'
 
 if (-not $NodeExecutable) {
@@ -119,6 +135,25 @@ function New-RunnableWindowsPackage(
   if (-not (Test-Path -LiteralPath $replacementDefaultImage -PathType Leaf)) {
     throw 'The redistributable default theme image is missing: windows\presets\paper-light.jpg'
   }
+  $replacementDefaultPresetId = 'paper-light'
+  $presetCatalogPath = Join-Path $root 'windows\presets\catalog.json'
+  try {
+    $presetCatalog = Get-Content -LiteralPath $presetCatalogPath -Raw -Encoding UTF8 |
+      ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    throw 'The Windows preset catalog is missing or invalid.'
+  }
+  $replacementDefaultPresets = @($presetCatalog.themes | Where-Object {
+      "$($_.id)" -ceq $replacementDefaultPresetId
+    })
+  if ($replacementDefaultPresets.Count -ne 1) {
+    throw "The Windows preset catalog must contain exactly one '$replacementDefaultPresetId' theme."
+  }
+  $replacementDefaultPreset = $replacementDefaultPresets[0]
+  if ("$($replacementDefaultPreset.image)" -cne
+      [System.IO.Path]::GetFileName($replacementDefaultImage)) {
+    throw "The '$replacementDefaultPresetId' catalog entry does not match its replacement image."
+  }
   $projectLicense = Join-Path $root 'LICENSE'
   if (-not (Test-Path -LiteralPath $projectLicense -PathType Leaf)) {
     throw 'The project LICENSE file is missing.'
@@ -149,6 +184,31 @@ function New-RunnableWindowsPackage(
   }
   Copy-Item -LiteralPath $replacementDefaultImage `
     -Destination (Join-Path $destination 'assets\dream-reference.jpg') -Force
+  $packagedThemePath = Join-Path $destination 'assets\theme.json'
+  try {
+    $packagedTheme = Get-Content -LiteralPath $packagedThemePath -Raw -Encoding UTF8 |
+      ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    throw 'The assembled package contains invalid default theme metadata.'
+  }
+  $packagedTheme.id = "preset-$replacementDefaultPresetId"
+  $packagedTheme.name = "$($replacementDefaultPreset.name)"
+  $packagedTheme.tagline = 'Make something wonderful.'
+  $packagedTheme.image = 'dream-reference.jpg'
+  $packagedTheme.appearance = "$($replacementDefaultPreset.appearance)"
+  $packagedTheme.art = [pscustomobject][ordered]@{
+    focusX = [double]$replacementDefaultPreset.focusX
+    focusY = [double]$replacementDefaultPreset.focusY
+    safeArea = "$($replacementDefaultPreset.safeArea)"
+    taskMode = "$($replacementDefaultPreset.taskMode)"
+  }
+  $packagedTheme | Add-Member -NotePropertyName palette -NotePropertyValue `
+    ([pscustomobject]@{ accent = "$($replacementDefaultPreset.accent)" }) -Force
+  [System.IO.File]::WriteAllText(
+    $packagedThemePath,
+    (($packagedTheme | ConvertTo-Json -Depth 8) + "`r`n"),
+    [System.Text.UTF8Encoding]::new($false)
+  )
 
   $packageDirectory = Split-Path -Parent $destination
   $runtimeNodeDirectory = Join-Path $destination 'runtime\node'
@@ -191,6 +251,7 @@ function New-RunnableWindowsPackage(
     'scripts\apply-theme-and-recover.ps1',
     'scripts\runtime-version.ps1',
     'presets\catalog.json',
+    'assets\theme.json',
     'assets\renderer-inject.js',
     'assets\dream-skin.css',
     'assets\selectors.json',
@@ -207,6 +268,19 @@ function New-RunnableWindowsPackage(
       (Get-FileHash -Algorithm SHA256 -LiteralPath $replacementDefaultImage).Hash) {
     throw 'The assembled manager package contains an unexpected default theme image.'
   }
+  $verifiedPackagedTheme = Get-Content -LiteralPath $packagedThemePath -Raw -Encoding UTF8 |
+    ConvertFrom-Json -ErrorAction Stop
+  if ("$($verifiedPackagedTheme.id)" -cne "preset-$replacementDefaultPresetId" -or
+      "$($verifiedPackagedTheme.image)" -cne 'dream-reference.jpg' -or
+      "$($verifiedPackagedTheme.name)" -cne "$($replacementDefaultPreset.name)" -or
+      "$($verifiedPackagedTheme.appearance)" -cne "$($replacementDefaultPreset.appearance)" -or
+      [double]$verifiedPackagedTheme.art.focusX -ne [double]$replacementDefaultPreset.focusX -or
+      [double]$verifiedPackagedTheme.art.focusY -ne [double]$replacementDefaultPreset.focusY -or
+      "$($verifiedPackagedTheme.art.safeArea)" -cne "$($replacementDefaultPreset.safeArea)" -or
+      "$($verifiedPackagedTheme.art.taskMode)" -cne "$($replacementDefaultPreset.taskMode)" -or
+      "$($verifiedPackagedTheme.palette.accent)" -cne "$($replacementDefaultPreset.accent)") {
+    throw 'The assembled manager package default theme metadata does not match its replacement image.'
+  }
   if ((Get-FileHash -Algorithm SHA256 -LiteralPath $packagedNode).Hash -ne
       (Get-FileHash -Algorithm SHA256 -LiteralPath $RuntimeNode).Hash) {
     throw 'The assembled manager package contains an unexpected Node.js executable.'
@@ -217,6 +291,10 @@ $packageFullPath = [System.IO.Path]::GetFullPath($packageRoot)
 $buildFullPath = [System.IO.Path]::GetFullPath($build).TrimEnd('\')
 if (-not $packageFullPath.StartsWith(($buildFullPath + '\'), [System.StringComparison]::OrdinalIgnoreCase)) {
   throw "Refusing to clean a package outside the build directory: $packageFullPath"
+}
+if ($TestsOnly -and [string]::Equals($packageFullPath, $formalPackageRoot,
+    [System.StringComparison]::OrdinalIgnoreCase)) {
+  throw 'TestsOnly must use an isolated package path.'
 }
 Assert-NoReparsePointInPath -Path $packageFullPath -Boundary $buildFullPath
 if (-not $TestsOnly -and (Test-Path -LiteralPath $packageFullPath)) {
@@ -290,24 +368,47 @@ New-RunnableWindowsPackage -SourceRoot $SkillRoot -DestinationRoot $packageWindo
   -RuntimeNode $nodeExecutableFullPath -RuntimeLicense $nodeLicensePath
 $runtimeFramingTest = Join-Path $root 'tests\custom-framing-runtime.test.mjs'
 $packagedNode = Join-Path $packageWindows 'runtime\node\node.exe'
-& $packagedNode $runtimeFramingTest $packageWindows
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $portableNodeTest = Join-Path $root 'tests\portable-node-runtime.test.ps1'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $portableNodeTest `
-  -SkillRoot $packageWindows -NodeSource $nodeExecutableFullPath
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $packagedManagerScript = Join-Path $packageWindows 'scripts\manager-actions.ps1'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $integrationTest `
-  -ManagerScript $packagedManagerScript -SkillRoot $packageWindows
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
 $recoveryIntegrationTest = Join-Path $root 'tests\apply-theme-and-recover.integration.ps1'
 $packagedRecoveryScript = Join-Path $packageWindows 'scripts\apply-theme-and-recover.ps1'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $recoveryIntegrationTest `
-  -RecoveryScript $packagedRecoveryScript
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-if ($TestsOnly) { exit 0 }
+$packagedTestExitCode = 0
+try {
+  & $packagedNode $runtimeFramingTest $packageWindows
+  $packagedTestExitCode = $LASTEXITCODE
+  if ($packagedTestExitCode -eq 0) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $portableNodeTest `
+      -SkillRoot $packageWindows -NodeSource $nodeExecutableFullPath
+    $packagedTestExitCode = $LASTEXITCODE
+  }
+  if ($packagedTestExitCode -eq 0) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $integrationTest `
+      -ManagerScript $packagedManagerScript -SkillRoot $packageWindows
+    $packagedTestExitCode = $LASTEXITCODE
+  }
+  if ($packagedTestExitCode -eq 0) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $recoveryIntegrationTest `
+      -RecoveryScript $packagedRecoveryScript
+    $packagedTestExitCode = $LASTEXITCODE
+  }
+} finally {
+  if ($TestsOnly) {
+    # A failed integration test may leave a packaged process behind, so
+    # cleanup is best effort and must not replace the original test result.
+    try {
+      if (Test-Path -LiteralPath $packageFullPath) {
+        Assert-NoReparsePointTree -RootPath $packageFullPath
+        Remove-Item -LiteralPath $packageFullPath -Recurse -Force -ErrorAction Stop
+      }
+    } catch {
+      Write-Warning "Unable to remove temporary test package '$packageFullPath': $($_.Exception.Message)"
+    }
+  }
+}
+if ($packagedTestExitCode -ne 0) { exit $packagedTestExitCode }
+if ($TestsOnly) {
+  exit 0
+}
 
 $legacyAppExe = Join-Path $build 'CodexDreamSkinManager.exe'
 if (Test-Path -LiteralPath $legacyAppExe) { Remove-Item -LiteralPath $legacyAppExe -Force }

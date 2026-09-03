@@ -654,6 +654,7 @@ namespace CodexDreamSkinManager
                         }));
                         AssertTrue(!WaitForTask(refreshTask, window.Dispatcher));
                         AssertEqual("running", running.StatusKind);
+                        AssertEqual("皮肤运行中", GetPrivateField<TextBlock>(window, "statusText").Text);
                         AssertTrue(GetPrivateField<Button>(window, "applyThemeButton").IsEnabled);
                         AssertTrue(GetPrivateField<Button>(window, "refreshButton").IsEnabled);
 
@@ -818,7 +819,7 @@ namespace CodexDreamSkinManager
 
             Run("Publishes semantic application version", delegate
             {
-                AssertEqual("1.2.3.0", typeof(Program).Assembly.GetName().Version.ToString());
+                AssertEqual("1.2.4.0", typeof(Program).Assembly.GetName().Version.ToString());
             });
 
             Run("Converts focus percentage", delegate

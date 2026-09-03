@@ -770,9 +770,9 @@ function ConvertTo-DreamSkinCodexInstall {
 }
 
 function Get-DreamSkinSupportedPackageNames {
-  # The Codex desktop client was merged into ChatGPT. Keep the identity allow
-  # list explicit so a similarly named sideloaded package is still rejected.
-  return @('OpenAI.Codex', 'OpenAI.ChatGPT')
+  # The unified client runs ChatGPT.exe but retains the OpenAI.Codex Store
+  # package identity. ChatGPT Classic is a different, unsupported shell.
+  return @('OpenAI.Codex')
 }
 
 function Get-DreamSkinRegisteredCodexInstalls {
@@ -781,8 +781,7 @@ function Get-DreamSkinRegisteredCodexInstalls {
     try {
       $packages += @(Get-AppxPackage -Name $packageName -ErrorAction Stop)
     } catch {
-      # A missing candidate is expected on machines that have only the other
-      # client identity installed.
+      # A missing registered Codex package is reported by the caller.
     }
   }
   # Keep the property list explicit for Windows PowerShell 5.1; placing a
@@ -1295,6 +1294,49 @@ function Get-DreamSkinProcessStartedAt {
   }
 }
 
+function Test-DreamSkinTimestampEqual {
+  param(
+    [AllowNull()][object]$Left,
+    [AllowNull()][object]$Right
+  )
+
+  if ($null -eq $Left -or $null -eq $Right) { return $false }
+  try {
+    # Windows PowerShell 5.1's ConvertFrom-Json eagerly turns ISO timestamps
+    # into DateTime values. Compare UTC instants instead of interpolating one
+    # side back to a locale-dependent display string.
+    $leftUtc = if ($Left -is [System.DateTimeOffset]) {
+      $Left.ToUniversalTime().UtcDateTime
+    } elseif ($Left -is [System.DateTime]) {
+      $Left.ToUniversalTime()
+    } else {
+      $parsedLeft = [System.DateTimeOffset]::MinValue
+      if (-not [System.DateTimeOffset]::TryParse(
+          [string]$Left,
+          [System.Globalization.CultureInfo]::InvariantCulture,
+          [System.Globalization.DateTimeStyles]::RoundtripKind,
+          [ref]$parsedLeft)) { return $false }
+      $parsedLeft.UtcDateTime
+    }
+    $rightUtc = if ($Right -is [System.DateTimeOffset]) {
+      $Right.ToUniversalTime().UtcDateTime
+    } elseif ($Right -is [System.DateTime]) {
+      $Right.ToUniversalTime()
+    } else {
+      $parsedRight = [System.DateTimeOffset]::MinValue
+      if (-not [System.DateTimeOffset]::TryParse(
+          [string]$Right,
+          [System.Globalization.CultureInfo]::InvariantCulture,
+          [System.Globalization.DateTimeStyles]::RoundtripKind,
+          [ref]$parsedRight)) { return $false }
+      $parsedRight.UtcDateTime
+    }
+    return $leftUtc.Ticks -eq $rightUtc.Ticks
+  } catch {
+    return $false
+  }
+}
+
 function Stop-DreamSkinRecordedInjector {
   param([AllowNull()][object]$State)
   if ($null -eq $State -or -not $State.injectorPid) { return $true }
@@ -1341,7 +1383,8 @@ function Stop-DreamSkinRecordedInjector {
     if ($processHandle.HasExited) { return $true }
     throw "The recorded injector PID $processId is running, but its start time cannot be inspected. State was preserved."
   }
-  $startMatches = -not $State.injectorStartedAt -or $startedAt -eq "$($State.injectorStartedAt)"
+  $startMatches = -not $State.injectorStartedAt -or
+    (Test-DreamSkinTimestampEqual -Left $startedAt -Right $State.injectorStartedAt)
   $identityMatches = [bool]($isNodeExecutable -and $nodeMatches -and $injectorMatches -and $startMatches)
 
   if (-not $identityMatches) {

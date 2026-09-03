@@ -577,15 +577,24 @@ export async function loadTheme(themeDir) {
   const framingEnabled = art.framingEnabled === true || hasFramingValues;
   const rawColors = raw.colors && typeof raw.colors === "object" && !Array.isArray(raw.colors)
     ? raw.colors : null;
+  const rawPalette = raw.palette && typeof raw.palette === "object" && !Array.isArray(raw.palette)
+    ? raw.palette : null;
   const colorKeys = [
     "background", "panel", "panelAlt", "accent", "accentAlt", "secondary",
     "highlight", "text", "muted", "line",
   ];
+  const explicitColorKeys = rawColors
+    ? colorKeys.filter((key) => Object.hasOwn(rawColors, key)) : [];
+  if (!explicitColorKeys.includes("accent") && rawPalette && Object.hasOwn(rawPalette, "accent")) {
+    explicitColorKeys.push("accent");
+  }
+  const declaredAccent = Object.hasOwn(rawColors ?? {}, "accent")
+    ? rawColors.accent : rawPalette?.accent;
   const colors = {
     background: normalizeThemeColor(rawColors?.background, "#071116"),
     panel: normalizeThemeColor(rawColors?.panel, "#0b1a20"),
     panelAlt: normalizeThemeColor(rawColors?.panelAlt, "#10272c"),
-    accent: normalizeThemeColor(rawColors?.accent, "#7cff46"),
+    accent: normalizeThemeColor(declaredAccent, "#7cff46"),
     accentAlt: normalizeThemeColor(rawColors?.accentAlt, "#b8ff3d"),
     secondary: normalizeThemeColor(rawColors?.secondary, "#36d7e8"),
     highlight: normalizeThemeColor(rawColors?.highlight, "#642a8c"),
@@ -618,8 +627,8 @@ export async function loadTheme(themeDir) {
         framingEnabled: true,
       } : {}),
     },
-    colorMode: rawColors ? "explicit" : "auto",
-    explicitColorKeys: rawColors ? colorKeys.filter((key) => Object.hasOwn(rawColors, key)) : [],
+    colorMode: rawColors || explicitColorKeys.length ? "explicit" : "auto",
+    explicitColorKeys,
     colors,
   };
   const [themeStat, imageStat, safeCss] = await Promise.all([
