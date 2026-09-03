@@ -64,9 +64,9 @@ const loaderPath = process.platform === "win32"
   ? path.join(tempRoot, "fake-loader.cmd")
   : path.join(tempRoot, "fake-loader.sh");
 if (process.platform === "win32") {
-  await fs.writeFile(loaderPath, `@"${process.execPath}" "%~dp0fake-loader.mjs" %*\\r\\n`);
+  await fs.writeFile(loaderPath, `@"${process.execPath}" "%~dp0fake-loader.mjs" %*\r\n`);
 } else {
-  await fs.writeFile(loaderPath, `#!/bin/sh\\nexec "${process.execPath}" "$(dirname "$0")/fake-loader.mjs" "$@"\\n`, { mode: 0o700 });
+  await fs.writeFile(loaderPath, `#!/bin/sh\nexec "${process.execPath}" "$(dirname "$0")/fake-loader.mjs" "$@"\n`, { mode: 0o700 });
 }
 
 const requestPath = path.join(requestsRoot, "batch.json");
@@ -107,7 +107,11 @@ const env = { ...process.env, HOME: home, LOADER_LOG: logPath };
 const batch = await runNode(path.join(root, "scripts", "import-batch-macos.mjs"), [requestPath, loaderPath], env);
 assert.equal(batch.code, 0, batch.stderr);
 const batchResult = JSON.parse(batch.stdout);
-assert.deepEqual({ imported: batchResult.imported, skipped: batchResult.skipped, failed: batchResult.failed }, { imported: 1, skipped: 1, failed: 0 });
+assert.deepEqual(
+  { imported: batchResult.imported, skipped: batchResult.skipped, failed: batchResult.failed },
+  { imported: 1, skipped: 1, failed: 0 },
+  JSON.stringify(batchResult.results),
+);
 assert.match(batchResult.results[0].themeDirectory, /[\\/]themes[\\/]img-[0-9]+-[0-9a-f]{8}$/);
 assert.equal(batchResult.results[1].status, "skipped");
 const loggedArgs = JSON.parse((await fs.readFile(logPath, "utf8")).trim());
