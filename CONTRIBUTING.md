@@ -21,11 +21,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 `
   -SkillRoot ".\windows"
 ```
 
-macOS 运行时测试需要在 macOS 上执行；若机器未安装官方 Codex，可跳过需签名客户端的集成段：
+macOS 运行时测试需要在 macOS 上执行；若机器未安装官方 ChatGPT，可跳过需签名客户端的集成段：
 
 ```bash
 cd macos
-NODE="$(command -v node)" CODEX_DREAM_SKIN_SKIP_SIGNED_RUNTIME_TESTS=1 npm test
+NODE="$(command -v node)" CODEX_DREAM_SKIN_SKIP_SIGNED_RUNTIME_TESTS=1 CODEX_DREAM_SKIN_SKIP_DOCTOR=1 npm test
 ```
 
 5. 如果修改 UI，请附上截图并说明已验证的窗口尺寸或交互路径。
