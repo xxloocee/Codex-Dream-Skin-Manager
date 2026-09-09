@@ -706,6 +706,15 @@ function Get-ManagerInjectorStatus {
   return [pscustomobject]@{ Kind = 'running'; Message = "皮肤注入器正在运行（PID $processId）。"; Running = $true }
 }
 
+function Invoke-ManagerLiveApplyIfRunning {
+  $state = Read-DreamSkinState -Path $paths.State
+  $identity = Get-ManagerInjectorStatus -State $state
+  if (-not $identity.Running) { return $false }
+  $live = Invoke-DreamSkinLiveApply -StateRoot $StateRoot
+  if (-not $live.Applied) { throw $live.Message }
+  return $true
+}
+
 function Get-ManagerImageMetadata {
   param([Parameter(Mandatory = $true)][string]$Path)
   $fullPath = [System.IO.Path]::GetFullPath($Path)
@@ -885,7 +894,19 @@ switch ($Action) {
     $state = Read-DreamSkinState -Path $paths.State
     $identity = Get-ManagerInjectorStatus -State $state
     $paused = Test-DreamSkinPaused -StateRoot $StateRoot
+    $rendererStatus = 'unavailable'
+    $rendererMessage = ''
     $statusKind = if ($identity.Running -and $paused) { 'paused' } else { $identity.Kind }
+    $statusMessage = $identity.Message
+    if ($identity.Running) {
+      $renderer = Get-DreamSkinLiveRendererStatus -StateRoot $StateRoot -Paused $paused
+      $rendererStatus = "$($renderer.Status)"
+      $rendererMessage = "$($renderer.Message)"
+      if (-not $renderer.Verified) {
+        $statusKind = 'degraded'
+        $statusMessage = $rendererMessage
+      }
+    }
     $themes = @()
     $presetIds = @{}
     $catalogMessage = ''
@@ -952,7 +973,9 @@ switch ($Action) {
       isRunning = [bool]$identity.Running
       isPaused = [bool]$paused
       statusKind = $statusKind
-      statusMessage = $identity.Message
+      statusMessage = $statusMessage
+      rendererStatus = $rendererStatus
+      rendererMessage = $rendererMessage
       activeThemeId = if ($active -and $active.Theme.id) { "$($active.Theme.id)" } else { '' }
       activeTheme = if ($active -and $active.Theme.name) { "$($active.Theme.name)" } else { '' }
       activeImage = if ($active) { "$($active.ImagePath)" } else { '' }
@@ -1000,12 +1023,14 @@ switch ($Action) {
       } else { throw 'ApplyTheme requires ThemeDirectory or ImagePath.' }
       Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
       Remove-ManagerDuplicateImageArchives
+      $rendererApplied = Invoke-ManagerLiveApplyIfRunning
       [ordered]@{
         id = if ($result.Theme.id) { "$($result.Theme.id)" } else { '' }
         name = "$($result.Theme.name)"
         imagePath = "$($result.ImagePath)"
         category = if ($result.Theme.category) { "$($result.Theme.category)" } else { '' }
         tags = @($result.Theme.tags)
+        rendererApplied = [bool]$rendererApplied
       } | ConvertTo-Json -Depth 8
     }
   }
@@ -1120,25 +1145,36 @@ switch ($Action) {
         -Name "$($defaultTheme.name)" -StateRoot $StateRoot
       Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
       Remove-ManagerDuplicateImageArchives
+      $rendererApplied = Invoke-ManagerLiveApplyIfRunning
       [ordered]@{
         id = if ($result.Theme.id) { "$($result.Theme.id)" } else { '' }
         name = "$($result.Theme.name)"
         imagePath = "$($result.ImagePath)"
         category = if ($result.Theme.category) { "$($result.Theme.category)" } else { '' }
         tags = @($result.Theme.tags)
+        rendererApplied = [bool]$rendererApplied
       } | ConvertTo-Json -Depth 8
     }
   }
   'Pause' {
     Invoke-ManagerWriteLock {
+      $state = Read-DreamSkinState -Path $paths.State
+      $identity = Get-ManagerInjectorStatus -State $state
       Set-DreamSkinPaused -Paused $true -StateRoot $StateRoot | Out-Null
-      [ordered]@{ isPaused = $true } | ConvertTo-Json
+      $rendererRemoved = $false
+      if ($identity.Running) {
+        $removal = Invoke-DreamSkinLiveRemove -StateRoot $StateRoot
+        if (-not $removal.Removed) { throw $removal.Message }
+        $rendererRemoved = $true
+      }
+      [ordered]@{ isPaused = $true; rendererRemoved = $rendererRemoved } | ConvertTo-Json
     }
   }
   'Resume' {
     Invoke-ManagerWriteLock {
       Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
-      [ordered]@{ isPaused = $false } | ConvertTo-Json
+      $rendererApplied = Invoke-ManagerLiveApplyIfRunning
+      [ordered]@{ isPaused = $false; rendererApplied = [bool]$rendererApplied } | ConvertTo-Json
     }
   }
 }

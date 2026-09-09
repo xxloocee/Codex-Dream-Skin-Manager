@@ -225,7 +225,7 @@ try {
   Assert-True (@($after.supportedActions) -contains 'ResetTheme') 'Supported actions do not include ResetTheme.'
   Assert-True (@($after.supportedActions) -contains 'DeleteTheme') 'Supported actions do not include DeleteTheme.'
   Assert-True (-not (@($after.supportedActions) -contains 'EmergencyRestore')) 'Supported actions advertise an unavailable EmergencyRestore action.'
-  Assert-True -Value ($after.statusKind -in @('stopped','running','paused','stale','mismatch','uninspectable')) -Message 'Status kind is not structured.'
+  Assert-True -Value ($after.statusKind -in @('stopped','running','paused','stale','mismatch','uninspectable','degraded')) -Message 'Status kind is not structured.'
   Write-Host 'PASS: status exposes versions and capabilities'
 
   $validated = Invoke-Manager -Arguments (@('-Action', 'ValidateImage', '-ImagePath', $sourceImage.FullName) + $common)
@@ -536,11 +536,25 @@ try {
   Assert-Equal $countBeforeReject @((Invoke-Manager -Arguments (@('-Action', 'Status') + $common)).themes).Count 'Rejected batch wrote partial themes.'
   Write-Host 'PASS: batch import is atomic, deduplicated, and limited to 50 items'
 
+  $liveThemeDirectory = "$($legacyVariantResult.results[0].themeDirectory)"
+  Assert-True (Test-Path -LiteralPath $liveThemeDirectory -PathType Container) `
+    'The live-operation fixture requires an existing saved theme.'
   $engineRoot = Join-Path $testRoot 'installed-engine'
   New-Item -ItemType Directory -Force -Path (Join-Path $engineRoot 'scripts'), (Join-Path $engineRoot 'assets') | Out-Null
   $sourceInjector = Join-Path $SkillRoot 'scripts\injector.mjs'
   $engineInjector = Join-Path $engineRoot 'scripts\injector.mjs'
-  [System.IO.File]::WriteAllText($sourceInjector, 'setInterval(() => {}, 1000);', [System.Text.UTF8Encoding]::new($false))
+  $engineProbeLog = Join-Path $testRoot 'engine-live-probes.log'
+  [System.IO.File]::WriteAllText($sourceInjector, @'
+import fs from "node:fs";
+const args = process.argv.slice(2);
+if (args.includes("--watch")) {
+  setInterval(() => {}, 1000);
+} else {
+  const log = process.env.CODEX_DREAM_SKIN_TEST_LIVE_LOG;
+  if (log) fs.appendFileSync(log, `${JSON.stringify(args)}\n`);
+  process.exitCode = process.env.CODEX_DREAM_SKIN_TEST_LIVE_FAIL === "1" ? 2 : 0;
+}
+'@, [System.Text.UTF8Encoding]::new($false))
   Copy-Item -LiteralPath $sourceInjector -Destination $engineInjector -Force
   foreach ($runtimeAsset in @(
     'assets\renderer-inject.js',
@@ -559,7 +573,12 @@ try {
     }
   }
   $engineProcess = $null
+  $previousLiveLog = $env:CODEX_DREAM_SKIN_TEST_LIVE_LOG
+  $previousLiveFailure = $env:CODEX_DREAM_SKIN_TEST_LIVE_FAIL
   try {
+    Remove-Item -LiteralPath (Join-Path $stateRoot 'paused') -Force -ErrorAction SilentlyContinue
+    $env:CODEX_DREAM_SKIN_TEST_LIVE_LOG = $engineProbeLog
+    $env:CODEX_DREAM_SKIN_TEST_LIVE_FAIL = '1'
     $engineProcess = Start-Process -FilePath (Get-Command node.exe).Source `
       -ArgumentList @($engineInjector, '--watch', '--port', '9345', '--browser-id', 'test-browser') -PassThru -WindowStyle Hidden
     Start-Sleep -Milliseconds 500
@@ -573,9 +592,41 @@ try {
       codexPackageFullName = 'test'; codexPackageFamilyName = 'test'; browserId = 'test-browser'
     }
     [System.IO.File]::WriteAllText((Join-Path $stateRoot 'state.json'), (($engineState | ConvertTo-Json -Depth 5) + "`r`n"), [System.Text.Encoding]::UTF8)
+    $degradedEngineStatus = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
+    Assert-Equal 'degraded' $degradedEngineStatus.statusKind 'A live renderer probe failure was reported as healthy.'
+    Assert-Equal 'degraded' $degradedEngineStatus.rendererStatus 'Renderer health was not exposed in manager status.'
+    Assert-Equal $true $degradedEngineStatus.isRunning 'A degraded live renderer lost its running process state.'
+
+    $env:CODEX_DREAM_SKIN_TEST_LIVE_FAIL = '0'
     $engineStatus = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
     Assert-True ($engineStatus.statusKind -in @('running','paused')) 'An installed engine with the same runtime fingerprint was marked stale.'
     Assert-Equal $true $engineStatus.isRunning 'An installed engine with the same runtime fingerprint was not reported as running.'
+    Assert-Equal 'applied' $engineStatus.rendererStatus 'A verified live renderer was not reported as applied.'
+
+    $null = Invoke-Manager -Arguments (@('-Action', 'ApplyTheme', '-ThemeDirectory', $liveThemeDirectory) + $common)
+    $null = Invoke-Manager -Arguments (@('-Action', 'Pause') + $common)
+    $pausedLiveStatus = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
+    Assert-Equal 'paused' $pausedLiveStatus.statusKind 'A verified live pause was not reported as paused.'
+    Assert-Equal 'removed' $pausedLiveStatus.rendererStatus 'A verified live pause did not expose removed renderer state.'
+    $null = Invoke-Manager -Arguments (@('-Action', 'Resume') + $common)
+    $null = Invoke-Manager -Arguments (@('-Action', 'ResetTheme') + $common)
+    $liveArguments = @((Get-Content -LiteralPath $engineProbeLog) | ForEach-Object { $_ | ConvertFrom-Json })
+    Assert-True -Value (@($liveArguments | Where-Object { $_ -contains '--apply-live' }).Count -ge 3) `
+      -Message 'Apply, resume, and reset did not synchronously apply and verify the live renderer.'
+    Assert-True -Value (@($liveArguments | Where-Object { $_ -contains '--remove' }).Count -ge 1) `
+      -Message 'Pause did not synchronously remove and verify the live renderer.'
+    Assert-True -Value (@($liveArguments | Where-Object { $_ -contains '--verify-live' }).Count -ge 1) `
+      -Message 'Status did not probe the applied live renderer.'
+    Assert-True -Value (@($liveArguments | Where-Object { $_ -contains '--verify-removed' }).Count -ge 1) `
+      -Message 'Paused status did not verify that the live renderer was removed.'
+
+    $env:CODEX_DREAM_SKIN_TEST_LIVE_FAIL = '1'
+    $rejectedUnverifiedApply = $false
+    try {
+      $null = Invoke-Manager -Arguments (@('-Action', 'ApplyTheme', '-ThemeDirectory', $liveThemeDirectory) + $common)
+    } catch { $rejectedUnverifiedApply = $true }
+    Assert-Equal $true $rejectedUnverifiedApply 'ApplyTheme reported success after live renderer verification failed.'
+    $env:CODEX_DREAM_SKIN_TEST_LIVE_FAIL = '0'
     Write-Host 'PASS: installed engine runtime remains current when its path differs'
     [System.IO.File]::WriteAllText((Join-Path $engineRoot 'assets\dream-skin.css'), 'tampered engine runtime', [System.Text.Encoding]::UTF8)
     $tamperedEngineStatus = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
@@ -583,6 +634,10 @@ try {
     Assert-Equal $false $tamperedEngineStatus.isRunning 'A modified installed engine was reported as running.'
     Write-Host 'PASS: status detects installed engine content changes'
   } finally {
+    if ($null -eq $previousLiveLog) { Remove-Item Env:CODEX_DREAM_SKIN_TEST_LIVE_LOG -ErrorAction SilentlyContinue }
+    else { $env:CODEX_DREAM_SKIN_TEST_LIVE_LOG = $previousLiveLog }
+    if ($null -eq $previousLiveFailure) { Remove-Item Env:CODEX_DREAM_SKIN_TEST_LIVE_FAIL -ErrorAction SilentlyContinue }
+    else { $env:CODEX_DREAM_SKIN_TEST_LIVE_FAIL = $previousLiveFailure }
     if ($null -ne $engineProcess) {
       Stop-Process -Id $engineProcess.Id -Force -ErrorAction SilentlyContinue
       $engineProcess.WaitForExit()

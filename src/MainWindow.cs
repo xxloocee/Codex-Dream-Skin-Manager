@@ -573,7 +573,8 @@ namespace CodexDreamSkinManager
         {
             if (status == null) status = new DreamSkinStatus();
             bool unhealthy = status.StatusKind == "mismatch" ||
-                status.StatusKind == "uninspectable" || status.StatusKind == "error";
+                status.StatusKind == "uninspectable" || status.StatusKind == "error" ||
+                status.StatusKind == "degraded";
             bool pausedWhileRunning = status.IsRunning && status.IsPaused;
             statusText.Text = unhealthy ? "状态需要恢复" : pausedWhileRunning ? "皮肤已暂停" : status.IsRunning ? "皮肤运行中" : "皮肤未运行";
             statusText.Foreground = unhealthy ? DangerBrush : status.IsRunning ? pausedWhileRunning ? WarningBrush : SuccessBrush : MutedBrush;

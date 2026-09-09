@@ -4,7 +4,11 @@ import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { SKIN_VERSION, verifySession } from "../scripts/injector.mjs";
+import {
+  SKIN_VERSION,
+  verifyAppliedSession,
+  verifySession,
+} from "../scripts/injector.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const startPath = path.resolve(here, "../scripts/start-dream-skin.ps1");
@@ -478,6 +482,35 @@ test("horizontal document overflow cannot be reported as a verified skin", async
   assert.equal(verticalOnly.result.documentOverflow.y, true);
   assert.equal(verticalOnly.result.documentOverflow.x, false);
   assert.equal(verticalOnly.result.pass, true, "Vertical scrolling is expected for long conversations.");
+});
+
+test("live verification checks renderer markers without requiring a visible window", async () => {
+  const hiddenDom = makeDomFixture({
+    visibilityState: "hidden",
+    hidden: true,
+    viewportWidth: 1,
+    viewportHeight: 1,
+  });
+  const hiddenSession = makeSession({
+    dom: hiddenDom,
+    currentBounds: { width: 0, height: 0, windowState: "minimized" },
+  });
+  const applied = await verifyAppliedSession(
+    hiddenSession,
+    "fixture-theme",
+    "fixture-revision",
+  );
+  assert.equal(applied.pass, true,
+    "A minimized but correctly styled renderer must pass the lightweight live probe.");
+  assert.deepEqual(hiddenSession.calls, [],
+    "The lightweight live probe must not depend on native window visibility APIs.");
+
+  const wrongTheme = await verifyAppliedSession(hiddenSession, "another-theme", "fixture-revision");
+  assert.equal(wrongTheme.pass, false, "A renderer using a different theme must fail live verification.");
+
+  hiddenDom.window.__CODEX_DREAM_SKIN_DISABLED__ = true;
+  const disabled = await verifyAppliedSession(hiddenSession, "fixture-theme", "fixture-revision");
+  assert.equal(disabled.pass, false, "A disabled renderer must fail live verification.");
 });
 
 test("zero-size and CSS-hidden shell anchors cannot satisfy L1", async () => {

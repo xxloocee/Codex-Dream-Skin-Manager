@@ -586,6 +586,33 @@ namespace CodexDreamSkinManager
                 object runningPausedActions = fromStatus.Invoke(null, new object[] { runningPaused, false, true, true });
                 AssertTrue(Convert.ToBoolean(ReadMemberObject(runningPausedActions, "CanPause")));
                 AssertEqual("继续显示", Convert.ToString(ReadMemberObject(runningPausedActions, "PauseLabel")));
+                DreamSkinStatus degraded = DreamSkinService.ParseStatus("{\"isRunning\":true,\"isPaused\":false,\"statusKind\":\"degraded\",\"supportedActions\":[\"ResetTheme\"],\"themes\":[]}");
+                object degradedActions = fromStatus.Invoke(null, new object[] { degraded, false, true, true });
+                AssertTrue(Convert.ToBoolean(ReadMemberObject(degradedActions, "CanEnable")));
+                AssertTrue(Convert.ToBoolean(ReadMemberObject(degradedActions, "CanPause")));
+                AssertTrue(Convert.ToBoolean(ReadMemberObject(degradedActions, "CanReset")));
+                AssertTrue(Convert.ToBoolean(ReadMemberObject(degradedActions, "CanApplyTheme")));
+                AssertTrue(!Convert.ToBoolean(ReadMemberObject(degradedActions, "RestartAfterApply")));
+                AssertTrue(!Convert.ToBoolean(ReadMemberObject(degradedActions, "RequiresRecovery")));
+            });
+
+            Run("Shows degraded renderer status as needing recovery", delegate
+            {
+                MainWindow window = new MainWindow(null);
+                try
+                {
+                    DreamSkinStatus degraded = new DreamSkinStatus {
+                        IsRunning = true,
+                        StatusKind = "degraded",
+                        StatusMessage = "renderer verification failed"
+                    };
+                    typeof(MainWindow).GetMethod("UpdateStatusDisplay", BindingFlags.Instance | BindingFlags.NonPublic)
+                        .Invoke(window, new object[] { degraded });
+                    AssertEqual("状态需要恢复", GetPrivateField<TextBlock>(window, "statusText").Text);
+                    AssertEqual("renderer verification failed",
+                        Convert.ToString(GetPrivateField<TextBlock>(window, "statusText").ToolTip));
+                }
+                finally { window.Close(); }
             });
 
             Run("Shows stale paused markers as stopped", delegate

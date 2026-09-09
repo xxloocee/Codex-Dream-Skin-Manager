@@ -175,8 +175,11 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === "--port") options.port = Number(argv[++i]);
     else if (arg === "--once") options.mode = "once";
+    else if (arg === "--apply-live") options.mode = "apply-live";
     else if (arg === "--watch") options.mode = "watch";
     else if (arg === "--verify") options.mode = "verify";
+    else if (arg === "--verify-live") options.mode = "verify-live";
+    else if (arg === "--verify-removed") options.mode = "verify-removed";
     else if (arg === "--remove") options.mode = "remove";
     else if (arg === "--begin-operation") options.mode = "begin-operation";
     else if (arg === "--finish-operation") options.mode = "finish-operation";
@@ -223,7 +226,9 @@ function parseArgs(argv) {
     }
     if (!options.browserId) throw new Error("--browser-id is required in finish-operation mode");
   }
-  if (["watch", "once", "verify", "remove"].includes(options.mode) && !options.browserId) {
+  if ([
+    "watch", "once", "apply-live", "verify", "verify-live", "verify-removed", "remove",
+  ].includes(options.mode) && !options.browserId) {
     throw new Error(`--browser-id is required in ${options.mode} mode`);
   }
   return options;
@@ -1191,6 +1196,38 @@ async function verifyRemovedSession(session) {
   })()`);
 }
 
+export async function verifyAppliedSession(
+  session,
+  expectedThemeId = null,
+  expectedRevision = null,
+) {
+  return session.evaluate(`(() => {
+    const runtime = window.__CODEX_DREAM_SKIN_STATE__;
+    const adopted = runtime?.styleMode === 'adopted' && 'adoptedStyleSheets' in document &&
+      [...document.adoptedStyleSheets].includes(runtime.styleSheet);
+    const fallback = runtime?.styleMode === 'style' &&
+      document.getElementById('codex-dream-skin-style') === runtime.styleNode;
+    const expectedThemeId = ${JSON.stringify(expectedThemeId)};
+    const expectedRevision = ${JSON.stringify(expectedRevision)};
+    const result = {
+      installed: document.documentElement.getAttribute('data-dream-skin') === 'active',
+      disabled: window.__CODEX_DREAM_SKIN_DISABLED__ === true,
+      version: runtime?.version ?? null,
+      expectedVersion: ${JSON.stringify(SKIN_VERSION)},
+      themeId: runtime?.themeId ?? null,
+      expectedThemeId,
+      revision: runtime?.revision ?? null,
+      expectedRevision,
+      stylePresent: Boolean(adopted || fallback),
+    };
+    result.pass = result.installed && !result.disabled &&
+      result.version === result.expectedVersion && result.stylePresent &&
+      (!expectedThemeId || result.themeId === expectedThemeId) &&
+      (!expectedRevision || result.revision === expectedRevision);
+    return result;
+  })()`);
+}
+
 export async function cleanupExcludedSurface(session) {
   if (!await removeFromSession(session)) return false;
   return verifyRemovedSession(session);
@@ -1391,6 +1428,29 @@ async function waitForVerifiedSession(
   return lastResult;
 }
 
+async function waitForAppliedSession(
+  session,
+  timeoutMs,
+  expectedThemeId = null,
+  expectedRevision = null,
+) {
+  const deadline = Date.now() + timeoutMs;
+  let lastResult;
+  let lastError;
+  while (Date.now() < deadline) {
+    try {
+      lastResult = await verifyAppliedSession(session, expectedThemeId, expectedRevision);
+      lastError = null;
+      if (lastResult.pass) return lastResult;
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  if (!lastResult && lastError) throw lastError;
+  return lastResult;
+}
+
 async function capture(session, outputPath) {
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
   const result = await session.send("Page.captureScreenshot", {
@@ -1441,7 +1501,7 @@ async function runFinishOperation(options) {
 
 async function runOneShot(options) {
   const connected = await connectCodexTargets(options.port, options.timeoutMs, options.browserId);
-  const operationToken = options.mode === "once" || options.mode === "remove"
+  const operationToken = ["once", "apply-live", "remove"].includes(options.mode)
     ? options.operationToken ?? nextOperationToken()
     : null;
   if (operationToken) {
@@ -1454,7 +1514,7 @@ async function runOneShot(options) {
   }
   let loadedPayload = null;
   try {
-    loadedPayload = (options.mode === "once" || options.mode === "verify" || options.reload)
+    loadedPayload = (["once", "apply-live", "verify", "verify-live"].includes(options.mode) || options.reload)
       ? await loadPayload(options.themeDir) : null;
   } catch (error) {
     if (operationToken) {
@@ -1472,7 +1532,7 @@ async function runOneShot(options) {
     for (const { target, session, probe } of connected) {
       try {
         if (options.mode === "remove") await removeFromSession(session);
-        else if (options.mode === "once") {
+        else if (options.mode === "once" || options.mode === "apply-live") {
           if (operationToken) {
             await bestEffortOperationUi(
               session, "update", operationToken, "loading",
@@ -1480,7 +1540,7 @@ async function runOneShot(options) {
             );
           }
           await applyToSession(session, payload);
-          await new Promise((resolve) => setTimeout(resolve, 850));
+          await new Promise((resolve) => setTimeout(resolve, options.mode === "once" ? 850 : 100));
         }
         if (options.reload) {
           await session.send("Page.reload", { ignoreCache: true });
@@ -1503,8 +1563,17 @@ async function runOneShot(options) {
             options.mode === "remove" ? "正在确认皮肤已暂停…" : "正在检查显示效果…",
           );
         }
-        const verified = options.mode === "remove"
+        const removedMode = options.mode === "remove" || options.mode === "verify-removed";
+        const liveMode = options.mode === "apply-live" || options.mode === "verify-live";
+        const verified = removedMode
           ? await verifyRemovedSession(session)
+          : liveMode
+            ? await waitForAppliedSession(
+              session,
+              options.timeoutMs,
+              loadedPayload?.theme.id ?? null,
+              loadedPayload?.revision ?? null,
+            )
           : (options.reload || options.mode === "once" || options.mode === "verify")
             ? await waitForVerifiedSession(
               session,
@@ -1516,14 +1585,14 @@ async function runOneShot(options) {
             : await verifySession(session, target.id);
         results.push({ targetId: target.id, markers: probe.markers, result: verified });
         if (operationToken) {
-          const passed = options.mode === "remove" ? verified === true : verified?.pass;
+          const passed = removedMode ? verified === true : verified?.pass;
           await presentOperationUi(
             session,
             operationToken,
             passed ? "success" : "error",
             passed
-              ? options.mode === "remove" ? "皮肤已暂停" : `已应用「${loadedPayload.theme.name}」`
-              : options.mode === "remove" ? "暂停校验失败" : "显示校验失败",
+              ? removedMode ? "皮肤已暂停" : `已应用「${loadedPayload.theme.name}」`
+              : removedMode ? "暂停校验失败" : "显示校验失败",
           );
         }
         if (options.screenshot && !screenshotCaptured) {
@@ -1551,8 +1620,9 @@ async function runOneShot(options) {
     for (const { session } of connected) session.close();
   }
   console.log(JSON.stringify({ mode: options.mode, port: options.port, targets: results }, null, 2));
+  const removedMode = options.mode === "remove" || options.mode === "verify-removed";
   const failed = results.length === 0 || results.some((item) =>
-    item.error || (options.mode === "remove" ? item.result !== true : !item.result?.pass));
+    item.error || (removedMode ? item.result !== true : !item.result?.pass));
   if (failed) process.exitCode = 2;
 }
 

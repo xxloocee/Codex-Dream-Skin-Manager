@@ -2359,3 +2359,96 @@ function Invoke-DreamSkinLiveRemove {
     Message = $PauseFailedMessage
   }
 }
+
+function Invoke-DreamSkinLiveApply {
+  param(
+    [string]$StateRoot = (Join-Path $env:LOCALAPPDATA 'CodexDreamSkin'),
+    [int]$TimeoutMs = 8000
+  )
+  if ($TimeoutMs -lt 250 -or $TimeoutMs -gt 120000) {
+    throw "Invalid live-apply timeout: $TimeoutMs"
+  }
+  $session = Get-DreamSkinLiveSessionContext -StateRoot $StateRoot
+  if ($null -eq $session) {
+    return [pscustomobject]@{
+      Attempted = $false
+      Applied = $false
+      Message = '没有可连接的活动会话，无法确认皮肤已应用。'
+    }
+  }
+  if (-not (Test-Path -LiteralPath $session.Paths.Active -PathType Container)) {
+    return [pscustomobject]@{
+      Attempted = $false
+      Applied = $false
+      Message = '活动主题目录不存在，无法应用皮肤。'
+    }
+  }
+
+  $argumentList = @(
+    $session.Injector,
+    '--apply-live',
+    '--port', "$($session.Port)",
+    '--browser-id', $session.BrowserId,
+    '--theme-dir', $session.Paths.Active,
+    '--timeout-ms', "$TimeoutMs"
+  )
+  $application = Invoke-DreamSkinNative -FilePath $session.NodePath -ArgumentList $argumentList -DiscardStderr
+  return [pscustomobject]@{
+    Attempted = $true
+    Applied = ($application.ExitCode -eq 0)
+    Message = if ($application.ExitCode -eq 0) {
+      '皮肤已应用。'
+    } else {
+      '活动主题已保存，但当前 Codex 窗口未通过皮肤应用校验。'
+    }
+  }
+}
+
+function Get-DreamSkinLiveRendererStatus {
+  param(
+    [string]$StateRoot = (Join-Path $env:LOCALAPPDATA 'CodexDreamSkin'),
+    [bool]$Paused = $false,
+    [int]$TimeoutMs = 3000
+  )
+  if ($TimeoutMs -lt 250 -or $TimeoutMs -gt 120000) {
+    throw "Invalid live-status timeout: $TimeoutMs"
+  }
+  $session = Get-DreamSkinLiveSessionContext -StateRoot $StateRoot
+  if ($null -eq $session) {
+    return [pscustomobject]@{
+      Verified = $false
+      Status = 'degraded'
+      Message = '皮肤进程仍在运行，但没有可验证的 Codex 渲染会话。'
+    }
+  }
+
+  $mode = if ($Paused) { '--verify-removed' } else { '--verify-live' }
+  $argumentList = @(
+    $session.Injector,
+    $mode,
+    '--port', "$($session.Port)",
+    '--browser-id', $session.BrowserId,
+    '--timeout-ms', "$TimeoutMs"
+  )
+  if (-not $Paused) {
+    if (-not (Test-Path -LiteralPath $session.Paths.Active -PathType Container)) {
+      return [pscustomobject]@{
+        Verified = $false
+        Status = 'degraded'
+        Message = '皮肤进程仍在运行，但活动主题目录不存在。'
+      }
+    }
+    $argumentList += @('--theme-dir', $session.Paths.Active)
+  }
+  $verification = Invoke-DreamSkinNative -FilePath $session.NodePath -ArgumentList $argumentList -DiscardStderr
+  $verified = $verification.ExitCode -eq 0
+  return [pscustomobject]@{
+    Verified = $verified
+    Status = if ($verified) { if ($Paused) { 'removed' } else { 'applied' } } else { 'degraded' }
+    Message = if ($verified) {
+      if ($Paused) { '当前 Codex 渲染器已卸下皮肤。' } else { '当前 Codex 渲染器已应用活动主题。' }
+    } else {
+      '皮肤进程仍在运行，但当前 Codex 渲染状态未通过校验。'
+    }
+  }
+}

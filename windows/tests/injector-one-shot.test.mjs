@@ -51,7 +51,14 @@ const runMode = (mode) => new Promise((resolve, reject) => {
 });
 
 try {
-  for (const mode of ["--verify", "--once", "--remove"]) {
+  for (const mode of [
+    "--verify",
+    "--once",
+    "--remove",
+    "--verify-live",
+    "--verify-removed",
+    "--apply-live",
+  ]) {
     const requestsBefore = versionRequests;
     const result = await runMode(mode);
     assert.notEqual(result.code, 0, `${mode} should time out because the fixture exposes no page targets.`);
@@ -64,4 +71,4 @@ try {
   await new Promise((resolve) => server.close(resolve));
 }
 
-console.log("PASS: Windows verify, once, and remove pass Browser ID explicitly into one-shot discovery.");
+console.log("PASS: Windows one-shot and live modes pass Browser ID explicitly into target discovery.");
