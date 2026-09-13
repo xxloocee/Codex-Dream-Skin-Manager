@@ -403,6 +403,32 @@
       "safeArea": "right",
       "taskMode": "ambient",
       "accent": "#A86BFF"
+    },
+    {
+      "id": "sunlit-window",
+      "name": "晴日倚窗",
+      "image": "sunlit-window.jpg",
+      "category": "warm",
+      "tags": ["人物", "室内", "日光"],
+      "appearance": "light",
+      "focusX": 0.72,
+      "focusY": 0.48,
+      "safeArea": "left",
+      "taskMode": "ambient",
+      "accent": "#B18A6A"
+    },
+    {
+      "id": "warm-gaze",
+      "name": "暖光凝眸",
+      "image": "warm-gaze.jpg",
+      "category": "dream",
+      "tags": ["人物", "近景", "暖光"],
+      "appearance": "light",
+      "focusX": 0.62,
+      "focusY": 0.46,
+      "safeArea": "left",
+      "taskMode": "ambient",
+      "accent": "#9A7565"
     }
   ]
 }
