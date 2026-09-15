@@ -8,6 +8,7 @@ const SOF_MARKERS = new Set([
 ]);
 export const MAX_IMAGE_DIMENSION = 16384;
 export const MAX_IMAGE_PIXELS = 50_000_000;
+export const MAX_IMAGE_FRAMES = 300;
 
 function uint16be(bytes, offset) {
   return bytes[offset] * 256 + bytes[offset + 1];
@@ -33,6 +34,13 @@ function uint32le(bytes, offset) {
 
 function ascii(bytes, offset, length) {
   return String.fromCharCode(...bytes.subarray(offset, offset + length));
+}
+
+function gifDimensions(bytes) {
+  if (bytes.length < 10 || !["GIF87a", "GIF89a"].includes(ascii(bytes, 0, 6))) return null;
+  const width = uint16le(bytes, 6);
+  const height = uint16le(bytes, 8);
+  return width > 0 && height > 0 ? { width, height } : null;
 }
 
 function pngDimensions(bytes) {
@@ -102,6 +110,117 @@ function webpDimensions(bytes) {
   return null;
 }
 
+function skipGifSubBlocks(bytes, offset) {
+  while (offset < bytes.length) {
+    const size = bytes[offset++];
+    if (size === 0) return offset;
+    if (offset + size > bytes.length) return null;
+    offset += size;
+  }
+  return null;
+}
+
+function gifAnimationInfo(bytes) {
+  if (!gifDimensions(bytes)) return null;
+  let offset = 13;
+  const packed = bytes[10];
+  if (packed & 0x80) offset += 3 * (1 << ((packed & 0x07) + 1));
+  let frameCount = 0;
+  while (offset < bytes.length) {
+    const marker = bytes[offset++];
+    if (marker === 0x3b) break;
+    if (marker === 0x21) {
+      if (offset >= bytes.length) return null;
+      const label = bytes[offset++];
+      if (label === 0xf9) {
+        if (offset >= bytes.length) return null;
+        const size = bytes[offset++];
+        if (size !== 4 || offset + size >= bytes.length) return null;
+        offset += size;
+        if (bytes[offset++] !== 0) return null;
+      } else if (label === 0x01) {
+        if (offset >= bytes.length) return null;
+        const size = bytes[offset++];
+        if (size !== 12 || offset + size > bytes.length) return null;
+        offset += size;
+        const next = skipGifSubBlocks(bytes, offset);
+        if (next === null) return null;
+        offset = next;
+      } else {
+        const next = skipGifSubBlocks(bytes, offset);
+        if (next === null) return null;
+        offset = next;
+      }
+      continue;
+    }
+    if (marker !== 0x2c || offset + 9 > bytes.length) return null;
+    const imagePacked = bytes[offset + 8];
+    offset += 9;
+    if (imagePacked & 0x80) offset += 3 * (1 << ((imagePacked & 0x07) + 1));
+    if (offset >= bytes.length) return null;
+    offset += 1;
+    const next = skipGifSubBlocks(bytes, offset);
+    if (next === null) return null;
+    offset = next;
+    frameCount += 1;
+    if (frameCount > MAX_IMAGE_FRAMES) return { animated: true, frameCount };
+  }
+  return frameCount > 0 ? { animated: frameCount > 1, frameCount } : null;
+}
+
+function pngAnimationInfo(bytes) {
+  if (!pngDimensions(bytes)) return null;
+  const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  let offset = signature.length;
+  let declaredFrameCount = 0;
+  let actualFrameCount = 0;
+  while (offset + 12 <= bytes.length) {
+    const length = uint32be(bytes, offset);
+    const data = offset + 8;
+    const end = data + length;
+    if (end + 4 > bytes.length) return null;
+    const type = ascii(bytes, offset + 4, 4);
+    if (type === "acTL" && length >= 8) {
+      declaredFrameCount = Math.max(declaredFrameCount, uint32be(bytes, data));
+      if (declaredFrameCount > MAX_IMAGE_FRAMES) {
+        return { animated: true, frameCount: declaredFrameCount };
+      }
+    }
+    if (type === "fcTL") {
+      actualFrameCount += 1;
+      if (actualFrameCount > MAX_IMAGE_FRAMES) {
+        return { animated: true, frameCount: actualFrameCount };
+      }
+    }
+    offset = end + 4;
+    if (type === "IEND") break;
+  }
+  const frameCount = Math.max(1, declaredFrameCount, actualFrameCount);
+  return { animated: frameCount > 1, frameCount };
+}
+
+function webpAnimationInfo(bytes) {
+  if (!webpDimensions(bytes)) return null;
+  const riffEnd = Math.min(bytes.length, uint32le(bytes, 4) + 8);
+  let offset = 12;
+  let frameCount = 0;
+  let animated = false;
+  while (offset + 8 <= riffEnd) {
+    const type = ascii(bytes, offset, 4);
+    const size = uint32le(bytes, offset + 4);
+    const data = offset + 8;
+    if (data + size > riffEnd) return null;
+    if (type === "VP8X" && size >= 1) animated = Boolean(bytes[data] & 0x02);
+    if (type === "ANMF") {
+      frameCount += 1;
+      if (frameCount > MAX_IMAGE_FRAMES) return { animated: true, frameCount };
+    }
+    offset = data + size + (size % 2);
+  }
+  if (frameCount > 0) animated = true;
+  return { animated, frameCount: frameCount || 1 };
+}
+
 export function classifyImageDimensions({ width, height }) {
   const ratio = width / height;
   if (
@@ -130,6 +249,9 @@ export function classifyImageDimensions({ width, height }) {
 export function readRawDimensions(value, extension = "") {
   const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
   const normalized = extension.toLowerCase();
+  if (normalized === ".gif" || bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
+    return gifDimensions(bytes);
+  }
   if (normalized === ".png" || bytes[0] === 0x89) return pngDimensions(bytes);
   if (normalized === ".jpg" || normalized === ".jpeg" ||
     (bytes[0] === 0xff && bytes[1] === 0xd8)) return jpegDimensions(bytes);
@@ -140,6 +262,17 @@ export function readRawDimensions(value, extension = "") {
 export function readImageMetadata(value, extension = "") {
   const dimensions = readRawDimensions(value, extension);
   return dimensions ? classifyImageDimensions(dimensions) : null;
+}
+
+export function readImageAnimation(value, extension = "") {
+  const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+  const normalized = extension.toLowerCase();
+  if (normalized === ".gif" || bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
+    return gifAnimationInfo(bytes);
+  }
+  if (normalized === ".png" || bytes[0] === 0x89) return pngAnimationInfo(bytes);
+  if (normalized === ".webp" || ascii(bytes, 8, 4) === "WEBP") return webpAnimationInfo(bytes);
+  return { animated: false, frameCount: 1 };
 }
 
 // Keep the PowerShell theme store on the same strict parser as the injector.
@@ -155,8 +288,11 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       const resolved = path.resolve(imagePath);
       const bytes = await fs.readFile(resolved);
       const metadata = readImageMetadata(bytes, path.extname(resolved));
-      if (!metadata) throw new Error("Image metadata is invalid or exceeds the 16384px / 50MP safety limit");
-      console.log(JSON.stringify(metadata));
+      const animation = readImageAnimation(bytes, path.extname(resolved));
+      if (!metadata || !animation || animation.frameCount > MAX_IMAGE_FRAMES) {
+        throw new Error("Image metadata is invalid or exceeds the 16384px / 50MP safety limit");
+      }
+      console.log(JSON.stringify({ ...metadata, ...animation }));
     } catch (error) {
       console.error(error?.message ?? String(error));
       process.exitCode = 2;

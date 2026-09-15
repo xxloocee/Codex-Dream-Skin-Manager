@@ -136,6 +136,8 @@ namespace CodexDreamSkinManager
                 Width = ReadInt(data, "width"),
                 Height = ReadInt(data, "height"),
                 Bytes = ReadLong(data, "bytes"),
+                Animated = ReadBool(data, "animated"),
+                FrameCount = ReadInt(data, "frameCount"),
                 CanPreview = ReadBool(data, "canPreview"),
                 PreviewMessage = ReadString(data, "previewMessage", "")
             };

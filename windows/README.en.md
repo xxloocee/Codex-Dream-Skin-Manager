@@ -87,7 +87,7 @@ Next, use the generated screenshot to check horizontal overflow and text contras
 
 Open `Codex Dream Skin - Tray` to:
 
-- Import a PNG, JPEG, or WebP background.
+- Import a PNG, JPEG, WebP, or GIF background. Animated PNG/WebP/GIF files keep their animation.
 - Import an ordinary `.zip` theme pack into Saved Themes (`.dreamskin` is not supported).
 - Save the active theme and switch through saved themes.
 - Pause or resume the skin.
@@ -105,10 +105,10 @@ rollback baseline is always available. Save unfinished input first. The link
 cannot provide an arbitrary download URL, file path, command, or silent-apply
 option. Incomplete legacy themes remain rejected by the client.
 
-Import a UI-free wallpaper rather than a preview containing a window, sidebar, composer, text, or buttons. Images may be at most 10 MB, 16384 pixels on either side, and 50 million total pixels.
+Import a UI-free wallpaper rather than a preview containing a window, sidebar, composer, text, or buttons. Images may be at most 10 MB, 16384 pixels on either side, and 50 million total pixels; animated images may contain at most 300 frames.
 
 Every new official Studio ZIP contains `manifest.json`, non-empty `theme.json`,
-non-empty `theme.css`, and exactly one `background.webp|jpg|png`, with optional `LICENSE.txt` and the
+non-empty `theme.css`, and exactly one `background.webp|jpg|png|apng|gif`, with optional `LICENSE.txt` and the
 reserved `manifest.sig`. Place them at archive root or inside exactly one
 top-level theme folder. A local simplified ZIP must contain exactly `theme.json`,
 `theme.css`, and its referenced image; because it lacks manifest integrity and compatibility

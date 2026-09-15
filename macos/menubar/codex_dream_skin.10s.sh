@@ -187,8 +187,9 @@ if [ -d "$IMAGES_DIR" ]; then
   # shellcheck disable=SC2012
   for img in "$IMAGES_DIR"/*; do
     [ -f "$img" ] || continue
-    case "$img" in
-      *.png|*.PNG|*.jpg|*.JPG|*.jpeg|*.JPEG|*.webp|*.WEBP) ;;
+    img_lower="$(LC_ALL=C /usr/bin/printf '%s' "$img" | /usr/bin/tr '[:upper:]' '[:lower:]')"
+    case "$img_lower" in
+      *.png|*.apng|*.jpg|*.jpeg|*.webp|*.gif) ;;
       *) continue ;;
     esac
     base="$(/usr/bin/basename "$img")"

@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { loadTheme as loadMacTheme } from "../scripts/injector.mjs";
 import { loadTheme as loadWindowsTheme } from "../../windows/scripts/injector.mjs";
+import { readImageAnimation } from "../scripts/image-metadata.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const macosRoot = path.resolve(here, "..");
@@ -66,11 +67,13 @@ async function makeOfficial(name, options = {}) {
   const source = path.join(tempRoot, name);
   await fs.mkdir(source);
   const image = await fs.readFile(fixtureImage);
+  const backgroundName = options.backgroundName ?? "background.png";
+  const backgroundMedia = options.backgroundMedia ?? "image/png";
   const theme = {
     schemaVersion: 1,
     id: options.themeId ?? "studio.contract-theme",
     name: options.themeName ?? "Studio Contract Theme",
-    image: options.themeImage ?? "background.png",
+    image: options.themeImage ?? backgroundName,
     appearance: "auto",
     art: { focusX: 0.7, focusY: 0.5, safeArea: "left", taskMode: "full" },
     colors,
@@ -79,7 +82,7 @@ async function makeOfficial(name, options = {}) {
   const themeData = jsonBytes(theme);
   const files = [
     fileEntry("theme.json", "application/json", themeData),
-    fileEntry("background.png", "image/png", image),
+    fileEntry(backgroundName, backgroundMedia, image),
   ];
   const capabilities = ["background", "tokens"];
   const extraFiles = new Map();
@@ -114,12 +117,12 @@ async function makeOfficial(name, options = {}) {
   if (options.mutateManifest) options.mutateManifest(manifest);
   await fs.writeFile(path.join(source, "manifest.json"), jsonBytes(manifest));
   await fs.writeFile(path.join(source, "theme.json"), themeData);
-  await fs.writeFile(path.join(source, "background.png"), image);
+  await fs.writeFile(path.join(source, backgroundName), image);
   for (const [fileName, bytes] of extraFiles) await fs.writeFile(path.join(source, fileName), bytes);
   if (options.mutateImageAfterManifest) {
     const tampered = Buffer.from(image);
     tampered[tampered.length - 1] ^= 0x01;
-    await fs.writeFile(path.join(source, "background.png"), tampered);
+    await fs.writeFile(path.join(source, backgroundName), tampered);
   }
   if (options.unknownFile) await fs.writeFile(path.join(source, "notes.txt"), "not registered\n");
   return { source, manifest, theme };
@@ -294,6 +297,13 @@ try {
     "theme.json",
   ]);
 
+  const apngOfficial = await makeOfficial("official-apng", {
+    backgroundName: "background.apng",
+    backgroundMedia: "image/png",
+  });
+  const apngOfficialResult = await validate(apngOfficial.source, "macos", "official-apng");
+  assert.equal(apngOfficialResult.output.image, "background.apng");
+
   const simpleSource = path.join(tempRoot, "simple-source");
   await fs.mkdir(simpleSource);
   await fs.copyFile(fixtureImage, path.join(simpleSource, "custom-background.png"));
@@ -311,6 +321,70 @@ try {
   const simple = await validate(simpleSource, "macos", "simple");
   assert.equal(simple.output.format, "simple");
   assert.equal(simple.output.safeCssStatus, "validated");
+
+  const apngSource = path.join(tempRoot, "simple-apng-source");
+  await fs.mkdir(apngSource);
+  await fs.copyFile(fixtureImage, path.join(apngSource, "custom-background.apng"));
+  await fs.writeFile(path.join(apngSource, "theme.json"), jsonBytes({
+    schemaVersion: 1,
+    id: "local_apng",
+    name: "Local APNG Theme",
+    image: "custom-background.apng",
+  }));
+  await fs.writeFile(
+    path.join(apngSource, "theme.css"),
+    '[data-ds-part="root"] { color: var(--ds-theme-color-text); }\n',
+  );
+  const [apngMac, apngWindows] = await Promise.all([
+    validate(apngSource, "macos", "simple-apng-macos"),
+    validate(apngSource, "windows", "simple-apng-windows"),
+  ]);
+  assert.equal(apngMac.output.image, "custom-background.apng");
+  assert.equal(apngWindows.output.image, "custom-background.apng");
+  const [loadedApngMac, loadedApngWindows] = await Promise.all([
+    loadMacTheme(apngMac.stage),
+    loadWindowsTheme(apngWindows.stage),
+  ]);
+  assert.equal(loadedApngMac.theme.image, "custom-background.apng");
+  assert.equal(loadedApngWindows.theme.image, "custom-background.apng");
+
+  const animatedGif = Buffer.concat([
+    Buffer.from("GIF89a", "ascii"),
+    Buffer.from([1, 0, 1, 0, 0, 0, 0]),
+    Buffer.from([0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0x02, 0x02, 0x44, 0x01, 0x00]),
+    Buffer.from([0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0x02, 0x02, 0x44, 0x01, 0x00]),
+    Buffer.from([0x3b]),
+  ]);
+  const animatedSource = path.join(tempRoot, "simple-gif-source");
+  await fs.mkdir(animatedSource);
+  await fs.writeFile(path.join(animatedSource, "custom-background.gif"), animatedGif);
+  await fs.writeFile(path.join(animatedSource, "theme.json"), jsonBytes({
+    schemaVersion: 1,
+    id: "local_gif",
+    name: "Local Animated GIF",
+    image: "custom-background.gif",
+  }));
+  await fs.writeFile(
+    path.join(animatedSource, "theme.css"),
+    '[data-ds-part="root"] { color: var(--ds-theme-color-text); }\n',
+  );
+  const [animatedMac, animatedWindows] = await Promise.all([
+    validate(animatedSource, "macos", "simple-gif-macos"),
+    validate(animatedSource, "windows", "simple-gif-windows"),
+  ]);
+  assert.equal(animatedMac.output.image, "custom-background.gif");
+  assert.equal(animatedWindows.output.image, "custom-background.gif");
+  const [loadedAnimatedMac, loadedAnimatedWindows] = await Promise.all([
+    loadMacTheme(animatedMac.stage),
+    loadWindowsTheme(animatedWindows.stage),
+  ]);
+  assert.equal(loadedAnimatedMac.theme.image, "custom-background.gif");
+  assert.equal(loadedAnimatedWindows.theme.image, "custom-background.gif");
+  assert.deepEqual(
+    readImageAnimation(await fs.readFile(path.join(animatedMac.stage, "custom-background.gif")), ".gif"),
+    { animated: true, frameCount: 2 },
+  );
+
   const simpleWithoutCss = path.join(tempRoot, "simple-without-css");
   await fs.mkdir(simpleWithoutCss);
   await fs.copyFile(fixtureImage, path.join(simpleWithoutCss, "custom-background.png"));

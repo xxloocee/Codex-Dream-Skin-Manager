@@ -412,7 +412,7 @@ namespace CodexDreamSkinManager
             Grid fileRow = new Grid();
             fileRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             fileRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            imagePathBox = InputBox("选择 PNG、JPG 或 WebP");
+            imagePathBox = InputBox("选择 PNG、APNG、JPG、WebP 或 GIF");
             imagePathBox.IsReadOnly = true;
             fileRow.Children.Add(imagePathBox);
             browseImageButton = SecondaryButton("选择图片");
@@ -861,7 +861,7 @@ namespace CodexDreamSkinManager
         {
             OpenFileDialog dialog = new OpenFileDialog();
             dialog.Title = "选择背景图片";
-            dialog.Filter = "图片文件|*.png;*.jpg;*.jpeg;*.webp";
+            dialog.Filter = "图片文件|*.png;*.apng;*.jpg;*.jpeg;*.webp;*.gif";
             if (dialog.ShowDialog(this) == true)
             {
                 int validationGeneration = ++imageValidationGeneration;
@@ -893,6 +893,7 @@ namespace CodexDreamSkinManager
                     }
                     hasValidCustomImage = true;
                     string details = validation.Width + " x " + validation.Height + " · " + validation.Format.ToUpperInvariant();
+                    if (validation.Animated) details += " · 动图 " + validation.FrameCount + " 帧";
                     SetMessage(string.IsNullOrWhiteSpace(validation.PreviewMessage) ? "图片验证通过：" + details : validation.PreviewMessage + " " + details, false);
                 }
                 catch (Exception ex)
@@ -918,7 +919,7 @@ namespace CodexDreamSkinManager
             if (operationRunning || statusRefreshCount > 0) return;
             OpenFileDialog dialog = new OpenFileDialog {
                 Title = "添加背景图片",
-                Filter = "图片文件|*.png;*.jpg;*.jpeg;*.webp",
+                Filter = "图片文件|*.png;*.apng;*.jpg;*.jpeg;*.webp;*.gif",
                 Multiselect = true
             };
             if (dialog.ShowDialog(this) != true) return;

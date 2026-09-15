@@ -136,7 +136,7 @@ To contribute a preset, see [`presets/README.md`](./presets/README.md).
 The native menu-bar app has **导入主题 ZIP…**. It accepts ordinary `.zip`
 files only; `.dreamskin` is deliberately unsupported. An official Studio pack
 contains `manifest.json`, non-empty `theme.json`, non-empty `theme.css`, and exactly one
-`background.webp|jpg|png`, with optional `LICENSE.txt` and the
+`background.webp|jpg|png|apng|gif`, with optional `LICENSE.txt` and the
 reserved `manifest.sig`. Put them at archive root or inside one top-level theme
 folder. A local simplified pack must contain exactly `theme.json`, `theme.css`, and its
 referenced image; because it lacks manifest integrity and compatibility data,
@@ -166,8 +166,9 @@ manual placement bypasses archive checks, so use trusted content only.
 
 ## Image guidelines
 
-- PNG / JPEG / HEIC / TIFF / WebP (macOS readable)
+- PNG / APNG / JPEG / HEIC / TIFF / WebP / GIF (macOS readable; animated PNG/WebP/GIF are preserved)
 - Source ≤ 50 MB; prepared file ≤ 10 MB, ≤ 16384 px per side, and ≤ 50 MP
+- Animated sources are limited to 300 frames; static PNG/WebP/GIF/HEIC/TIFF continue to be normalized to JPEG.
 - `2560 × 1440` (16:9) is the recommended master size; width ≥ 2000 px minimum
 - Keep roughly the left 50%–58% calm and low-contrast for native home content;
   place the subject in the right 58%–88% without touching the edge

@@ -40,6 +40,8 @@ namespace CodexDreamSkinManager
         public int Width;
         public int Height;
         public long Bytes;
+        public bool Animated;
+        public int FrameCount;
         public bool CanPreview;
         public string PreviewMessage = "";
     }

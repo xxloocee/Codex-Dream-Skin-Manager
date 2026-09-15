@@ -128,7 +128,7 @@ if (/\p{Cc}|\u2028|\u2029/u.test(image)) {
 if (image !== requestedImage || image === "." || image === "..") {
   throw new Error("image must be a filename inside the output directory.");
 }
-if (!/\.(?:png|jpe?g|webp)$/i.test(image)) throw new Error("image must be a PNG, JPEG, or WebP filename.");
+if (!/\.(?:png|apng|jpe?g|webp|gif)$/i.test(image)) throw new Error("image must be a PNG, APNG, JPEG, WebP, or GIF filename.");
 const canonicalOutputDir = await fs.realpath(outputDir);
 const imagePath = await fs.realpath(path.join(canonicalOutputDir, image));
 assertContainedPath(canonicalOutputDir, imagePath, "image");

@@ -42,7 +42,10 @@ function Assert-True {
 try {
   $common = @('-SkillRoot', $SkillRoot, '-StateRoot', $stateRoot)
   $packagedInitial = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
-  Assert-Equal 'preset-paper-light' $packagedInitial.activeThemeId 'Packaged default metadata did not match the paper-light image.'
+  $packagedThemeMetadataPath = Join-Path $SkillRoot 'assets\theme.json'
+  $packagedThemeMetadata = Get-Content -LiteralPath $packagedThemeMetadataPath -Raw -Encoding UTF8 | ConvertFrom-Json
+  Assert-Equal "$($packagedThemeMetadata.id)" $packagedInitial.activeThemeId `
+    'Packaged default metadata did not match assets/theme.json.'
   $arinaTheme = @($packagedInitial.themes | Where-Object { $_.id -eq 'preset-arina-hashimoto' })
   Assert-Equal 1 $arinaTheme.Count 'Packaged catalog did not expose the Arina Hashimoto preset.'
   $null = Invoke-Manager -Arguments (@(
@@ -57,7 +60,7 @@ try {
   Remove-Item -LiteralPath $stateRoot -Recurse -Force
 
   $catalogImages = @(Get-ChildItem -LiteralPath (Join-Path $SkillRoot 'presets') -File |
-    Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|webp)$' } | Select-Object -First 2)
+    Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|apng|webp|gif)$' } | Select-Object -First 2)
   if ($catalogImages.Count -lt 2) { throw 'At least two preset images are required for the catalog test.' }
   $catalog = [ordered]@{
     schemaVersion = 1
@@ -175,9 +178,17 @@ try {
   $beforeThemeWrite = (Get-Item -LiteralPath $activeThemePath).LastWriteTimeUtc.Ticks
   $beforeImageWrite = (Get-Item -LiteralPath $before.activeImage).LastWriteTimeUtc.Ticks
   $beforeArchiveCount = @(Get-ChildItem -LiteralPath (Join-Path $stateRoot 'images') -File).Count
-  $sourceImage = Get-ChildItem -LiteralPath (Join-Path $SkillRoot 'presets') -File |
-    Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|webp)$' } | Select-Object -First 1
-  if (-not $sourceImage) { throw 'No preset image is available for the integration test.' }
+  $gifImage = Join-Path $testRoot 'animated.gif'
+  [byte[]]$gifBytes = @(
+    0x47,0x49,0x46,0x38,0x39,0x61,
+    0x01,0x00,0x01,0x00,0x00,0x00,0x00,
+    0x2C,0x00,0x00,0x00,0x00,0x01,0x00,0x01,0x00,0x00,0x02,0x02,0x44,0x01,0x00,
+    0x2C,0x00,0x00,0x00,0x00,0x01,0x00,0x01,0x00,0x00,0x02,0x02,0x44,0x01,0x00,
+    0x3B
+  )
+  [System.IO.File]::WriteAllBytes($gifImage, $gifBytes)
+  $sourceImage = Get-Item -LiteralPath $gifImage
+  if (-not $sourceImage) { throw 'No GIF image is available for the integration test.' }
 
   $null = Invoke-Manager -Arguments (@(
       '-Action', 'ImportTheme', '-ImagePath', $sourceImage.FullName,
@@ -230,7 +241,10 @@ try {
 
   $validated = Invoke-Manager -Arguments (@('-Action', 'ValidateImage', '-ImagePath', $sourceImage.FullName) + $common)
   Assert-True ($validated.width -gt 0 -and $validated.height -gt 0) 'Image dimensions were not returned.'
-  Assert-True ($validated.format -in @('png','jpg','jpeg','webp')) 'Image format was not returned.'
+  Assert-True ($validated.format -in @('png','apng','jpg','jpeg','webp','gif')) 'Image format was not returned.'
+  Assert-Equal 'gif' $validated.format 'GIF format was not returned.'
+  Assert-Equal $true $validated.animated 'GIF animation was not detected.'
+  Assert-Equal 2 $validated.frameCount 'GIF frame count was not returned.'
   $invalidImage = Join-Path $stateRoot 'broken.png'
   [System.IO.File]::WriteAllText($invalidImage, 'not an image', [System.Text.Encoding]::UTF8)
   $rejectedInvalidImage = $false

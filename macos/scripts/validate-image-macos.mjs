@@ -1,18 +1,24 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { readRawDimensions, classifyImageDimensions } from "./image-metadata.mjs";
+import {
+  MAX_IMAGE_FRAMES,
+  readImageAnimation,
+  readRawDimensions,
+  classifyImageDimensions,
+} from "./image-metadata.mjs";
 
 const file = process.argv[2];
 if (!file || file.startsWith("--")) throw new Error("Usage: validate-image-macos.mjs <image>");
 
 const fullPath = path.resolve(file);
 const allowed = new Map([
-  [".png", "png"], [".jpg", "jpg"], [".jpeg", "jpeg"], [".webp", "webp"],
+  [".png", "png"], [".apng", "apng"], [".jpg", "jpg"], [".jpeg", "jpeg"], [".webp", "webp"],
+  [".gif", "gif"],
   [".heic", "heic"], [".tif", "tiff"], [".tiff", "tiff"],
 ]);
 const format = allowed.get(path.extname(fullPath).toLowerCase());
-if (!format) throw new Error("仅支持 PNG、JPEG、WebP、HEIC 和 TIFF 图片。");
+if (!format) throw new Error("仅支持 PNG、APNG、JPEG、WebP、GIF、HEIC 和 TIFF 图片。");
 
 const stat = await fs.stat(fullPath).catch(() => null);
 if (!stat?.isFile() || stat.size < 1) throw new Error("图片必须是非空普通文件。");
@@ -40,6 +46,10 @@ if (!dimensions) {
 }
 const metadata = dimensions && classifyImageDimensions(dimensions);
 if (!metadata) throw new Error("图片已损坏，或超过 16384 像素 / 5000 万像素限制。");
+const animation = readImageAnimation(bytes, path.extname(fullPath));
+if (!animation || animation.frameCount > MAX_IMAGE_FRAMES) {
+  throw new Error("动图帧数不能超过 " + MAX_IMAGE_FRAMES + " 帧。");
+}
 
 const canPreview = format !== "webp";
 console.log(JSON.stringify({
@@ -48,6 +58,8 @@ console.log(JSON.stringify({
   width: metadata.width,
   height: metadata.height,
   bytes: stat.size,
+  animated: animation.animated,
+  frameCount: animation.frameCount,
   canPreview,
   previewMessage: canPreview ? "" : "WebP 可以保存并应用，但部分预览器可能无法显示。",
 }));

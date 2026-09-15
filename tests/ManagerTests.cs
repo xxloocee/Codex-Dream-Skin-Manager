@@ -174,7 +174,7 @@ namespace CodexDreamSkinManager
                 AssertEqual("#7B78D6", ReadMember(theme, "Accent"));
             });
 
-            Run("Ships a 31 theme preset catalog", delegate
+            Run("Ships a 33 theme preset catalog", delegate
             {
                 string presetRoot = Path.Combine(Environment.CurrentDirectory, "windows", "presets");
                 string catalogPath = Path.Combine(presetRoot, "catalog.json");
@@ -183,7 +183,7 @@ namespace CodexDreamSkinManager
                 AssertEqual("1", Convert.ToString(catalog["schemaVersion"]));
                 ArrayList themes = catalog["themes"] as ArrayList;
                 AssertTrue(themes != null);
-                AssertEqual("31", themes.Count.ToString());
+                AssertEqual("33", themes.Count.ToString());
                 string[] originalThemeIds = {
                     "romantic-rose", "sakura-dawn", "cloud-reverie", "moonlit-garden",
                     "forest-mist", "alpine-dawn", "ocean-glass", "bamboo-rain",

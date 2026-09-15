@@ -282,7 +282,7 @@ function Get-ManagerPresetCandidates {
     $candidates += @($catalog)
   } else {
     foreach ($image in @(Get-ChildItem -LiteralPath $PresetRoot -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|webp)$' })) {
+        Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|apng|webp|gif)$' })) {
       $id = [System.IO.Path]::GetFileNameWithoutExtension($image.Name)
       $fallback = [ordered]@{
         id = "preset-$id"
@@ -734,6 +734,8 @@ function Get-ManagerImageMetadata {
     width = [int]$metadata.width
     height = [int]$metadata.height
     bytes = [long](Get-Item -LiteralPath $fullPath).Length
+    animated = [bool]$metadata.animated
+    frameCount = [int]$metadata.frameCount
     canPreview = $canPreview
     previewMessage = if ($canPreview) { '' } else { 'WebP 可以保存并应用，但当前 WPF 预览器可能无法显示。' }
   }

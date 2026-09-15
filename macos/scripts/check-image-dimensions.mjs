@@ -3,7 +3,7 @@
 // `load-image-theme` converts non-JPEG sources with `sips -Z`, which must
 // fully decode the source first — a near-flat 30000×30000 PNG under the 50 MB
 // byte cap would still balloon to gigabytes of pixels. This preflight reads the
-// container header only (PNG/JPEG/WebP) and falls back to `sips -g` metadata for
+// container header only (PNG/JPEG/WebP/GIF) and falls back to `sips -g` metadata for
 // formats the header parser does not recognize (HEIC/TIFF); it never decodes.
 //
 // Exit 0 = dimensions are known and within caps,
@@ -14,7 +14,9 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import {
   MAX_IMAGE_DIMENSION,
+  MAX_IMAGE_FRAMES,
   MAX_IMAGE_PIXELS,
+  readImageAnimation,
   readRawDimensions,
 } from "./image-metadata.mjs";
 
@@ -32,8 +34,9 @@ function overCaps(width, height) {
 }
 
 let dimensions = null;
+let bytes = null;
 try {
-  const bytes = new Uint8Array(await fs.readFile(file));
+  bytes = new Uint8Array(await fs.readFile(file));
   dimensions = readRawDimensions(bytes, path.extname(file));
 } catch (error) {
   console.error(`Could not read image: ${error.message}`);
@@ -72,4 +75,9 @@ if (overCaps(dimensions.width, dimensions.height)) {
   );
   process.exit(1);
 }
-process.exit(0);
+const animation = readImageAnimation(bytes, path.extname(file));
+if (!animation || animation.frameCount > MAX_IMAGE_FRAMES) {
+  console.error("Image animation exceeds the " + MAX_IMAGE_FRAMES + "-frame safety limit.");
+  process.exit(1);
+}
+console.log(JSON.stringify({ ...dimensions, ...animation }));

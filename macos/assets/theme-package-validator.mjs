@@ -22,6 +22,8 @@ const BACKGROUND_MEDIA = new Map([
   ["background.webp", "image/webp"],
   ["background.jpg", "image/jpeg"],
   ["background.png", "image/png"],
+  ["background.apng", "image/png"],
+  ["background.gif", "image/gif"],
 ]);
 const PAYLOAD_MEDIA = new Map([
   ["theme.json", "application/json"],
@@ -206,7 +208,7 @@ function expectedLimit(name, simple = false) {
   if (name === "theme.css") return LIMITS.css;
   if (name === "LICENSE.txt") return LIMITS.license;
   if (name === "manifest.sig") return LIMITS.signature;
-  if (BACKGROUND_MEDIA.has(name) || /\.(?:png|jpe?g|webp)$/i.test(name)) return LIMITS.image;
+  if (BACKGROUND_MEDIA.has(name) || /\.(?:png|apng|jpe?g|webp|gif)$/i.test(name)) return LIMITS.image;
   return 0;
 }
 
@@ -466,6 +468,9 @@ function detectedImageMedia(bytes) {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
     return "image/jpeg";
   }
+  if (bytes.length >= 6 && (bytes.subarray(0, 6).toString() === "GIF87a" || bytes.subarray(0, 6).toString() === "GIF89a")) {
+    return "image/gif";
+  }
   const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
   if (bytes.length >= png.length && png.every((byte, index) => bytes[index] === byte)) {
     return "image/png";
@@ -528,16 +533,17 @@ async function validateSimple(root, names) {
   if (
     path.basename(theme.image) !== theme.image
     || CONTROL_PATTERN.test(theme.image)
-    || !/\.(?:png|jpe?g|webp)$/i.test(theme.image)
+    || !/\.(?:png|apng|jpe?g|webp|gif)$/i.test(theme.image)
     || !names.includes(theme.image)
   ) fail("Local simplified theme image must be beside theme.json");
   const [imageBytes, cssBytes] = await Promise.all([
     readStableFile(root, theme.image, LIMITS.image),
     readStableFile(root, "theme.css", LIMITS.css),
   ]);
-  const expectedMedia = /\.png$/i.test(theme.image)
+  const expectedMedia = /\.(?:png|apng)$/i.test(theme.image)
     ? "image/png"
-    : /\.webp$/i.test(theme.image) ? "image/webp" : "image/jpeg";
+    : /\.webp$/i.test(theme.image) ? "image/webp"
+      : /\.gif$/i.test(theme.image) ? "image/gif" : "image/jpeg";
   if (detectedImageMedia(imageBytes) !== expectedMedia) {
     fail(`${theme.image} content does not match its extension`);
   }

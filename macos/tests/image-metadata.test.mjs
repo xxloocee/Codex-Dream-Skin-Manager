@@ -4,8 +4,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   MAX_IMAGE_DIMENSION,
+  MAX_IMAGE_FRAMES,
   MAX_IMAGE_PIXELS,
   classifyImageDimensions,
+  readImageAnimation,
   readImageMetadata,
   readRawDimensions,
 } from "../scripts/image-metadata.mjs";
@@ -50,6 +52,7 @@ assert.deepEqual(classifyImageDimensions({ width: 2400, height: 1350 }), {
   taskMode: "ambient",
 });
 assert.equal(MAX_IMAGE_DIMENSION, 16384);
+assert.equal(MAX_IMAGE_FRAMES, 300);
 assert.equal(MAX_IMAGE_PIXELS, 50_000_000);
 assert.equal(classifyImageDimensions({ width: 10000, height: 6000 }), null);
 assert.equal(classifyImageDimensions({ width: 20000, height: 1 }), null);
@@ -105,6 +108,63 @@ assert.deepEqual(readImageMetadata(vp8x, ".webp"), {
 
 assert.equal(readImageMetadata(new Uint8Array([0, 1, 2, 3]), ".png"), null);
 
+const gifHeader = Buffer.from("GIF89a", "ascii");
+const gifFrame = Buffer.from([0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0x02, 0x02, 0x44, 0x01, 0x00]);
+const animatedGif = Buffer.concat([
+  gifHeader,
+  Buffer.from([1, 0, 1, 0, 0, 0, 0]),
+  gifFrame,
+  gifFrame,
+  Buffer.from([0x3b]),
+]);
+assert.deepEqual(readImageMetadata(animatedGif, ".gif"), {
+  width: 1,
+  height: 1,
+  ratio: 1,
+  wide: false,
+  aspect: "square",
+  taskMode: "ambient",
+});
+assert.deepEqual(readImageAnimation(animatedGif, ".gif"), { animated: true, frameCount: 2 });
+
+const animatedPng = Buffer.concat([
+  portal.subarray(0, 33),
+  Buffer.from([0, 0, 0, 8, 0x61, 0x63, 0x54, 0x4c, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0]),
+  portal.subarray(33),
+]);
+assert.deepEqual(readImageAnimation(animatedPng, ".png"), { animated: true, frameCount: 2 });
+assert.deepEqual(readImageAnimation(animatedPng, ".apng"), { animated: true, frameCount: 2 });
+
+const pngChunk = (type, body = Buffer.alloc(0)) => Buffer.concat([
+  Buffer.from([0, 0, 0, body.length]),
+  Buffer.from(type, "ascii"),
+  body,
+  Buffer.alloc(4),
+]);
+const declaredOneButActuallyTooMany = Buffer.concat([
+  portal.subarray(0, 33),
+  pngChunk("acTL", Buffer.from([0, 0, 0, 1, 0, 0, 0, 0])),
+  ...Array.from({ length: MAX_IMAGE_FRAMES + 1 }, () => pngChunk("fcTL")),
+  portal.subarray(33),
+]);
+assert.deepEqual(readImageAnimation(declaredOneButActuallyTooMany, ".png"), {
+  animated: true,
+  frameCount: MAX_IMAGE_FRAMES + 1,
+});
+
+const animatedWebp = new Uint8Array(38);
+for (const [index, value] of Array.from("RIFF").entries()) animatedWebp[index] = value.charCodeAt(0);
+animatedWebp[4] = 30;
+for (const [index, value] of Array.from("WEBPVP8X").entries()) animatedWebp[8 + index] = value.charCodeAt(0);
+animatedWebp[16] = 10;
+animatedWebp[20] = 0x02;
+animatedWebp[24] = 0xff;
+animatedWebp[25] = 0x09;
+animatedWebp[27] = 0x67;
+animatedWebp[28] = 0x05;
+for (const [index, value] of Array.from("ANMF").entries()) animatedWebp[30 + index] = value.charCodeAt(0);
+assert.deepEqual(readImageAnimation(animatedWebp, ".webp"), { animated: true, frameCount: 1 });
+
 // readRawDimensions returns real pixel dimensions even beyond the safety caps,
 // so a preflight can reject decompression bombs before anything decodes them.
 assert.deepEqual(readRawDimensions(portal, ".png"), { width: 2168, height: 725 });
@@ -117,4 +177,4 @@ oversized.set([0x00, 0x00, 0x4e, 0x20], 20); // height 20000
 assert.deepEqual(readRawDimensions(oversized, ".png"), { width: 20000, height: 20000 });
 assert.equal(readImageMetadata(oversized, ".png"), null); // 400 MP exceeds the cap
 
-console.log("PASS: image dimensions strictly classify PNG, JPEG, VP8L, and VP8X profiles, and readRawDimensions bypasses caps.");
+console.log("PASS: image metadata classifies static and animated PNG/JPEG/WebP/GIF inputs and enforces safety caps.");

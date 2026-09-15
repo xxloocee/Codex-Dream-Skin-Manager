@@ -3,7 +3,7 @@ import { constants as fsConstants } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readImageMetadata } from "./image-metadata.mjs";
+import { MAX_IMAGE_FRAMES, readImageAnimation, readImageMetadata } from "./image-metadata.mjs";
 import {
   normalizeThemeColor,
   normalizeThemeText,
@@ -565,7 +565,7 @@ export async function loadTheme(themeDir) {
     throw new Error("Theme image must remain inside the selected theme directory");
   }
   const extension = path.extname(imagePath).toLowerCase();
-  if (![".png", ".jpg", ".jpeg", ".webp"].includes(extension)) {
+  if (![".png", ".apng", ".jpg", ".jpeg", ".webp", ".gif"].includes(extension)) {
     throw new Error(`Unsupported theme image format: ${extension || "missing"}`);
   }
   const realImagePath = await fs.realpath(imagePath);
@@ -654,7 +654,11 @@ export async function loadTheme(themeDir) {
   if (!artMetadata) {
     throw new Error("Theme image metadata is invalid or exceeds the 16384px / 50MP safety limit");
   }
-  theme.artMetadata = artMetadata;
+  const animation = readImageAnimation(imageBytes, extension);
+  if (!animation || animation.frameCount > MAX_IMAGE_FRAMES) {
+    throw new Error(`Theme image has too many animation frames (maximum ${MAX_IMAGE_FRAMES})`);
+  }
+  theme.artMetadata = { ...artMetadata, ...animation };
   const fingerprint = createHash("sha256")
     .update(themeText, "utf8")
     .update("\0")
@@ -687,7 +691,8 @@ export async function loadPayload(themeDir = path.join(root, "assets"), candidat
     ? `${css}\n${loadedTheme.safeCssRuntime}\n` : css;
   const extension = path.extname(loadedTheme.imagePath).toLowerCase();
   const mime = extension === ".jpg" || extension === ".jpeg" ? "image/jpeg"
-    : extension === ".webp" ? "image/webp" : "image/png";
+    : extension === ".webp" ? "image/webp"
+      : extension === ".gif" ? "image/gif" : "image/png";
   const artDataUrl = `data:${mime};base64,${loadedTheme.imageBytes.toString("base64")}`;
   const styleRevision = createHash("sha256").update(combinedCss).digest("hex").slice(0, 20);
   loadedTheme.theme.artKey = createHash("sha256")

@@ -189,14 +189,14 @@ if [ -f "$SOURCE_ROOT/manifest.json" ]; then
     source_name="$(/usr/bin/basename "$source_file")"
     case "$source_name" in
       manifest.json|manifest.sig|theme.json|theme.css|LICENSE.txt) ;;
-      background.webp|background.jpg|background.png)
+      background.webp|background.jpg|background.png|background.apng|background.gif)
         official_backgrounds=$((official_backgrounds + 1))
         ;;
       *) fail_extract "Official theme ZIP contains an unregistered file: $source_name" ;;
     esac
   done < <(/usr/bin/find "$SOURCE_ROOT" -xdev -mindepth 1 -maxdepth 1 -type f -print0)
   [ "$official_backgrounds" -eq 1 ] \
-    || fail_extract "Official theme ZIP must contain exactly one background.webp, background.jpg, or background.png."
+    || fail_extract "Official theme ZIP must contain exactly one background.webp, background.jpg, background.png, background.apng, or background.gif."
   [ -f "$SOURCE_ROOT/theme.css" ] \
     || fail_extract "New official theme ZIP imports require theme.css and the safe-css capability."
 else

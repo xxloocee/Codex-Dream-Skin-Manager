@@ -307,7 +307,7 @@ function Assert-DreamSkinImageFile {
     throw "Image does not exist: $fullPath"
   }
   $extension = [System.IO.Path]::GetExtension($fullPath).ToLowerInvariant()
-  if ($extension -notin @('.png', '.jpg', '.jpeg', '.webp')) {
+  if ($extension -notin @('.png', '.apng', '.jpg', '.jpeg', '.webp', '.gif')) {
     throw "Unsupported image format: $extension"
   }
   $length = (Get-Item -LiteralPath $fullPath -Force).Length
@@ -1237,7 +1237,7 @@ function Expand-DreamSkinThemeZipSecurely {
     $officialNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     foreach ($name in @(
       'manifest.json', 'manifest.sig', 'theme.json', 'theme.css', 'LICENSE.txt',
-      'background.webp', 'background.jpg', 'background.png'
+      'background.webp', 'background.jpg', 'background.png', 'background.apng', 'background.gif'
     )) { $null = $officialNames.Add($name) }
     foreach ($sourceFile in $sourceFiles) {
       if (-not $officialNames.Contains($sourceFile.Name)) {
@@ -1245,7 +1245,7 @@ function Expand-DreamSkinThemeZipSecurely {
       }
     }
     $backgroundCount = @($sourceFiles | Where-Object {
-      $_.Name -cin @('background.webp', 'background.jpg', 'background.png')
+      $_.Name -cin @('background.webp', 'background.jpg', 'background.png', 'background.apng', 'background.gif')
     }).Count
     if ($backgroundCount -ne 1) {
       throw 'Official theme ZIP must contain exactly one registered background file.'

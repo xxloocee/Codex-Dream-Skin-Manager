@@ -84,8 +84,11 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       const resolved = path.resolve(imagePath);
       const bytes = await fs.readFile(resolved);
       const metadata = readImageMetadata(bytes, path.extname(resolved));
-      if (!metadata) throw new Error("Image metadata is invalid or exceeds the 16384px / 50MP safety limit");
-      console.log(JSON.stringify(metadata));
+      const animation = readImageAnimation(bytes, path.extname(resolved));
+      if (!metadata || !animation || animation.frameCount > MAX_IMAGE_FRAMES) {
+        throw new Error("Image metadata is invalid or exceeds the 16384px / 50MP safety limit");
+      }
+      console.log(JSON.stringify({ ...metadata, ...animation }));
     } catch (error) {
       console.error(error?.message ?? String(error));
       process.exitCode = 2;

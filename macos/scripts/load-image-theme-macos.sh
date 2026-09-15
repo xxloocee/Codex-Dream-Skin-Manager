@@ -72,8 +72,9 @@ fi
 [ -n "$IMAGE" ] || fail "Pass --file <image> or --from-library <name-in-images-dir>"
 [ -f "$IMAGE" ] || fail "Image not found: $IMAGE"
 
-case "$IMAGE" in
-  *.png|*.PNG|*.jpg|*.JPG|*.jpeg|*.JPEG|*.webp|*.WEBP|*.heic|*.HEIC|*.tif|*.tiff|*.TIF|*.TIFF) ;;
+image_lower="$(LC_ALL=C /usr/bin/printf '%s' "$IMAGE" | /usr/bin/tr '[:upper:]' '[:lower:]')"
+case "$image_lower" in
+  *.png|*.apng|*.jpg|*.jpeg|*.webp|*.gif|*.heic|*.tif|*.tiff) ;;
   *) fail "Unsupported image type: $IMAGE" ;;
 esac
 
@@ -119,27 +120,43 @@ progress "$(dreamskin_text loading_image)"
 ensure_node_runtime
 
 # Reject decompression bombs before `sips -Z` rasterizes the full source image.
-"$NODE" "$SCRIPT_DIR/check-image-dimensions.mjs" "$IMAGE" \
-  || fail "Image dimensions are invalid or exceed the safe pixel budget (max 16384 px per side / 50 megapixels)."
+image_metadata="$("$NODE" "$SCRIPT_DIR/check-image-dimensions.mjs" "$IMAGE" 2>&1)" \
+  || fail "$image_metadata"
+animated="$("$NODE" --input-type=module -e '
+const value = JSON.parse(process.argv[1]);
+process.stdout.write(value.animated ? "true" : "false");
+' "$image_metadata")"
 
-image_name="background.jpg"
-temporary="$THEME_DIR/.background.$$.tmp.jpg"
+ext="$(printf '%s' "$IMAGE" | /usr/bin/tr '[:upper:]' '[:lower:]')"
+if [ "$animated" = "true" ]; then
+  case "$ext" in
+    *.gif|*.png|*.apng|*.webp) image_name="background.${ext##*.}" ;;
+    *) fail "Unsupported animated image type: $IMAGE" ;;
+  esac
+else
+  image_name="background.jpg"
+fi
+temporary="$THEME_DIR/.${image_name}.$$"
 prepared="$THEME_DIR/$image_name"
 cleanup_temporary() { /bin/rm -f "$temporary"; }
 trap cleanup_temporary EXIT
 
-# Prefer copying already-JPEG; sips only when needed (large PNG conversion is the slow part)
-ext="$(printf '%s' "$IMAGE" | /usr/bin/tr '[:upper:]' '[:lower:]')"
-case "$ext" in
-  *.jpg|*.jpeg)
+# Preserve animated formats byte-for-byte; static sources retain the existing
+# JPEG normalization used by the macOS client.
+if [ "$animated" = "true" ]; then
+  /bin/cp -f "$IMAGE" "$temporary"
+else
+  case "$ext" in
+    *.jpg|*.jpeg)
     /bin/cp -f "$IMAGE" "$temporary"
     ;;
-  *)
+    *)
     /usr/bin/sips -s format jpeg -s formatOptions 82 -Z 2400 "$IMAGE" --out "$temporary" >/dev/null \
-      || fail "Could not convert image. Use PNG/JPEG/HEIC/TIFF/WebP."
+      || fail "Could not convert image. Use PNG/APNG/JPEG/GIF/HEIC/TIFF/WebP."
     [ -s "$temporary" ] || fail "Converted image is empty."
     ;;
-esac
+  esac
+fi
 [ -s "$temporary" ] || fail "Prepared image is empty."
 PREPARED_BYTES="$(/usr/bin/stat -f '%z' "$temporary")"
 [ "$PREPARED_BYTES" -le 10485760 ] || fail "Prepared image larger than 10 MB."

@@ -52,6 +52,12 @@ APPLESCRIPT
   [ -f "$IMAGE" ] || fail "Selected image does not exist: $IMAGE"
   SOURCE_BYTES="$(/usr/bin/stat -f '%z' "$IMAGE")"
   [ "$SOURCE_BYTES" -le 52428800 ] || fail "Selected image is larger than 50 MB. Choose a smaller file."
+  image_metadata="$("$NODE" "$SCRIPT_DIR/check-image-dimensions.mjs" "$IMAGE" 2>&1)" \
+    || fail "$image_metadata"
+  animated="$("$NODE" --input-type=module -e '
+const value = JSON.parse(process.argv[1]);
+process.stdout.write(value.animated ? "true" : "false");
+' "$image_metadata")"
 
   if [ -z "$THEME_NAME" ]; then
     if [ "$(dreamskin_language)" = "zh" ]; then
@@ -85,13 +91,26 @@ APPLESCRIPT
 
   /bin/mkdir -p "$THEME_DIR"
   /bin/chmod 700 "$THEME_DIR"
-  image_name="background-$(/bin/date '+%Y%m%d-%H%M%S')-$$.jpg"
-  temporary="$THEME_DIR/.${image_name}.tmp.jpg"
+  ext="$(printf '%s' "$IMAGE" | /usr/bin/tr '[:upper:]' '[:lower:]')"
+  if [ "$animated" = "true" ]; then
+    case "$ext" in
+      *.gif|*.png|*.apng|*.webp) image_ext="$(printf '%s' "$ext" | /usr/bin/sed 's/.*\.//')" ;;
+      *) fail "Unsupported animated image type: $IMAGE" ;;
+    esac
+  else
+    image_ext="jpg"
+  fi
+  image_name="background-$(/bin/date '+%Y%m%d-%H%M%S')-$$."$image_ext
+  temporary="$THEME_DIR/."$image_name".tmp"
   prepared="$THEME_DIR/$image_name"
   cleanup_temporary() { /bin/rm -f "$temporary"; }
   trap cleanup_temporary EXIT
-  /usr/bin/sips -s format jpeg -s formatOptions 84 -Z 3200 "$IMAGE" --out "$temporary" >/dev/null \
-    || fail "macOS could not convert the selected image. Use PNG, JPEG, HEIC, TIFF, or WebP."
+  if [ "$animated" = "true" ]; then
+    /bin/cp -f "$IMAGE" "$temporary"
+  else
+    /usr/bin/sips -s format jpeg -s formatOptions 84 -Z 3200 "$IMAGE" --out "$temporary" >/dev/null \
+      || fail "macOS could not convert the selected image. Use PNG, APNG, JPEG, GIF, HEIC, TIFF, or WebP."
+  fi
   [ -s "$temporary" ] || fail "The converted image is empty."
   PREPARED_BYTES="$(/usr/bin/stat -f '%z' "$temporary")"
   [ "$PREPARED_BYTES" -le 10485760 ] || fail "The prepared image is larger than 10 MB. Choose a simpler or smaller image."

@@ -143,7 +143,7 @@ namespace CodexDreamSkinManager
             FileInfo imageInfo = new FileInfo(sourceImage);
             if (imageInfo.Length < 1 || imageInfo.Length > MaxImageBytes) throw new InvalidDataException("导出主题图片为空或超过 10 MB。 ");
             string extension = Path.GetExtension(sourceImage).ToLowerInvariant();
-            if (extension != ".jpg" && extension != ".jpeg" && extension != ".png" && extension != ".webp")
+            if (extension != ".jpg" && extension != ".jpeg" && extension != ".png" && extension != ".apng" && extension != ".webp" && extension != ".gif")
                 throw new InvalidDataException("导出主题图片格式不受支持。 ");
             string imageName = "art" + extension;
             string safeCssSource = string.IsNullOrWhiteSpace(data.SafeCssPath) ? "" : Path.GetFullPath(data.SafeCssPath);
@@ -298,7 +298,7 @@ namespace CodexDreamSkinManager
             if (string.IsNullOrWhiteSpace(name) || Path.IsPathRooted(name) || Path.GetFileName(name) != name)
                 throw new InvalidDataException("主题包图片路径无效。 ");
             string extension = Path.GetExtension(name).ToLowerInvariant();
-            if (extension != ".jpg" && extension != ".jpeg" && extension != ".png" && extension != ".webp")
+            if (extension != ".jpg" && extension != ".jpeg" && extension != ".png" && extension != ".apng" && extension != ".webp" && extension != ".gif")
                 throw new InvalidDataException("主题包图片格式无效。 ");
         }
 
