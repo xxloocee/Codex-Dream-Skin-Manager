@@ -67,7 +67,7 @@ namespace CodexDreamSkinManager
             Run("Round-trips Chinese PowerShell errors as UTF-8", delegate
             {
                 string script = Path.Combine(Path.GetTempPath(), "dream-skin-utf8-error-" + Guid.NewGuid().ToString("N") + ".ps1");
-                File.WriteAllText(script, "throw '恢复失败：中文错误'\n", new UTF8Encoding(true));
+                File.WriteAllText(script, "Write-Output '{\"error\":\"raw\"}'\nthrow '恢复失败：中文错误'\n", new UTF8Encoding(true));
                 try
                 {
                     try
@@ -79,6 +79,7 @@ namespace CodexDreamSkinManager
                     {
                         if (!ex.Message.Contains("恢复失败：中文错误"))
                             throw new Exception("Decoded error: " + ex.Message);
+                        AssertTrue(!ex.Message.Contains("{\"error\""));
                         AssertTrue(!ex.Message.Contains("#< CLIXML"));
                         AssertTrue(!ex.Message.Contains("FullyQualifiedErrorId"));
                     }
@@ -308,6 +309,20 @@ namespace CodexDreamSkinManager
                     expected.Remove(id);
                 }
                 AssertEqual("0", expected.Count.ToString());
+            });
+
+            Run("Maps update check JSON", delegate
+            {
+                UpdateCheckResult update = DreamSkinService.ParseUpdateResult(
+                    "{\"currentVersion\":\"v1.6.0\",\"latestVersion\":\"v1.7.0\",\"updateAvailable\":true," +
+                    "\"releaseUrl\":\"https://github.com/example/releases/tag/v1.7.0\"," +
+                    "\"installerAssetName\":\"CodexDreamSkinManager-v1.7.0-windows-x64-setup.exe\"," +
+                    "\"installerStarted\":false}");
+                AssertEqual("v1.6.0", update.CurrentVersion);
+                AssertEqual("v1.7.0", update.LatestVersion);
+                AssertTrue(update.UpdateAvailable);
+                AssertEqual("CodexDreamSkinManager-v1.7.0-windows-x64-setup.exe", update.InstallerAssetName);
+                AssertTrue(!update.InstallerStarted);
             });
 
             Run("All bundled directory themes follow Codex appearance", delegate
@@ -943,7 +958,7 @@ namespace CodexDreamSkinManager
             {
                 MainWindow window = new MainWindow(null);
                 string[] names = {
-                    "StatusText", "ThemeList", "ThemeGridScroll", "ThemeSearch", "ThemeCategory",
+                    "StatusText", "CheckUpdateButton", "ThemeList", "ThemeGridScroll", "ThemeSearch", "ThemeCategory",
                     "ThemeSource", "ThemeSort", "AddImagesButton", "ImportPackageButton",
                     "ExportThemeButton", "DeleteThemeButton", "PreviewImage", "EnableButton", "PauseButton",
                     "ResetButton", "RestoreButton", "CustomSkinTab", "HorizontalPositionSlider",
@@ -965,13 +980,41 @@ namespace CodexDreamSkinManager
                     MethodInfo update = typeof(MainWindow).GetMethod("UpdateActionState",
                         BindingFlags.Instance | BindingFlags.NonPublic);
                     Button browse = ReadMemberObject(window, "browseImageButton") as Button;
-                    AssertTrue(running != null && update != null && browse != null);
+                    Button checkUpdate = ReadMemberObject(window, "checkUpdateButton") as Button;
+                    AssertTrue(running != null && update != null && browse != null && checkUpdate != null);
                     running.SetValue(window, true);
                     update.Invoke(window, null);
                     AssertTrue(!browse.IsEnabled);
+                    AssertTrue(!checkUpdate.IsEnabled);
                     running.SetValue(window, false);
                     update.Invoke(window, null);
                     AssertTrue(browse.IsEnabled);
+                    window.Close();
+                }
+                finally { Directory.Delete(root, true); }
+            });
+
+            Run("Blocks theme actions while an update is running", delegate
+            {
+                string root = CreateLayout();
+                try
+                {
+                    MainWindow window = new MainWindow(new DreamSkinService(root));
+                    FieldInfo running = typeof(MainWindow).GetField("updateRunning",
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+                    MethodInfo update = typeof(MainWindow).GetMethod("UpdateActionState",
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+                    Button browse = ReadMemberObject(window, "browseImageButton") as Button;
+                    Button checkUpdate = ReadMemberObject(window, "checkUpdateButton") as Button;
+                    AssertTrue(running != null && update != null && browse != null && checkUpdate != null);
+                    running.SetValue(window, true);
+                    update.Invoke(window, null);
+                    AssertTrue(!browse.IsEnabled);
+                    AssertTrue(!checkUpdate.IsEnabled);
+                    running.SetValue(window, false);
+                    update.Invoke(window, null);
+                    AssertTrue(browse.IsEnabled);
+                    AssertTrue(checkUpdate.IsEnabled);
                     window.Close();
                 }
                 finally { Directory.Delete(root, true); }
@@ -1586,6 +1629,7 @@ namespace CodexDreamSkinManager
             File.WriteAllText(Path.Combine(root, "windows", "scripts", "start-dream-skin.ps1"), "# fixture");
             File.WriteAllText(Path.Combine(root, "windows", "scripts", "restore-dream-skin.ps1"), "# fixture");
             File.WriteAllText(Path.Combine(root, "windows", "scripts", "apply-theme-and-recover.ps1"), "# fixture");
+            File.WriteAllText(Path.Combine(root, "windows", "scripts", "check-update.ps1"), "# fixture");
             if (includeManager) File.WriteAllText(Path.Combine(root, "windows", "scripts", "manager-actions.ps1"), "# fixture");
             return root;
         }

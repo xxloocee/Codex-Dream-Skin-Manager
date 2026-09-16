@@ -91,6 +91,17 @@ namespace CodexDreamSkinManager
         public bool CleanupPending;
     }
 
+    internal sealed class UpdateCheckResult
+    {
+        public string CurrentVersion = "";
+        public string LatestVersion = "";
+        public bool UpdateAvailable;
+        public string ReleaseUrl = "";
+        public string InstallerAssetName = "";
+        public bool InstallerStarted;
+        public int InstallerProcessId;
+    }
+
     internal sealed class PreviewCrop
     {
         public double X;

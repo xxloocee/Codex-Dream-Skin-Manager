@@ -249,6 +249,7 @@ function New-RunnableWindowsPackage(
   $requiredPackageFiles = $requiredSourceFiles + @(
     'scripts\manager-actions.ps1',
     'scripts\apply-theme-and-recover.ps1',
+    'scripts\check-update.ps1',
     'scripts\runtime-version.ps1',
     'presets\catalog.json',
     'assets\theme.json',
@@ -352,7 +353,9 @@ $recoveryScript = Join-Path $root 'windows\scripts\apply-theme-and-recover.ps1'
 if (-not (Test-Path -LiteralPath $recoveryScript)) { throw 'apply-theme-and-recover.ps1 is missing.' }
 $runtimeVersionScript = Join-Path $root 'windows\scripts\runtime-version.ps1'
 if (-not (Test-Path -LiteralPath $runtimeVersionScript)) { throw 'runtime-version.ps1 is missing.' }
-foreach ($scriptToParse in @($managerScript, $recoveryScript, $runtimeVersionScript)) {
+$updateScript = Join-Path $root 'windows\scripts\check-update.ps1'
+if (-not (Test-Path -LiteralPath $updateScript)) { throw 'check-update.ps1 is missing.' }
+foreach ($scriptToParse in @($managerScript, $recoveryScript, $runtimeVersionScript, $updateScript)) {
   $tokens = $null
   $parseErrors = $null
   [System.Management.Automation.Language.Parser]::ParseFile($scriptToParse, [ref]$tokens, [ref]$parseErrors) | Out-Null
@@ -362,6 +365,11 @@ foreach ($scriptToParse in @($managerScript, $recoveryScript, $runtimeVersionScr
 $runtimeVersionTest = Join-Path $root 'tests\runtime-version.test.ps1'
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runtimeVersionTest `
   -RuntimeVersionScript $runtimeVersionScript
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+$updateContractTest = Join-Path $root 'windows\tests\check-update.tests.ps1'
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $updateContractTest `
+  -UpdateScript $updateScript
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $integrationTest = Join-Path $root 'tests\manager-actions.integration.ps1'

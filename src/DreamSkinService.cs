@@ -15,10 +15,12 @@ namespace CodexDreamSkinManager
         private readonly string managerScript;
         private readonly string restoreScript;
         private readonly string recoveryScript;
+        private readonly string updateScript;
 
         public bool CanManage { get { return File.Exists(managerScript); } }
         public bool CanRestore { get { return File.Exists(restoreScript); } }
         public bool CanRecover { get { return File.Exists(recoveryScript); } }
+        public bool CanUpdate { get { return File.Exists(updateScript); } }
 
         public DreamSkinService(string root)
         {
@@ -27,6 +29,7 @@ namespace CodexDreamSkinManager
             managerScript = Path.Combine(scriptsDirectory, "manager-actions.ps1");
             restoreScript = Path.Combine(scriptsDirectory, "restore-dream-skin.ps1");
             recoveryScript = Path.Combine(scriptsDirectory, "apply-theme-and-recover.ps1");
+            updateScript = Path.Combine(scriptsDirectory, "check-update.ps1");
             if (!CanManage && !CanRestore)
                 throw new FileNotFoundException("缺少管理脚本和紧急恢复脚本。", managerScript);
         }
@@ -123,6 +126,50 @@ namespace CodexDreamSkinManager
             ScriptResult result = await PowerShellRunner.RunAsync(managerScript,
                 new[] { P("-Action"), V("Status"), P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")) }, 8000);
             return ParseStatus(result.Output);
+        }
+
+        public static UpdateCheckResult ParseUpdateResult(string json)
+        {
+            JavaScriptSerializer serializer = new JavaScriptSerializer();
+            Dictionary<string, object> data = serializer.Deserialize<Dictionary<string, object>>(json);
+            if (data == null) throw new FormatException("更新检查 JSON 为空。");
+            UpdateCheckResult result = new UpdateCheckResult {
+                CurrentVersion = ReadString(data, "currentVersion", ""),
+                LatestVersion = ReadString(data, "latestVersion", ""),
+                UpdateAvailable = ReadBool(data, "updateAvailable"),
+                ReleaseUrl = ReadString(data, "releaseUrl", ""),
+                InstallerAssetName = ReadString(data, "installerAssetName", ""),
+                InstallerStarted = ReadBool(data, "installerStarted"),
+                InstallerProcessId = ReadInt(data, "installerProcessId")
+            };
+            if (string.IsNullOrWhiteSpace(result.CurrentVersion) ||
+                string.IsNullOrWhiteSpace(result.LatestVersion))
+                throw new FormatException("更新检查结果缺少版本信息。");
+            if (result.UpdateAvailable && string.IsNullOrWhiteSpace(result.InstallerAssetName))
+                throw new FormatException("更新检查结果缺少安装包信息。");
+            return result;
+        }
+
+        public async Task<UpdateCheckResult> CheckForUpdateAsync()
+        {
+            EnsureUpdateAvailable();
+            ScriptResult result = await PowerShellRunner.RunAsync(updateScript,
+                new[] { P("-Json") }, 20000);
+            return ParseUpdateResult(result.Output);
+        }
+
+        public async Task<UpdateCheckResult> StartUpdateAsync(string expectedVersion)
+        {
+            EnsureUpdateAvailable();
+            if (string.IsNullOrWhiteSpace(expectedVersion))
+                throw new ArgumentException("预期更新版本不能为空。", "expectedVersion");
+            ScriptResult result = await PowerShellRunner.RunAsync(updateScript, new[] {
+                P("-Json"), P("-Install"), P("-ExpectedVersion"), V(expectedVersion)
+            }, 240000);
+            UpdateCheckResult update = ParseUpdateResult(result.Output);
+            if (!update.InstallerStarted)
+                throw new InvalidOperationException("已完成更新检查，但安装程序没有启动。");
+            return update;
         }
 
         public static ImageValidationResult ParseImageValidation(string json)
@@ -403,6 +450,11 @@ namespace CodexDreamSkinManager
         private void EnsureManagerAvailable()
         {
                 if (!CanManage) throw new FileNotFoundException("管理脚本不可用；你仍可使用紧急恢复。", managerScript);
+        }
+
+        private void EnsureUpdateAvailable()
+        {
+            if (!CanUpdate) throw new FileNotFoundException("检查更新脚本不可用。", updateScript);
         }
 
         private static ScriptArgument P(string value) { return ScriptArgument.Parameter(value); }

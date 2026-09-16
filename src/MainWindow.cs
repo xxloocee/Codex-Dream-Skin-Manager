@@ -118,6 +118,7 @@ namespace CodexDreamSkinManager
         private Button resetButton;
         private Button restoreButton;
         private Button refreshButton;
+        private Button checkUpdateButton;
         private Button applyThemeButton;
         private Button saveThemeButton;
         private Button saveApplyButton;
@@ -139,6 +140,7 @@ namespace CodexDreamSkinManager
         private readonly SemaphoreSlim statusRefreshLock = new SemaphoreSlim(1, 1);
         private bool operationRunning;
         private bool imageValidationRunning;
+        private bool updateRunning;
         private int imageValidationGeneration;
         private int statusRefreshCount;
         private bool suppressThemeSelection;
@@ -198,6 +200,15 @@ namespace CodexDreamSkinManager
             statusText = new TextBlock { Text = "正在读取状态...", VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold };
             AutomationProperties.SetName(statusText, "StatusText");
             statePanel.Children.Add(statusText);
+            checkUpdateButton = SecondaryButton("检查更新");
+            checkUpdateButton.MinHeight = 32;
+            checkUpdateButton.Padding = new Thickness(10, 5, 10, 5);
+            checkUpdateButton.Margin = new Thickness(16, 0, 0, 0);
+            Version appVersion = typeof(MainWindow).Assembly.GetName().Version;
+            checkUpdateButton.ToolTip = "当前版本 v" + appVersion.Major + "." + appVersion.Minor + "." + appVersion.Build;
+            AutomationProperties.SetName(checkUpdateButton, "CheckUpdateButton");
+            checkUpdateButton.Click += async delegate { await CheckForUpdateAsync(); };
+            statePanel.Children.Add(checkUpdateButton);
             Grid.SetColumn(statePanel, 1);
             headerGrid.Children.Add(statePanel);
             header.Child = headerGrid;
@@ -565,6 +576,52 @@ namespace CodexDreamSkinManager
             {
                 statusRefreshLock.Release();
                 statusRefreshCount--;
+                UpdateActionState();
+            }
+        }
+
+        private async Task CheckForUpdateAsync()
+        {
+            if (updateRunning || operationRunning || statusRefreshCount > 0 || imageValidationRunning ||
+                service == null || !service.CanUpdate) return;
+            updateRunning = true;
+            checkUpdateButton.Content = "正在检查...";
+            UpdateActionState();
+            SetMessage("正在检查软件更新...", false);
+            try
+            {
+                UpdateCheckResult update = await service.CheckForUpdateAsync();
+                if (!update.UpdateAvailable)
+                {
+                    string message = "当前版本 " + update.CurrentVersion + " 已是最新版。";
+                    SetMessage(message, false);
+                    MessageBox.Show(this, message, "检查更新", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                string question = "发现新版本 " + update.LatestVersion + "（当前 " + update.CurrentVersion + "）。\n\n" +
+                    "是否下载安装包？下载完成后会校验 SHA-256，再启动安装程序；安装时可能关闭当前管理器。";
+                if (MessageBox.Show(this, question, "发现新版本", MessageBoxButton.YesNo,
+                    MessageBoxImage.Question) != MessageBoxResult.Yes)
+                {
+                    SetMessage("已取消更新。", false);
+                    return;
+                }
+
+                checkUpdateButton.Content = "正在下载...";
+                SetMessage("正在下载并校验 " + update.LatestVersion + " 安装包...", false);
+                UpdateCheckResult started = await service.StartUpdateAsync(update.LatestVersion);
+                SetMessage("已启动 " + started.LatestVersion + " 安装程序，请按提示完成更新。", false);
+            }
+            catch (Exception ex)
+            {
+                SetMessage("检查更新失败：" + ex.Message, true);
+                MessageBox.Show(this, ex.Message, "检查更新失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                updateRunning = false;
+                checkUpdateButton.Content = "检查更新";
                 UpdateActionState();
             }
         }
@@ -1117,13 +1174,15 @@ namespace CodexDreamSkinManager
         {
             ThemeOption selectedTheme = themeList == null ? null : themeList.SelectedItem as ThemeOption;
             bool selected = selectedTheme != null;
-            bool busy = operationRunning || statusRefreshCount > 0 || imageValidationRunning;
+            bool busy = operationRunning || statusRefreshCount > 0 || imageValidationRunning || updateRunning;
             ActionAvailability state = ActionAvailability.FromStatus(currentStatus, busy, selected, hasValidCustomImage);
             if (enableButton != null) { enableButton.IsEnabled = state.CanEnable && service != null && service.CanManage; enableButton.Content = state.EnableLabel; }
             if (pauseButton != null) { pauseButton.IsEnabled = state.CanPause && service != null && service.CanManage; pauseButton.Content = state.PauseLabel; }
             if (resetButton != null) resetButton.IsEnabled = state.CanReset && service != null && service.CanManage;
             if (restoreButton != null) restoreButton.IsEnabled = state.CanRestore && service != null && service.CanRestore;
             if (refreshButton != null) refreshButton.IsEnabled = !busy && service != null && service.CanManage;
+            if (checkUpdateButton != null)
+                checkUpdateButton.IsEnabled = !busy && service != null && service.CanUpdate;
             if (applyThemeButton != null)
             {
                 bool canRunApply = service != null && (state.RequiresRecovery ? service.CanRecover : service.CanManage);
