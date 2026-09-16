@@ -46,7 +46,7 @@ if ($productVersion -ne $Version) {
 }
 
 New-Item -ItemType Directory -Force -Path $output | Out-Null
-$baseName = "CodexDreamSkinManager-v$Version-windows"
+$baseName = "CodexDreamSkinManager-v$Version-windows-x64-portable"
 $archive = Join-Path $output "$baseName.zip"
 $checksum = Join-Path $output "$baseName.sha256"
 foreach ($path in @($archive, $checksum)) {

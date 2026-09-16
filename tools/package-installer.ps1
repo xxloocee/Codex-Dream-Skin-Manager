@@ -112,7 +112,7 @@ $IsccPath = [System.IO.Path]::GetFullPath($IsccPath)
 Assert-OfficialInnoSetupCompiler -Path $IsccPath
 
 New-Item -ItemType Directory -Force -Path $output | Out-Null
-$baseName = "CodexDreamSkinManager-v$Version-setup"
+$baseName = "CodexDreamSkinManager-v$Version-windows-x64-setup"
 $installer = Join-Path $output "$baseName.exe"
 $checksum = Join-Path $output "$baseName.sha256"
 foreach ($path in @($installer, $checksum)) {

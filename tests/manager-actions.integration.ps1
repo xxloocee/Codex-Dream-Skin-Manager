@@ -57,6 +57,36 @@ try {
     (Get-FileHash -LiteralPath $arinaStatus.activeImage -Algorithm SHA256).Hash `
     'Status initialization replaced the applied Arina Hashimoto image.'
   Write-Host 'PASS: packaged default identity does not overwrite the Arina Hashimoto preset'
+  $legacyFixedPreset = @($packagedInitial.themes | Where-Object { $_.id -eq 'preset-romantic-rose' })
+  Assert-Equal 1 $legacyFixedPreset.Count 'Packaged catalog did not expose the migration fixture preset.'
+  $null = Invoke-Manager -Arguments (@(
+      '-Action', 'ApplyTheme', '-ImagePath', $legacyFixedPreset[0].imagePath
+    ) + $common)
+  $legacyActiveThemePath = Join-Path $stateRoot 'active-theme\theme.json'
+  $legacyActiveTheme = [System.IO.File]::ReadAllText($legacyActiveThemePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+  $legacyActiveTheme.appearance = 'light'
+  [System.IO.File]::WriteAllText(
+    $legacyActiveThemePath,
+    (($legacyActiveTheme | ConvertTo-Json -Depth 8) + "`r`n"),
+    [System.Text.Encoding]::UTF8)
+  $null = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
+  $migratedActiveTheme = [System.IO.File]::ReadAllText($legacyActiveThemePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+  Assert-Equal 'auto' $migratedActiveTheme.appearance 'Legacy active preset did not migrate to adaptive appearance.'
+  Write-Host 'PASS: legacy active presets migrate to adaptive appearance'
+
+  $legacyActiveTheme.appearance = 'light'
+  [System.IO.File]::WriteAllText(
+    $legacyActiveThemePath,
+    (($legacyActiveTheme | ConvertTo-Json -Depth 8) + "`r`n"),
+    [System.Text.Encoding]::UTF8)
+  $unrelatedPreset = @($packagedInitial.themes | Where-Object { $_.id -eq 'preset-sakura-dawn' })
+  Assert-Equal 1 $unrelatedPreset.Count 'Packaged catalog did not expose the migration negative-control preset.'
+  Copy-Item -LiteralPath $unrelatedPreset[0].imagePath `
+    -Destination (Join-Path $stateRoot "active-theme\$($legacyActiveTheme.image)") -Force
+  $null = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
+  $customizedActiveTheme = [System.IO.File]::ReadAllText($legacyActiveThemePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+  Assert-Equal 'light' $customizedActiveTheme.appearance 'Customized active preset was incorrectly migrated.'
+  Write-Host 'PASS: customized active presets keep their explicit appearance'
   Remove-Item -LiteralPath $stateRoot -Recurse -Force
 
   $catalogImages = @(Get-ChildItem -LiteralPath (Join-Path $SkillRoot 'presets') -File |
@@ -117,6 +147,7 @@ try {
   Assert-Equal 0 @($presetRows | Where-Object { $_.themeDirectory }).Count 'Preset rows exposed a deletable saved-theme directory.'
   $gothicRow = @($presetRows | Where-Object { $_.id -eq 'preset-gothic-void-crusade' })
   Assert-Equal 1 $gothicRow.Count 'Directory preset package was not returned by Status.'
+  Assert-Equal 'auto' $gothicRow[0].appearance 'Directory preset did not follow the Codex appearance.'
   Write-Host 'PASS: preset catalog metadata is returned by status'
   $null = Invoke-Manager -Arguments (@(
       '-Action', 'ApplyTheme', '-ImagePath', $catalogTheme[0].imagePath,
@@ -140,6 +171,7 @@ try {
   $null = Invoke-Manager -Arguments (@('-Action', 'ApplyTheme', '-ImagePath', $gothicRow[0].imagePath) + $common)
   $appliedGothic = [System.IO.File]::ReadAllText((Join-Path $stateRoot 'active-theme\theme.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json
   Assert-Equal 'preset-gothic-void-crusade' $appliedGothic.id 'Directory preset identity was not preserved on apply.'
+  Assert-Equal 'auto' $appliedGothic.appearance 'Directory preset appearance was not preserved on apply.'
   Assert-Equal 'Codex Dream Skin' $appliedGothic.promoTitle 'Directory preset metadata was not preserved on apply.'
   Assert-Equal '#c8a55a' $appliedGothic.colors.accent 'Directory preset palette metadata was not preserved on apply.'
   Write-Host 'PASS: packaged preset metadata is applied without staging a saved theme'

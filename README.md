@@ -2,19 +2,20 @@
 
 基于 [Fei-Away/Codex-Dream-Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 开发的跨平台主题管理项目：Windows 保留本项目的 WPF 可视化管理器，macOS 复用上游菜单栏客户端，并共享同一套运行时、主题契约和图片 framing 能力。
 
-管理器版本：`1.2.5`；同步运行时版本：`1.5.16`。运行时支持 Windows 和 macOS；WPF 管理器仍是 Windows 专用界面，macOS 提供上游菜单栏界面及一个共享状态/framing 契约的 `manager-actions-macos.sh` 动作适配层。
+当前版本：`1.6.0`。运行时支持 Windows 和 macOS；WPF 管理器仍是 Windows 专用界面，macOS 提供原生菜单栏界面及一个共享状态/framing 契约的 `manager-actions-macos.sh` 动作适配层。
 
 ## 下载
 
-正式版本从 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载
-`CodexDreamSkinManager-v1.2.5-setup.exe`（推荐安装版）或
-`CodexDreamSkinManager-v1.2.5-windows.zip`（便携版）。安装版默认安装到当前用户目录，
-不请求管理员权限，并创建开始菜单快捷方式；桌面快捷方式可在安装时选择。两种发布包都
-内置 Node.js，用户无需另行安装运行环境。便携版必须完整解压，不能只复制 EXE。
-发布页同时提供对应的 SHA-256 校验文件。
+正式版本从 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载：
 
-macOS 端当前沿用仓库内同步的上游菜单栏客户端与脚本运行时，使用方法见
-[`macos/README.md`](macos/README.md)；Windows 发布包仍由本项目的 WPF 管理器负责。
+- `CodexDreamSkinManager-v1.6.0-windows-x64-setup.exe`：Windows 10/11 x64 推荐安装版。
+- `CodexDreamSkinManager-v1.6.0-windows-x64-portable.zip`：Windows 10/11 x64 便携版。
+- `CodexDreamSkinManager-v1.6.0-macos-universal.dmg`：macOS 13+ 通用安装包，同时支持 Apple Silicon 与 Intel。
+- `SHA256SUMS.txt`：上述安装包的 SHA-256 校验清单。
+
+Windows 安装版默认安装到当前用户目录，不请求管理员权限，并创建开始菜单快捷方式；
+桌面快捷方式可在安装时选择。Windows 发布包内置 Node.js，用户无需另行安装运行环境。
+便携版必须完整解压，不能只复制 EXE。macOS 使用方法见 [`macos/README.md`](macos/README.md)。
 
 ## 项目来源与致谢
 
@@ -24,7 +25,7 @@ macOS 端当前沿用仓库内同步的上游菜单栏客户端与脚本运行�
 
 ## 功能
 
-- 浏览 33 套内置主题和已保存主题，支持名称、标签、分类、来源与排序筛选。
+- 浏览 33 套内置主题和已保存主题，内置主题会跟随 Codex 的浅色/深色外观，并支持名称、标签、分类、来源与排序筛选。
 - 单击主题只更新预览；“应用选中主题”才会切换活动主题。
 - “我的”已保存主题可从主题库删除；当前活动主题需先切换后才能删除。
 - 批量导入最多 50 张图片，按图片内容和视觉参数去重。
@@ -57,7 +58,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 `
 
 构建脚本会：
 
-1. 编译并执行 55 项 C# 测试。
+1. 编译并执行 59 项 C# 测试。
 2. 复制已同步的上游 Windows 运行时。
 3. 覆盖本项目维护的 `manager-actions.ps1`、`presets` 和可再分发默认图片。
 4. 校验共享运行时中的图片位置、缩放和移动模式契约，并执行渲染行为测试。
@@ -91,7 +92,7 @@ $iscc = .\tools\prepare-inno-setup.ps1
 .\tools\package-installer.ps1 -IsccPath $iscc
 ```
 
-安装包会生成到 `dist\CodexDreamSkinManager-v1.2.5-setup.exe`。Inno Setup 只用于构建，
+安装包会生成到 `dist\CodexDreamSkinManager-v1.6.0-windows-x64-setup.exe`。Inno Setup 只用于构建，
 不会成为用户电脑上的运行依赖。
 
 仅执行测试：

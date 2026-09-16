@@ -52,7 +52,7 @@ jobs:
           name: CodexDreamSkinManager-windows
           path: |
             build/CodexDreamSkinManager/
-            dist/*-setup.exe
-            dist/*-setup.sha256
+            dist/*-windows-x64-setup.exe
+            dist/*-windows-x64-setup.sha256
           if-no-files-found: error
           retention-days: 14

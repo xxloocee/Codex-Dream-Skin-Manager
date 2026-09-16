@@ -334,6 +334,57 @@ function Get-ManagerPresetByImagePath {
   return $null
 }
 
+function Sync-ManagerActivePresetAppearance {
+  param([Parameter(Mandatory = $true)][string]$PresetRoot)
+  if (-not (Test-Path -LiteralPath $PresetRoot -PathType Container)) { return }
+  $legacyPresetImageHashes = @{
+    'preset-sunlit-window' = 'EC4ACCC697317B1DCF1F7D4B5950DC28A818F7981F12E2CE3DFE33EA5C144B84'
+    'preset-warm-gaze' = '8447B5BF1CEDB379438E622598A61FC9BBFCD8A6EF4B86A99C8D472C1ED3DAAD'
+  }
+  try {
+    $active = Read-DreamSkinTheme -ThemeDirectory $paths.Active -SkipImageMetadata
+    $activeId = "$($active.Theme.id)"
+    if (-not $activeId) { return }
+    foreach ($candidate in @(Get-ManagerPresetCandidates -PresetRoot $PresetRoot)) {
+      if (-not [string]::Equals("$($candidate.id)", $activeId,
+          [System.StringComparison]::OrdinalIgnoreCase) -or "$($candidate.appearance)" -ne 'auto') {
+        continue
+      }
+      $activeHash = (Get-FileHash -LiteralPath $active.ImagePath -Algorithm SHA256).Hash
+      $presetHash = (Get-FileHash -LiteralPath "$($candidate.imagePath)" -Algorithm SHA256).Hash
+      $matchesCurrent = $activeHash -ceq $presetHash
+      $matchesLegacyImage = $legacyPresetImageHashes.ContainsKey($activeId) -and
+        $activeHash -ceq $legacyPresetImageHashes[$activeId]
+      if (-not $matchesCurrent -and -not $matchesLegacyImage) { return }
+      if ($matchesLegacyImage) {
+        $extension = [System.IO.Path]::GetExtension($active.ImagePath)
+        $migrationTemporary = Join-Path (Split-Path -Parent $active.ImagePath) `
+          ('.dream-migrate-' + [guid]::NewGuid().ToString('N') + $extension)
+        try {
+          Assert-DreamSkinNoReparseComponents -Path $migrationTemporary
+          Copy-Item -LiteralPath "$($candidate.imagePath)" -Destination $migrationTemporary -Force
+          Assert-DreamSkinImageFile -Path $migrationTemporary
+          Move-Item -LiteralPath $migrationTemporary -Destination $active.ImagePath -Force
+          $migrationTemporary = $null
+          Assert-DreamSkinImageFile -Path $active.ImagePath
+        } finally {
+          if ($migrationTemporary) {
+            Remove-Item -LiteralPath $migrationTemporary -Force -ErrorAction SilentlyContinue
+          }
+        }
+      }
+      if ("$($active.Theme.appearance)" -ne 'auto') {
+        $active.Theme | Add-Member -NotePropertyName appearance -NotePropertyValue 'auto' -Force
+        Write-DreamSkinTheme -ThemeDirectory $paths.Active -Theme $active.Theme
+      }
+      return
+    }
+  } catch {
+    # A stale or unreadable active theme must not prevent the manager from
+    # reporting status; applying a bundled preset will rewrite it normally.
+  }
+}
+
 function ConvertTo-ManagerPresetThemeContract {
   param([Parameter(Mandatory = $true)][object]$Preset)
   if ($Preset.themeContract) {
@@ -889,6 +940,7 @@ function Remove-ManagerPendingDeleteTrees {
 if ($Action -notin @('ValidateImage', 'Status')) {
   Invoke-ManagerWriteLock {
     Initialize-DreamSkinThemeStore -SkillRoot $SkillRoot -StateRoot $StateRoot | Out-Null
+    Sync-ManagerActivePresetAppearance -PresetRoot (Join-Path $SkillRoot 'presets')
     Remove-ManagerPendingDeleteTrees -Root $paths.Root
   } | Out-Null
 }
@@ -897,6 +949,7 @@ switch ($Action) {
   'Status' {
     Invoke-ManagerWriteLock {
     Initialize-DreamSkinThemeStore -SkillRoot $SkillRoot -StateRoot $StateRoot | Out-Null
+    Sync-ManagerActivePresetAppearance -PresetRoot (Join-Path $SkillRoot 'presets')
     Remove-ManagerPendingDeleteTrees -Root $paths.Root
     $active = $null
     try { $active = Read-DreamSkinTheme -ThemeDirectory $paths.Active -SkipImageMetadata } catch {}

@@ -213,6 +213,7 @@ namespace CodexDreamSkinManager
                     string image = Convert.ToString(row["image"]);
                     AssertTrue(ids.Add(id));
                     AssertTrue(File.Exists(Path.Combine(presetRoot, image)));
+                    AssertEqual("auto", Convert.ToString(row["appearance"]));
                     categories[category] = categories.ContainsKey(category) ? categories[category] + 1 : 1;
                     if (id == "violet-thunder") authorizedTheme = row;
                     if (id == "people-ai-red-horizon") peopleAiTheme = row;
@@ -223,7 +224,7 @@ namespace CodexDreamSkinManager
 
                 AssertTrue(authorizedTheme != null);
                 AssertEqual("dark", Convert.ToString(authorizedTheme["category"]));
-                AssertEqual("dark", Convert.ToString(authorizedTheme["appearance"]));
+                AssertEqual("auto", Convert.ToString(authorizedTheme["appearance"]));
                 AssertEqual("right", Convert.ToString(authorizedTheme["safeArea"]));
                 AssertEqual("ambient", Convert.ToString(authorizedTheme["taskMode"]));
                 AssertClose(0.52, Convert.ToDouble(authorizedTheme["focusX"]));
@@ -240,7 +241,7 @@ namespace CodexDreamSkinManager
                 AssertTrue(peopleAiTheme != null);
                 AssertEqual("人民的AI", Convert.ToString(peopleAiTheme["name"]));
                 AssertEqual("cyber", Convert.ToString(peopleAiTheme["category"]));
-                AssertEqual("light", Convert.ToString(peopleAiTheme["appearance"]));
+                AssertEqual("auto", Convert.ToString(peopleAiTheme["appearance"]));
                 AssertEqual("left", Convert.ToString(peopleAiTheme["safeArea"]));
                 AssertEqual("ambient", Convert.ToString(peopleAiTheme["taskMode"]));
                 AssertEqual("#D72E35", Convert.ToString(peopleAiTheme["accent"]));
@@ -280,10 +281,10 @@ namespace CodexDreamSkinManager
                         Path.Combine(presetRoot, "catalog.json"), Encoding.UTF8));
                 ArrayList themes = catalog["themes"] as ArrayList;
                 Dictionary<string, string[]> expected = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase) {
-                    { "ergouzi-paper-comet-light", new[] { "dream", "light", "#E96F79", "0.75", "0.44" } },
-                    { "ergouzi-paper-comet-dark", new[] { "dream", "dark", "#F07D9B", "0.75", "0.44" } },
-                    { "ergouzi-signal-star-light", new[] { "cyber", "light", "#E775A7", "0.76", "0.45" } },
-                    { "ergouzi-signal-star-dark", new[] { "cyber", "dark", "#F080B4", "0.76", "0.45" } }
+                    { "ergouzi-paper-comet-light", new[] { "dream", "auto", "#E96F79", "0.75", "0.44" } },
+                    { "ergouzi-paper-comet-dark", new[] { "dream", "auto", "#F07D9B", "0.75", "0.44" } },
+                    { "ergouzi-signal-star-light", new[] { "cyber", "auto", "#E775A7", "0.76", "0.45" } },
+                    { "ergouzi-signal-star-dark", new[] { "cyber", "auto", "#F080B4", "0.76", "0.45" } }
                 };
                 foreach (Dictionary<string, object> row in themes)
                 {
@@ -307,6 +308,50 @@ namespace CodexDreamSkinManager
                     expected.Remove(id);
                 }
                 AssertEqual("0", expected.Count.ToString());
+            });
+
+            Run("All bundled directory themes follow Codex appearance", delegate
+            {
+                foreach (string platform in new[] { "windows", "macos" })
+                {
+                    string presetRoot = Path.Combine(Environment.CurrentDirectory, platform, "presets");
+                    foreach (string themePath in Directory.GetFiles(
+                        presetRoot, "theme.json", SearchOption.AllDirectories))
+                    {
+                        Dictionary<string, object> theme = new JavaScriptSerializer()
+                            .Deserialize<Dictionary<string, object>>(File.ReadAllText(themePath, Encoding.UTF8));
+                        AssertEqual("auto", Convert.ToString(theme["appearance"]));
+                    }
+                }
+            });
+
+            Run("Ships full-resolution recent portrait themes", delegate
+            {
+                string presetRoot = Path.Combine(Environment.CurrentDirectory, "windows", "presets");
+                foreach (string fileName in new[] { "sunlit-window.jpg", "warm-gaze.jpg" })
+                {
+                    string imagePath = Path.Combine(presetRoot, fileName);
+                    using (System.Drawing.Image image = System.Drawing.Image.FromFile(imagePath))
+                    {
+                        AssertEqual("2560", image.Width.ToString());
+                        AssertEqual("1440", image.Height.ToString());
+                    }
+                    AssertTrue(new FileInfo(imagePath).Length >= 100L * 1024L);
+                    AssertTrue(new FileInfo(imagePath).Length < 16L * 1024L * 1024L);
+                }
+            });
+
+            Run("Ships exact legacy thumbnail migration hashes", delegate
+            {
+                string actions = File.ReadAllText(
+                    Path.Combine(Environment.CurrentDirectory, "windows", "scripts", "manager-actions.ps1"),
+                    Encoding.UTF8);
+                AssertTrue(actions.Contains(
+                    "'preset-sunlit-window' = 'EC4ACCC697317B1DCF1F7D4B5950DC28A818F7981F12E2CE3DFE33EA5C144B84'"));
+                AssertTrue(actions.Contains(
+                    "'preset-warm-gaze' = '8447B5BF1CEDB379438E622598A61FC9BBFCD8A6EF4B86A99C8D472C1ED3DAAD'"));
+                AssertTrue(actions.Contains(
+                    "Move-Item -LiteralPath $migrationTemporary -Destination $active.ImagePath -Force"));
             });
 
             Run("Ships six optimized 16 by 9 themes", delegate
@@ -860,7 +905,7 @@ namespace CodexDreamSkinManager
 
             Run("Publishes semantic application version", delegate
             {
-                AssertEqual("1.2.5.0", typeof(Program).Assembly.GetName().Version.ToString());
+                AssertEqual("1.6.0.0", typeof(Program).Assembly.GetName().Version.ToString());
             });
 
             Run("Converts focus percentage", delegate

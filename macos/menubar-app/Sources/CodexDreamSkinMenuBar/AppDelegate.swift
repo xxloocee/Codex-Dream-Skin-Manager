@@ -1191,7 +1191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         alert.addButton(withTitle: self.copy.text(.later))
         self.activateForUserInteraction()
         if alert.runModal() == .alertFirstButtonReturn,
-           let url = URL(string: "https://github.com/Fei-Away/Codex-Dream-Skin/releases/latest") {
+           let url = URL(string: "https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases/latest") {
           NSWorkspace.shared.open(url)
         }
       } else {
@@ -1233,7 +1233,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         return
       }
       let releaseURL = (value["releaseUrl"] as? String)
-        ?? "https://github.com/Fei-Away/Codex-Dream-Skin/releases/latest"
+        ?? "https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases/latest"
       self.availableUpdate = (version: latest, releaseURL: releaseURL)
       self.rebuildMenu()
       let lastNotifiedKey = "lastNotifiedUpdateVersion"
@@ -1264,7 +1264,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
 
   @objc private func openAvailableUpdate() {
     guard let url = URL(string: availableUpdate?.releaseURL
-      ?? "https://github.com/Fei-Away/Codex-Dream-Skin/releases/latest") else { return }
+      ?? "https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases/latest") else { return }
     NSWorkspace.shared.open(url)
   }
 

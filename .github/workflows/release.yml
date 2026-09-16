@@ -13,28 +13,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  validate:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
 
     steps:
-      - name: Check out manager
+      - name: Check out release candidate
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
 
-      - name: Set up packaged Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22.22.2
-          architecture: x64
-
-      - name: Check synchronized cross-platform runtime assets
-        shell: bash
-        run: node tools/sync-runtime-assets.mjs --check
-
-      - name: Validate release tag
+      - name: Validate release tag and metadata
         id: version
         shell: powershell
         env:
@@ -52,23 +45,35 @@ jobs:
           if ($Matches[1] -ne $version) {
             throw "Tag version ($version) does not match AssemblyInformationalVersion ($($Matches[1]))."
           }
+          foreach ($versionPath in @('windows\VERSION', 'macos\VERSION')) {
+            $runtimeVersion = (Get-Content -LiteralPath $versionPath -Raw).Trim()
+            if ($runtimeVersion -ne $version) {
+              throw "$versionPath ($runtimeVersion) does not match tag version ($version)."
+            }
+          }
+          $packageVersion = (Get-Content -LiteralPath 'macos\package.json' -Raw | ConvertFrom-Json).version
+          if ($packageVersion -ne $version) {
+            throw "macos/package.json ($packageVersion) does not match tag version ($version)."
+          }
           $readme = Get-Content -LiteralPath 'README.md' -Raw -Encoding UTF8
-          $readmeVersionMatch = [regex]::Match($readme,
-            '(?m)^\s*.*?`(\d+\.\d+\.\d+)`')
-          if (-not $readmeVersionMatch.Success) {
-            throw 'README current version is missing.'
+          $readmeVersionMatch = [regex]::Match($readme, '(?m)^\s*.*?`(\d+\.\d+\.\d+)`')
+          if (-not $readmeVersionMatch.Success -or $readmeVersionMatch.Groups[1].Value -ne $version) {
+            throw "README current version does not match tag version ($version)."
           }
-          $readmeVersion = $readmeVersionMatch.Groups[1].Value
-          if ($readmeVersion -ne $version) {
-            throw "Tag version ($version) does not match README current version ($readmeVersion)."
+          $expectedAssets = @(
+            "CodexDreamSkinManager-v$version-windows-x64-setup.exe",
+            "CodexDreamSkinManager-v$version-windows-x64-portable.zip",
+            "CodexDreamSkinManager-v$version-macos-universal.dmg",
+            'SHA256SUMS.txt'
+          )
+          foreach ($asset in $expectedAssets) {
+            if (-not $readme.Contains($asset)) {
+              throw "README download name is missing: $asset"
+            }
           }
-          $expectedArchive = "CodexDreamSkinManager-v$version-windows.zip"
-          if (-not $readme.Contains($expectedArchive)) {
-            throw "README download name does not match the release archive: $expectedArchive"
-          }
-          $expectedInstaller = "CodexDreamSkinManager-v$version-setup.exe"
-          if (-not $readme.Contains($expectedInstaller)) {
-            throw "README download name does not match the installer: $expectedInstaller"
+          $notes = ".github\release-notes\$tag.md"
+          if (-not (Test-Path -LiteralPath $notes -PathType Leaf)) {
+            throw "Release notes are missing: $notes"
           }
           git fetch origin main --no-tags
           git merge-base --is-ancestor $env:GITHUB_SHA origin/main
@@ -78,71 +83,140 @@ jobs:
           "tag=$tag" >> $env:GITHUB_OUTPUT
           "version=$version" >> $env:GITHUB_OUTPUT
 
-      - name: Test and build runnable package
+  windows:
+    needs: validate
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out release candidate
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up packaged Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+          architecture: x64
+
+      - name: Check synchronized cross-platform runtime assets
+        shell: bash
+        run: node tools/sync-runtime-assets.mjs --check
+
+      - name: Test and build Windows package
         shell: powershell
         run: |
           .\build.ps1 `
             -SkillRoot (Join-Path $PWD 'windows') `
             -NodeExecutable (Get-Command node.exe).Source
 
-      - name: Create versioned release archive
+      - name: Create Windows portable archive
         shell: powershell
         env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          .\tools\package-release.ps1 -Version $env:RELEASE_VERSION
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+        run: .\tools\package-release.ps1 -Version $env:RELEASE_VERSION
 
       - name: Prepare Inno Setup
         shell: powershell
-        run: |
-          .\tools\prepare-inno-setup.ps1 | Out-Null
+        run: .\tools\prepare-inno-setup.ps1 | Out-Null
 
       - name: Create Windows installer
         shell: powershell
         env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
         run: |
           .\tools\package-installer.ps1 `
             -Version $env:RELEASE_VERSION `
             -IsccPath (Join-Path $PWD 'build\.tools\InnoSetup\ISCC.exe')
 
-      - name: Upload release package artifact
+      - name: Upload Windows release assets
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: CodexDreamSkinManager-v${{ steps.version.outputs.version }}-windows
+          name: release-windows
           path: |
-            dist/*.zip
-            dist/*.exe
-            dist/*.sha256
+            dist/*-windows-x64-portable.zip
+            dist/*-windows-x64-setup.exe
           if-no-files-found: error
           retention-days: 30
 
+  macos:
+    needs: validate
+    runs-on: macos-14
+    timeout-minutes: 40
+
+    steps:
+      - name: Check out release candidate
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+
+      - name: Check synchronized cross-platform runtime assets
+        run: node tools/sync-runtime-assets.mjs --check
+
+      - name: Test and build universal macOS DMG
+        env:
+          CODEX_DREAM_SKIN_SKIP_SIGNED_RUNTIME_TESTS: "1"
+          CODEX_DREAM_SKIN_SKIP_DOCTOR: "1"
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          NODE="$(command -v node)" bash macos/scripts/build-dmg.sh
+          mv "macos/release/CodexDreamSkin-v${RELEASE_VERSION}.dmg" \
+            "macos/release/CodexDreamSkinManager-v${RELEASE_VERSION}-macos-universal.dmg"
+
+      - name: Upload macOS release asset
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-macos
+          path: macos/release/*-macos-universal.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    needs: [validate, windows, macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out release notes
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Download release assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create SHA-256 manifest
+        working-directory: dist
+        run: sha256sum CodexDreamSkinManager-* | LC_ALL=C sort -k2 > SHA256SUMS.txt
+
       - name: Create GitHub Release
-        shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
         run: |
-          $tag = $env:RELEASE_TAG
-          $version = $env:RELEASE_VERSION
-          $archive = "dist\CodexDreamSkinManager-v$version-windows.zip"
-          $checksum = "dist\CodexDreamSkinManager-v$version-windows.sha256"
-          $installer = "dist\CodexDreamSkinManager-v$version-setup.exe"
-          $installerChecksum = "dist\CodexDreamSkinManager-v$version-setup.sha256"
-          $previousErrorActionPreference = $ErrorActionPreference
-          $ErrorActionPreference = 'SilentlyContinue'
-          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
-          $releaseExists = $LASTEXITCODE -eq 0
-          $ErrorActionPreference = $previousErrorActionPreference
-          if ($releaseExists) {
-            gh release upload $tag $archive $checksum $installer $installerChecksum `
-              --clobber --repo $env:GITHUB_REPOSITORY
-          } else {
-            gh release create $tag $archive $checksum $installer $installerChecksum `
-              --repo $env:GITHUB_REPOSITORY `
-              --verify-tag `
-              --title "Codex Dream Skin Manager v$version" `
-              --generate-notes
-          }
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          notes=".github/release-notes/${RELEASE_TAG}.md"
+          mapfile -t assets < <(find dist -maxdepth 1 -type f -printf '%p\n' | LC_ALL=C sort)
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$RELEASE_TAG" \
+              --title "Codex Dream Skin Manager v${RELEASE_VERSION}" \
+              --notes-file "$notes" \
+              --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$RELEASE_TAG" "${assets[@]}" \
+              --verify-tag \
+              --title "Codex Dream Skin Manager v${RELEASE_VERSION}" \
+              --notes-file "$notes" \
+              --repo "$GITHUB_REPOSITORY"
+          fi
