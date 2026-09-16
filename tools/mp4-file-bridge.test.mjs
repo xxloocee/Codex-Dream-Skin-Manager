@@ -18,7 +18,9 @@ const projectRoot = path.resolve(import.meta.dirname, "..");
 const mp4 = Buffer.from((await fs.readFile(path.join(
   projectRoot, "tests", "fixtures", "h264-32x18-2fps.mp4.base64",
 ), "utf8")).trim(), "base64");
-const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "dream-skin-mp4-file-"));
+const tempRoot = await fs.realpath(
+  await fs.mkdtemp(path.join(os.tmpdir(), "dream-skin-mp4-file-")),
+);
 const theme = {
   schemaVersion: 1,
   id: "file_fixture",

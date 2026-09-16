@@ -288,13 +288,13 @@ function Get-DreamSkinValidatedImageMetadata {
   $metadataScript = Join-Path $PSScriptRoot 'image-metadata.mjs'
   $output = @(& $node.Path $metadataScript '--check' ([System.IO.Path]::GetFullPath($Path)) 2>&1)
   if ($LASTEXITCODE -ne 0) {
-    throw "Media metadata is invalid or exceeds the image/video safety limits: $Path"
+    throw "Image metadata is invalid or exceeds the 16384px / 50MP safety limit: $Path"
   }
   try { $metadata = ($output -join "`n") | ConvertFrom-Json -ErrorAction Stop } catch {
     throw "Image metadata helper returned invalid output: $Path"
   }
   if ($null -eq $metadata -or $null -eq $metadata.width -or $null -eq $metadata.height) {
-    throw "Media metadata is invalid or exceeds the image/video safety limits: $Path"
+    throw "Image metadata is invalid or exceeds the 16384px / 50MP safety limit: $Path"
   }
 }
 

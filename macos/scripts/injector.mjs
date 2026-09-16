@@ -1012,7 +1012,7 @@ export async function loadPayload(themeDir, mediaCacheRoot = MEDIA_CACHE_ROOT) {
   const styleRevision = createHash("sha256").update(combinedCss).digest("hex").slice(0, 20);
   const artMetadata = readImageMetadata(art, extension);
   if (!artMetadata) {
-    throw new Error("Theme media metadata is invalid or exceeds the image/video safety limits");
+    throw new Error("Theme media metadata is invalid or exceeds the 16384px / 50MP safety limit");
   }
   const animation = readImageAnimation(art, extension);
   if (!animation || animation.frameCount > MAX_IMAGE_FRAMES) {

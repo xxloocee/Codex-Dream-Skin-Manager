@@ -825,7 +825,7 @@ export async function loadTheme(themeDir) {
   }
   const artMetadata = readImageMetadata(imageBytes, extension);
   if (!artMetadata) {
-    throw new Error("Theme media metadata is invalid or exceeds the image/video safety limits");
+    throw new Error("Theme media metadata is invalid or exceeds the 16384px / 50MP safety limit");
   }
   const animation = readImageAnimation(imageBytes, extension);
   if (!animation || animation.frameCount > MAX_IMAGE_FRAMES) {
