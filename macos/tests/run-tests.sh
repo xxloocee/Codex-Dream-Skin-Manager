@@ -228,13 +228,54 @@ write_png_header() { # <path> <width> <height>
     fs.writeFileSync(process.argv[1], buffer);
   ' "$1" "$2" "$3"
 }
+write_valid_png() { # <path> <width> <height>
+  "$NODE" -e '
+    const fs = require("node:fs");
+    const { deflateSync } = require("node:zlib");
+    const table = new Uint32Array(256);
+    for (let index = 0; index < table.length; index += 1) {
+      let value = index;
+      for (let bit = 0; bit < 8; bit += 1) {
+        value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+      }
+      table[index] = value;
+    }
+    const crc32 = (buffer) => {
+      let crc = 0xffffffff;
+      for (const byte of buffer) crc = table[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+      return (crc ^ 0xffffffff) >>> 0;
+    };
+    const chunk = (type, body) => {
+      const typed = Buffer.concat([Buffer.from(type, "ascii"), body]);
+      const result = Buffer.alloc(typed.length + 8);
+      result.writeUInt32BE(body.length, 0);
+      typed.copy(result, 4);
+      result.writeUInt32BE(crc32(typed), typed.length + 4);
+      return result;
+    };
+    const width = Number(process.argv[2]);
+    const height = Number(process.argv[3]);
+    const header = Buffer.alloc(13);
+    header.writeUInt32BE(width, 0);
+    header.writeUInt32BE(height, 4);
+    header[8] = 8;
+    header[9] = 2;
+    const pixels = Buffer.alloc((width * 3 + 1) * height);
+    fs.writeFileSync(process.argv[1], Buffer.concat([
+      Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),
+      chunk("IHDR", header),
+      chunk("IDAT", deflateSync(pixels)),
+      chunk("IEND", Buffer.alloc(0)),
+    ]));
+  ' "$1" "$2" "$3"
+}
 CID_TMP="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/codex-dream-skin-cid.XXXXXX")"
 write_png_header "$CID_TMP/huge.png" 20000 20000
 if "$NODE" "$ROOT/scripts/check-image-dimensions.mjs" "$CID_TMP/huge.png" >/dev/null 2>&1; then
   printf 'check-image-dimensions accepted a 20000x20000 (400 MP) image.\n' >&2
   /bin/rm -rf "$CID_TMP"; exit 1
 fi
-write_png_header "$CID_TMP/ok.png" 1600 900
+write_valid_png "$CID_TMP/ok.png" 1600 900
 if ! "$NODE" "$ROOT/scripts/check-image-dimensions.mjs" "$CID_TMP/ok.png" >/dev/null 2>&1; then
   printf 'check-image-dimensions rejected a valid 1600x900 image.\n' >&2
   /bin/rm -rf "$CID_TMP"; exit 1
