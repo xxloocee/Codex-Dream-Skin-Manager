@@ -282,7 +282,7 @@ function Get-ManagerPresetCandidates {
     $candidates += @($catalog)
   } else {
     foreach ($image in @(Get-ChildItem -LiteralPath $PresetRoot -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|apng|webp|gif)$' })) {
+        Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|apng|webp|gif|mp4)$' })) {
       $id = [System.IO.Path]::GetFileNameWithoutExtension($image.Name)
       $fallback = [ordered]@{
         id = "preset-$id"
@@ -721,12 +721,17 @@ function Get-ManagerImageMetadata {
   try { Assert-DreamSkinImageFile -Path $fullPath } catch { throw "图片验证失败：$($_.Exception.Message)" }
   $node = Get-DreamSkinNodeRuntime
   $metadataScript = Join-Path $scripts 'image-metadata.mjs'
+  $format = [System.IO.Path]::GetExtension($fullPath).TrimStart('.').ToLowerInvariant()
   $output = @(& $node.Path $metadataScript '--check' $fullPath 2>&1)
-  if ($LASTEXITCODE -ne 0) { throw '图片验证失败：图片已损坏，或超过 16384 像素 / 5000 万像素限制。' }
+  if ($LASTEXITCODE -ne 0) {
+    if ($format -eq 'mp4') {
+      throw 'MP4 验证失败：仅支持标准非分片 H.264/AVC MP4，且视频不能超过 60 秒、60 FPS 或 30 MiB。'
+    }
+    throw '背景文件验证失败：文件已损坏，或超过图片/视频安全限制。'
+  }
   try { $metadata = ($output -join "`n") | ConvertFrom-Json -ErrorAction Stop } catch {
     throw '图片验证失败：元数据工具返回了无效结果。'
   }
-  $format = [System.IO.Path]::GetExtension($fullPath).TrimStart('.').ToLowerInvariant()
   $canPreview = $format -ne 'webp'
   return [ordered]@{
     path = $fullPath
@@ -737,7 +742,9 @@ function Get-ManagerImageMetadata {
     animated = [bool]$metadata.animated
     frameCount = [int]$metadata.frameCount
     canPreview = $canPreview
-    previewMessage = if ($canPreview) { '' } else { 'WebP 可以保存并应用，但当前 WPF 预览器可能无法显示。' }
+    previewMessage = if ($format -eq 'mp4') {
+      '管理器显示 MP4 静态封面；视频会在 Codex 中静音循环播放。'
+    } elseif ($canPreview) { '' } else { 'WebP 可以保存并应用，但当前 WPF 预览器可能无法显示。' }
   }
 }
 

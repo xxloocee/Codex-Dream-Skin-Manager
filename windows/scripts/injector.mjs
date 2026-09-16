@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { MAX_IMAGE_FRAMES, readImageAnimation, readImageMetadata } from "./image-metadata.mjs";
@@ -45,7 +46,24 @@ const SKIN_VERSION = "1.5.16";
 // statement rather than an inline `export const`.
 export { SKIN_VERSION, nextIdentityReconnectDelay };
 const MAX_ART_BYTES = 10 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
 const MAX_SAFE_CSS_BYTES = 256 * 1024;
+const MAX_MEDIA_CACHE_BYTES = 128 * 1024 * 1024;
+const MAX_MEDIA_CACHE_FILES = 16;
+const STALE_MEDIA_TEMP_MS = 60 * 60 * 1000;
+const MEDIA_CACHE_PARENT = process.platform === "win32"
+  ? path.join(
+      process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"),
+      "CodexDreamSkinManager", "media-v1",
+    )
+  : process.platform === "darwin"
+    ? path.join(os.homedir(), "Library", "Caches", "CodexDreamSkinManager", "media-v1")
+    : path.join(os.homedir(), ".cache", "codex-dream-skin", "media-v1");
+const MEDIA_CACHE_INSTANCE = `${process.pid}.${randomUUID()}`;
+const MEDIA_CACHE_ROOT = path.join(MEDIA_CACHE_PARENT, MEDIA_CACHE_INSTANCE);
+const MEDIA_CACHE_HEARTBEAT_MS = 30000;
+const MEDIA_CACHE_STALE_MS = 10 * 60 * 1000;
+let mediaCacheHeartbeat = null;
 const STRONG_THEME_AUDIT_MS = 30000;
 const MIN_RENDERER_VIEWPORT_WIDTH = 320;
 const MIN_RENDERER_VIEWPORT_HEIGHT = 240;
@@ -512,6 +530,160 @@ function sameFileStat(left, right) {
     && left.ctimeMs === right.ctimeMs;
 }
 
+async function verifyMediaSnapshot(snapshotPath, expectedBytes) {
+  let handle;
+  try {
+    handle = await fs.open(snapshotPath, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+    const before = await handle.stat();
+    if (!before.isFile() || before.size !== expectedBytes.length) {
+      throw new Error("Validated MP4 snapshot has an unexpected file type or size");
+    }
+    const actualBytes = await handle.readFile();
+    const after = await handle.stat();
+    if (!sameFileStat(before, after) || !actualBytes.equals(expectedBytes)) {
+      throw new Error("Validated MP4 snapshot content does not match the checked media");
+    }
+  } finally {
+    await handle?.close();
+  }
+}
+
+async function removeCachedMediaFile(filePath) {
+  try {
+    await fs.chmod(filePath, 0o600);
+    await fs.unlink(filePath);
+  } catch (error) {
+    if (!["ENOENT", "EBUSY", "EPERM"].includes(error?.code)) throw error;
+  }
+}
+
+function processIsRunning(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code !== "ESRCH";
+  }
+}
+
+async function cleanStaleMediaCacheInstances() {
+  const entries = await fs.readdir(MEDIA_CACHE_PARENT, { withFileTypes: true });
+  const staleBefore = Date.now() - MEDIA_CACHE_STALE_MS;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === MEDIA_CACHE_INSTANCE) continue;
+    const match = /^(\d+)\.([0-9a-f-]{36})$/.exec(entry.name);
+    if (!match) continue;
+    const instancePath = path.join(MEDIA_CACHE_PARENT, entry.name);
+    let activityStat;
+    try {
+      activityStat = await fs.stat(path.join(instancePath, ".lease"));
+    } catch (error) {
+      if (error?.code !== "ENOENT") continue;
+      try {
+        activityStat = await fs.stat(instancePath);
+      } catch {
+        continue;
+      }
+    }
+    if (activityStat.mtimeMs >= staleBefore || processIsRunning(Number(match[1]))) continue;
+    await fs.rm(instancePath, {
+      recursive: true, force: true, maxRetries: 2, retryDelay: 50,
+    }).catch(() => {});
+  }
+}
+
+async function ensureMediaCacheRoot(mediaCacheRoot) {
+  await fs.mkdir(mediaCacheRoot, { recursive: true, mode: 0o700 });
+  await fs.chmod(mediaCacheRoot, 0o700);
+  if (mediaCacheRoot !== MEDIA_CACHE_ROOT) return;
+  const leasePath = path.join(MEDIA_CACHE_ROOT, ".lease");
+  await fs.writeFile(leasePath, `${process.pid}\n`, { mode: 0o600 });
+  if (!mediaCacheHeartbeat) {
+    mediaCacheHeartbeat = setInterval(() => {
+      const now = new Date();
+      fs.utimes(leasePath, now, now).catch(() => {});
+    }, MEDIA_CACHE_HEARTBEAT_MS);
+    mediaCacheHeartbeat.unref?.();
+  }
+  await cleanStaleMediaCacheInstances();
+}
+
+async function pruneMediaCache(mediaCacheRoot, retainedPath) {
+  const entries = await fs.readdir(mediaCacheRoot, { withFileTypes: true });
+  const snapshots = [];
+  const staleBefore = Date.now() - STALE_MEDIA_TEMP_MS;
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const entryPath = path.join(mediaCacheRoot, entry.name);
+    if (/^[a-f0-9]{64}\.mp4$/.test(entry.name)) {
+      const stat = await fs.lstat(entryPath);
+      if (stat.isFile()) snapshots.push({ path: entryPath, size: stat.size, mtimeMs: stat.mtimeMs });
+      continue;
+    }
+    if (/^\.[a-f0-9]{64}\.\d+\.[0-9a-f-]{36}\.tmp$/.test(entry.name)) {
+      const stat = await fs.lstat(entryPath);
+      if (stat.isFile() && stat.mtimeMs < staleBefore) await removeCachedMediaFile(entryPath);
+    }
+  }
+  snapshots.sort((left, right) => {
+    if (left.path === retainedPath) return -1;
+    if (right.path === retainedPath) return 1;
+    return right.mtimeMs - left.mtimeMs;
+  });
+  let retainedBytes = 0;
+  let retainedFiles = 0;
+  for (const snapshot of snapshots) {
+    const keep = snapshot.path === retainedPath || (
+      retainedFiles < MAX_MEDIA_CACHE_FILES &&
+      retainedBytes + snapshot.size <= MAX_MEDIA_CACHE_BYTES
+    );
+    if (keep) {
+      retainedFiles += 1;
+      retainedBytes += snapshot.size;
+    } else {
+      await removeCachedMediaFile(snapshot.path);
+    }
+  }
+}
+
+export async function materializeMediaSnapshot(mediaBytes, mediaCacheRoot = MEDIA_CACHE_ROOT) {
+  const digest = createHash("sha256").update(mediaBytes).digest("hex");
+  await ensureMediaCacheRoot(mediaCacheRoot);
+  const snapshotPath = path.join(mediaCacheRoot, `${digest}.mp4`);
+  try {
+    await verifyMediaSnapshot(snapshotPath, mediaBytes);
+    await fs.chmod(snapshotPath, 0o400);
+    const realSnapshotPath = await fs.realpath(snapshotPath);
+    await pruneMediaCache(mediaCacheRoot, realSnapshotPath);
+    return realSnapshotPath;
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+
+  const temporaryPath = path.join(
+    mediaCacheRoot, `.${digest}.${process.pid}.${randomUUID()}.tmp`,
+  );
+  try {
+    await fs.writeFile(temporaryPath, mediaBytes, { flag: "wx", mode: 0o600 });
+    await fs.chmod(temporaryPath, 0o400);
+    try {
+      await fs.rename(temporaryPath, snapshotPath);
+    } catch (error) {
+      if (error?.code !== "EEXIST" && error?.code !== "EPERM") throw error;
+      await verifyMediaSnapshot(snapshotPath, mediaBytes);
+    }
+  } finally {
+    await fs.unlink(temporaryPath).catch((error) => {
+      if (error?.code !== "ENOENT") throw error;
+    });
+  }
+  await fs.chmod(snapshotPath, 0o400);
+  await verifyMediaSnapshot(snapshotPath, mediaBytes);
+  const realSnapshotPath = await fs.realpath(snapshotPath);
+  await pruneMediaCache(mediaCacheRoot, realSnapshotPath);
+  return realSnapshotPath;
+}
+
 function isContainedRelativePath(relativePath) {
   return relativePath !== ""
     && !path.isAbsolute(relativePath)
@@ -565,7 +737,7 @@ export async function loadTheme(themeDir) {
     throw new Error("Theme image must remain inside the selected theme directory");
   }
   const extension = path.extname(imagePath).toLowerCase();
-  if (![".png", ".apng", ".jpg", ".jpeg", ".webp", ".gif"].includes(extension)) {
+  if (![".png", ".apng", ".jpg", ".jpeg", ".webp", ".gif", ".mp4"].includes(extension)) {
     throw new Error(`Unsupported theme image format: ${extension || "missing"}`);
   }
   const realImagePath = await fs.realpath(imagePath);
@@ -641,18 +813,19 @@ export async function loadTheme(themeDir) {
     fs.stat(realImagePath),
     loadSafeCss(realThemeDir),
   ]);
+  const maxArtBytes = extension === ".mp4" ? MAX_VIDEO_BYTES : MAX_ART_BYTES;
   if (!imageStat.isFile()) throw new Error("Theme image is not a file");
   if (imageStat.size < 1) throw new Error("Theme image cannot be empty");
-  if (imageStat.size > MAX_ART_BYTES) {
-    throw new Error(`Theme image exceeds the ${MAX_ART_BYTES / 1024 / 1024} MB limit`);
+  if (imageStat.size > maxArtBytes) {
+    throw new Error(`Theme media exceeds the ${maxArtBytes / 1024 / 1024} MB limit`);
   }
   const imageBytes = await fs.readFile(realImagePath);
-  if (imageBytes.length < 1 || imageBytes.length > MAX_ART_BYTES) {
-    throw new Error(`Theme image must be between 1 byte and ${MAX_ART_BYTES / 1024 / 1024} MB`);
+  if (imageBytes.length < 1 || imageBytes.length > maxArtBytes) {
+    throw new Error(`Theme media must be between 1 byte and ${maxArtBytes / 1024 / 1024} MB`);
   }
   const artMetadata = readImageMetadata(imageBytes, extension);
   if (!artMetadata) {
-    throw new Error("Theme image metadata is invalid or exceeds the 16384px / 50MP safety limit");
+    throw new Error("Theme media metadata is invalid or exceeds the image/video safety limits");
   }
   const animation = readImageAnimation(imageBytes, extension);
   if (!animation || animation.frameCount > MAX_IMAGE_FRAMES) {
@@ -681,7 +854,11 @@ export async function loadTheme(themeDir) {
   };
 }
 
-export async function loadPayload(themeDir = path.join(root, "assets"), candidateTheme = null) {
+export async function loadPayload(
+  themeDir = path.join(root, "assets"),
+  candidateTheme = null,
+  mediaCacheRoot = MEDIA_CACHE_ROOT,
+) {
   const loadedTheme = candidateTheme ?? await loadTheme(themeDir);
   const [css, template] = await Promise.all([
     fs.readFile(path.join(root, "assets", "dream-skin.css"), "utf8"),
@@ -692,8 +869,11 @@ export async function loadPayload(themeDir = path.join(root, "assets"), candidat
   const extension = path.extname(loadedTheme.imagePath).toLowerCase();
   const mime = extension === ".jpg" || extension === ".jpeg" ? "image/jpeg"
     : extension === ".webp" ? "image/webp"
-      : extension === ".gif" ? "image/gif" : "image/png";
-  const artDataUrl = `data:${mime};base64,${loadedTheme.imageBytes.toString("base64")}`;
+      : extension === ".gif" ? "image/gif"
+        : extension === ".mp4" ? "video/mp4" : "image/png";
+  const artDataUrl = extension === ".mp4"
+    ? "dreamskin-file:video/mp4"
+    : `data:${mime};base64,${loadedTheme.imageBytes.toString("base64")}`;
   const styleRevision = createHash("sha256").update(combinedCss).digest("hex").slice(0, 20);
   loadedTheme.theme.artKey = createHash("sha256")
     .update(loadedTheme.imageBytes).digest("hex").slice(0, 20);
@@ -730,8 +910,16 @@ export async function loadPayload(themeDir = path.join(root, "assets"), candidat
   } catch (error) {
     throw new Error(`Payload failed to parse as JavaScript: ${error.message}`);
   }
+  const mediaFilePath = extension === ".mp4"
+    ? await materializeMediaSnapshot(loadedTheme.imageBytes, mediaCacheRoot)
+    : null;
   const { imageBytes: _imageBytes, ...themeState } = loadedTheme;
-  return { ...themeState, payload, revision };
+  return {
+    ...themeState,
+    mediaFilePath,
+    payload,
+    revision,
+  };
 }
 
 async function fileExists(filePath) {
@@ -919,6 +1107,66 @@ async function connectCodexTargets(port, timeoutMs, expectedBrowserId) {
 
 async function applyToSession(session, payload) {
   return session.evaluate(payload);
+}
+
+export async function bindVideoFileToSession(session, loadedPayload, timeoutMs = 3000) {
+  if (!loadedPayload?.mediaFilePath) return true;
+  const deadline = Date.now() + timeoutMs;
+  const revision = JSON.stringify(loadedPayload.revision);
+  while (Date.now() < deadline) {
+    const result = await session.send("Runtime.evaluate", {
+      expression: `(() => {
+        const state = window.__CODEX_DREAM_SKIN_STATE__;
+        if (state?.revision !== ${revision} || state.mediaType !== "video") return null;
+        return document.getElementById("codex-dream-skin-video-file");
+      })()`,
+      returnByValue: false,
+    });
+    if (result.exceptionDetails) {
+      const detail = result.exceptionDetails.exception?.description ?? result.exceptionDetails.text;
+      throw new Error(`Video file bridge lookup failed: ${detail}`);
+    }
+    const objectId = result.result?.objectId;
+    if (!objectId) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      continue;
+    }
+    try {
+      await session.send("DOM.setFileInputFiles", {
+        files: [loadedPayload.mediaFilePath],
+        objectId,
+      });
+    } finally {
+      await session.send("Runtime.releaseObject", { objectId }).catch(() => {});
+    }
+    const bound = await session.evaluate(`(() => {
+      const state = window.__CODEX_DREAM_SKIN_STATE__;
+      return state?.revision === ${revision} && Boolean(state.bindVideoFile?.());
+    })()`);
+    if (!bound) throw new Error("Renderer rejected the validated MP4 file bridge");
+    while (Date.now() < deadline) {
+      const status = await session.evaluate(`(() => {
+        const state = window.__CODEX_DREAM_SKIN_STATE__;
+        if (state?.revision !== ${revision}) return { stale: true };
+        const video = state.videoLayer;
+        return {
+          error: state.videoError || null,
+          ready: Boolean(video && video.readyState >= 1 && video.videoWidth > 0 && video.videoHeight > 0),
+        };
+      })()`);
+      if (status?.stale) throw new Error("Renderer changed while binding the MP4 file bridge");
+      if (status?.error) throw new Error(`MP4 playback failed: ${status.error}`);
+      if (status?.ready) return true;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    break;
+  }
+  throw new Error("Timed out waiting for the renderer MP4 file bridge to load");
+}
+
+async function applyLoadedToSession(session, loadedPayload) {
+  await applyToSession(session, loadedPayload.payload);
+  await bindVideoFileToSession(session, loadedPayload);
 }
 
 export function earlyPayloadFor(payload, revision) {
@@ -1530,7 +1778,6 @@ async function runOneShot(options) {
     for (const { session } of connected) session.close();
     throw error;
   }
-  const payload = loadedPayload?.payload ?? null;
   const results = [];
   let screenshotCaptured = false;
   try {
@@ -1544,7 +1791,7 @@ async function runOneShot(options) {
               `正在应用「${loadedPayload.theme.name}」…`,
             );
           }
-          await applyToSession(session, payload);
+          await applyLoadedToSession(session, loadedPayload);
           await new Promise((resolve) => setTimeout(resolve, options.mode === "once" ? 850 : 100));
         }
         if (options.reload) {
@@ -1557,7 +1804,7 @@ async function runOneShot(options) {
                 `正在应用「${loadedPayload.theme.name}」…`,
               );
             }
-            await applyToSession(session, payload);
+            await applyLoadedToSession(session, loadedPayload);
           }
         }
         if (operationToken) {
@@ -1660,13 +1907,17 @@ async function runWatch(options) {
     targetFailures.set(target.id, { failures, lastLogAt: previous.lastLogAt, until: now + delayMs });
   };
   const attachLoadFallback = (id, target, session) => {
-    if (fallbackListeners.has(id)) return;
-    fallbackListeners.add(id);
+    if (fallbackListeners.has(session)) return;
+    fallbackListeners.add(session);
     let lastReinjectErrorLogAt = 0;
     session.on("Page.loadEventFired", () => {
-      if (!fallbackTargets.get(id)) return;
+      if (!fallbackTargets.get(id) && !loadedPayload?.mediaFilePath) return;
       setTimeout(() => {
-        const operation = paused ? removeFromSession(session) : applyToSession(session, loadedPayload.payload);
+        const operation = paused
+          ? removeFromSession(session)
+          : fallbackTargets.get(id)
+            ? applyLoadedToSession(session, loadedPayload)
+            : bindVideoFileToSession(session, loadedPayload);
         operation.catch((error) => {
           if (Date.now() - lastReinjectErrorLogAt >= 30000) {
             console.error(`[dream-skin] reinject failed for ${target.id}: ${error.message}`);
@@ -1686,7 +1937,7 @@ async function runWatch(options) {
       await removeEarlyPayload(session, earlyScripts.get(id));
       earlyScripts.delete(id);
       fallbackTargets.delete(id);
-      fallbackListeners.delete(id);
+      fallbackListeners.delete(session);
       targetFailures.delete(id);
       session.close();
     }
@@ -1801,7 +2052,6 @@ async function runWatch(options) {
               await removeEarlyPayload(session, previousEarlyScript);
               earlyScripts.delete(id);
               fallbackTargets.delete(id);
-              fallbackListeners.delete(id);
             } else {
               let nextEarlyScript = null;
               try {
@@ -1820,14 +2070,15 @@ async function runWatch(options) {
               if (nextEarlyScript) earlyScripts.set(id, nextEarlyScript);
               else earlyScripts.delete(id);
               await removeEarlyPayload(session, previousEarlyScript);
-              await applyToSession(session, loadedPayload.payload);
+              await applyLoadedToSession(session, loadedPayload);
+              if (loadedPayload.mediaFilePath) attachLoadFallback(id, { id }, session);
             }
           } catch (error) {
             console.error(`[dream-skin] live theme update failed for ${id}: ${error.message}`);
             await removeEarlyPayload(session, earlyScripts.get(id));
             earlyScripts.delete(id);
             fallbackTargets.delete(id);
-            fallbackListeners.delete(id);
+            fallbackListeners.delete(session);
             session.close();
             sessions.delete(id);
           }
@@ -1844,7 +2095,7 @@ async function runWatch(options) {
           await removeEarlyPayload(session, earlyScripts.get(id));
           earlyScripts.delete(id);
           fallbackTargets.delete(id);
-          fallbackListeners.delete(id);
+          fallbackListeners.delete(session);
           session.close();
           sessions.delete(id);
           targetFailures.delete(id);
@@ -1888,7 +2139,9 @@ async function runWatch(options) {
             continue;
           }
           fallbackTargets.set(target.id, earlyInjectionFallback);
-          if (earlyInjectionFallback) attachLoadFallback(target.id, target, session);
+          if (earlyInjectionFallback || loadedPayload.mediaFilePath) {
+            attachLoadFallback(target.id, target, session);
+          }
           if (identityAnchor.closed) throw new CdpIdentityMismatchError("Original CDP browser identity closed");
           let earlyApplied = false;
           if (!paused && !earlyInjectionFallback) {
@@ -1897,7 +2150,10 @@ async function runWatch(options) {
             ).catch(() => false);
           }
           if (paused) await removeFromSession(session);
-          else if (!earlyApplied) await applyToSession(session, loadedPayload.payload);
+          else {
+            if (!earlyApplied) await applyToSession(session, loadedPayload.payload);
+            await bindVideoFileToSession(session, loadedPayload);
+          }
           sessions.set(target.id, session);
           if (earlyScriptId) earlyScripts.set(target.id, earlyScriptId);
           targetFailures.delete(target.id);
@@ -1905,7 +2161,7 @@ async function runWatch(options) {
         } catch (error) {
           await removeEarlyPayload(session, earlyScriptId);
           fallbackTargets.delete(target.id);
-          fallbackListeners.delete(target.id);
+          if (session) fallbackListeners.delete(session);
           session?.close();
           if (identityAnchor.closed || error instanceof CdpIdentityMismatchError) break;
           rejectTarget(target, 2500, error);

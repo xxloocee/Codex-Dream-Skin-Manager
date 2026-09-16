@@ -408,14 +408,14 @@ namespace CodexDreamSkinManager
             fields.Children.Add(FieldLabel("主题名称"));
             themeNameBox = InputBox("例如：我的工作台");
             fields.Children.Add(themeNameBox);
-            fields.Children.Add(FieldLabel("背景图片"));
+            fields.Children.Add(FieldLabel("背景图片或视频"));
             Grid fileRow = new Grid();
             fileRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             fileRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            imagePathBox = InputBox("选择 PNG、APNG、JPG、WebP 或 GIF");
+            imagePathBox = InputBox("选择 PNG、APNG、JPG、WebP、GIF 或 MP4");
             imagePathBox.IsReadOnly = true;
             fileRow.Children.Add(imagePathBox);
-            browseImageButton = SecondaryButton("选择图片");
+            browseImageButton = SecondaryButton("选择文件");
             browseImageButton.Margin = new Thickness(8, 0, 0, 0);
             browseImageButton.Click += async delegate { await BrowseImageAsync(); };
             Grid.SetColumn(browseImageButton, 1);
@@ -860,8 +860,8 @@ namespace CodexDreamSkinManager
         private async Task BrowseImageAsync()
         {
             OpenFileDialog dialog = new OpenFileDialog();
-            dialog.Title = "选择背景图片";
-            dialog.Filter = "图片文件|*.png;*.apng;*.jpg;*.jpeg;*.webp;*.gif";
+            dialog.Title = "选择背景图片或视频";
+            dialog.Filter = "图片和视频文件|*.png;*.apng;*.jpg;*.jpeg;*.webp;*.gif;*.mp4";
             if (dialog.ShowDialog(this) == true)
             {
                 int validationGeneration = ++imageValidationGeneration;
@@ -872,7 +872,7 @@ namespace CodexDreamSkinManager
                 customPreviewImageLayer.Source = null;
                 customPreviewSurface.Background = BrushFrom("#E3E8EE");
                 UpdateActionState();
-                SetMessage("正在验证图片...", false);
+                SetMessage("正在验证背景文件...", false);
                 try
                 {
                     if (service == null) throw new InvalidOperationException("管理组件不可用，无法验证图片。");
@@ -882,8 +882,16 @@ namespace CodexDreamSkinManager
                     if (validation.CanPreview)
                     {
                         customPreviewBitmap = LoadPreviewBitmap(validation.Path);
-                        customPreviewSurface.Background = CreateMutedImageFill(customPreviewBitmap);
-                        UpdateCustomPreview();
+                        if (customPreviewBitmap != null)
+                        {
+                            customPreviewSurface.Background = CreateMutedImageFill(customPreviewBitmap);
+                            UpdateCustomPreview();
+                        }
+                        else
+                        {
+                            customPreviewImageLayer.Source = null;
+                            customPreviewSurface.Background = BrushFrom("#E3E8EE");
+                        }
                     }
                     else
                     {
@@ -893,8 +901,9 @@ namespace CodexDreamSkinManager
                     }
                     hasValidCustomImage = true;
                     string details = validation.Width + " x " + validation.Height + " · " + validation.Format.ToUpperInvariant();
-                    if (validation.Animated) details += " · 动图 " + validation.FrameCount + " 帧";
-                    SetMessage(string.IsNullOrWhiteSpace(validation.PreviewMessage) ? "图片验证通过：" + details : validation.PreviewMessage + " " + details, false);
+                    if (string.Equals(validation.Format, "mp4", StringComparison.OrdinalIgnoreCase)) details += " · 视频";
+                    else if (validation.Animated) details += " · 动图 " + validation.FrameCount + " 帧";
+                    SetMessage(string.IsNullOrWhiteSpace(validation.PreviewMessage) ? "背景文件验证通过：" + details : validation.PreviewMessage + " " + details, false);
                 }
                 catch (Exception ex)
                 {
@@ -918,12 +927,12 @@ namespace CodexDreamSkinManager
         {
             if (operationRunning || statusRefreshCount > 0) return;
             OpenFileDialog dialog = new OpenFileDialog {
-                Title = "添加背景图片",
-                Filter = "图片文件|*.png;*.apng;*.jpg;*.jpeg;*.webp;*.gif",
+                Title = "添加背景图片或视频",
+                Filter = "图片和视频文件|*.png;*.apng;*.jpg;*.jpeg;*.webp;*.gif;*.mp4",
                 Multiselect = true
             };
             if (dialog.ShowDialog(this) != true) return;
-            if (dialog.FileNames.Length > 50) { SetMessage("一次最多添加 50 张图片。", true); return; }
+            if (dialog.FileNames.Length > 50) { SetMessage("一次最多添加 50 个背景文件。", true); return; }
             List<BatchImportItem> items = new List<BatchImportItem>();
             foreach (string file in dialog.FileNames)
                 items.Add(new BatchImportItem { ImagePath = file, Name = Path.GetFileNameWithoutExtension(file) });
@@ -1311,15 +1320,7 @@ namespace CodexDreamSkinManager
 
         private static BitmapSource LoadPreviewBitmap(string path)
         {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
-            BitmapImage bitmap = new BitmapImage();
-            bitmap.BeginInit();
-            bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.DecodePixelWidth = 1280;
-            bitmap.UriSource = new Uri(path, UriKind.Absolute);
-            bitmap.EndInit();
-            bitmap.Freeze();
-            return bitmap;
+            return PreviewImageLoader.Load(path, 1280);
         }
 
         private static Image CreatePreviewImageLayer(Border surface, string automationName)

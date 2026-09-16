@@ -37,6 +37,7 @@ function makeFixture({
   nativeAppearance = "dark", settings = false, settingsPanel = false, adopted = true,
   generic = false, genericComposer = true, genericHome = false, genericSearch = false,
   modernMessages = false, modernComposerLayout = false,
+  videoPlayReject = false, deferFirstVideoPlay = false,
   pathname = "/index.html", initialRoute = "",
 } = {}) {
   const attrs = new Map();
@@ -50,6 +51,8 @@ function makeFixture({
   const intervals = new Map();
   const listeners = new Map();
   const revoked = [];
+  let deferredVideoReject = null;
+  let videoPlayCalls = 0;
   let nextId = 0;
   let nextBlob = 0;
   const attributesFor = (values) => [...values].map(([name, value]) => ({ name, value }));
@@ -212,12 +215,66 @@ function makeFixture({
     };
     return node;
   };
+  const makeVideoNode = () => {
+    const videoListeners = new Map();
+    return {
+      id: "",
+      tagName: "VIDEO",
+      parentElement: null,
+      muted: false,
+      defaultMuted: false,
+      loop: false,
+      autoplay: false,
+      playsInline: false,
+      preload: "",
+      paused: true,
+      hidden: false,
+      error: null,
+      dataset: {},
+      setAttribute(name, value) { this[name] = String(value); },
+      removeAttribute(name) { this[name] = ""; },
+      addEventListener(type, callback) { videoListeners.set(type, callback); },
+      removeEventListener(type) { videoListeners.delete(type); },
+      dispatch(type) { videoListeners.get(type)?.(); },
+      play() {
+        videoPlayCalls += 1;
+        if (deferFirstVideoPlay && videoPlayCalls === 1) {
+          return new Promise((resolve, reject) => { deferredVideoReject = reject; });
+        }
+        if (videoPlayReject) return Promise.reject(new Error("Autoplay rejected"));
+        this.paused = false;
+        return Promise.resolve();
+      },
+      pause() { this.paused = true; },
+      load() {},
+      remove() { if (this.id) nodes.delete(this.id); this.parentElement = null; },
+    };
+  };
+  const makeFileInputNode = () => ({
+    id: "",
+    tagName: "INPUT",
+    parentElement: null,
+    type: "",
+    accept: "",
+    hidden: false,
+    files: [],
+    setAttribute(name, value) { this[name] = String(value); },
+    remove() { if (this.id) nodes.delete(this.id); this.parentElement = null; },
+  });
   const document = {
     documentElement: root,
     head: root,
     body,
     adoptedStyleSheets: adopted ? [] : undefined,
-    createElement(tag) { return tag === "style" ? makeStyleNode() : { tagName: tag }; },
+    hidden: false,
+    createElement(tag) {
+      if (tag === "style") return makeStyleNode();
+      if (tag === "video") return makeVideoNode();
+      if (tag === "input") return makeFileInputNode();
+      return { tagName: tag };
+    },
+    addEventListener(type, callback) { listeners.set(`document:${type}`, callback); },
+    removeEventListener(type) { listeners.delete(`document:${type}`); },
     getElementById(id) { return nodes.get(id) || null; },
     querySelector(selector) {
       if (settingsPanel && selector === '[data-settings-panel-slug="general-settings"]') {
@@ -249,11 +306,12 @@ function makeFixture({
   }
   const window = {
     navigation,
-    matchMedia() {
+    matchMedia(query) {
+      const key = query.includes("reduced-motion") ? "motion" : "media";
       return {
-        matches: nativeAppearance === "dark",
-        addEventListener(type, callback) { listeners.set(`media:${type}`, callback); },
-        removeEventListener(type) { listeners.delete(`media:${type}`); },
+        matches: key === "motion" ? false : nativeAppearance === "dark",
+        addEventListener(type, callback) { listeners.set(`${key}:${type}`, callback); },
+        removeEventListener(type) { listeners.delete(`${key}:${type}`); },
       };
     },
     addEventListener() {},
@@ -284,11 +342,12 @@ function makeFixture({
     clearInterval(id) { intervals.delete(id); },
     console,
   };
-  const payloadFor = (theme = {}, cssText = ".fixture { color: red; }") => {
+  const payloadFor = (theme = {}, cssText = ".fixture { color: red; }",
+    artDataUrl = "data:image/png;base64,AA==") => {
     const template = fixture.template;
     return template
       .replace("__DREAM_SKIN_CSS_JSON__", JSON.stringify(cssText))
-      .replace("__DREAM_SKIN_ART_JSON__", JSON.stringify("data:image/png;base64,AA=="))
+      .replace("__DREAM_SKIN_ART_JSON__", JSON.stringify(artDataUrl))
       .replace("__DREAM_SKIN_THEME_JSON__", JSON.stringify({ id: "fixture", appearance: "auto", ...theme }))
       .replace("__DREAM_SKIN_VERSION_JSON__", JSON.stringify("test"))
       .replace("__DREAM_SKIN_STYLE_REVISION_JSON__", JSON.stringify("css-rev"))
@@ -309,7 +368,12 @@ function makeFixture({
   };
   return {
     addDynamicMessage, attrs, context, document, domNodes, flushTimers, intervals, listeners,
-    nodes, observers, partFixtures, payloadFor, revoked, root, rootClasses, rootStyle, timers, window,
+    nodes, observers, partFixtures, payloadFor, revoked, root, rootClasses, rootStyle,
+    rejectDeferredVideo(error = new Error("Deferred playback rejected")) {
+      deferredVideoReject?.(error);
+      deferredVideoReject = null;
+    },
+    selectorNodes, timers, window,
   };
 }
 
@@ -699,6 +763,148 @@ export async function runRendererRuntimeTest(assetRoot) {
   }), landscape.context);
   assert.equal(landscape.attrs.get("data-dream-art-wide"), "true",
     "Landscape artwork classified as wide must use the immersive layout without requiring 16:9.");
+
+  const video = makeFixture({ nativeAppearance: "dark" });
+  vm.runInNewContext(video.payloadFor({}, undefined, "data:video/mp4;base64,AA=="), video.context);
+  const videoState = video.window.__CODEX_DREAM_SKIN_STATE__;
+  const videoLayer = video.nodes.get("codex-dream-skin-video");
+  assert.equal(video.attrs.get("data-dream-media"), "video");
+  assert.equal(video.attrs.get("data-dream-art-wide"), "true");
+  assert.ok(videoLayer, "MP4 payloads must create a dedicated video background layer");
+  assert.equal(videoLayer.muted, true);
+  assert.equal(videoLayer.loop, true);
+  assert.equal(videoLayer.autoplay, true);
+  assert.equal(videoLayer.playsInline, true);
+  assert.equal(videoLayer.paused, false);
+  video.document.hidden = true;
+  video.listeners.get("document:visibilitychange")();
+  assert.equal(videoLayer.paused, true, "Hidden pages must pause the video background");
+  assert.equal(videoState.cleanup(), true);
+  assert.equal(video.nodes.has("codex-dream-skin-video"), false);
+  assert.equal(video.listeners.has("document:visibilitychange"), false);
+
+  const fileVideo = makeFixture({ nativeAppearance: "dark" });
+  vm.runInNewContext(
+    fileVideo.payloadFor({}, undefined, "dreamskin-file:video/mp4"), fileVideo.context,
+  );
+  const fileVideoState = fileVideo.window.__CODEX_DREAM_SKIN_STATE__;
+  const fileInput = fileVideo.nodes.get("codex-dream-skin-video-file");
+  const fileVideoLayer = fileVideo.nodes.get("codex-dream-skin-video");
+  assert.ok(fileInput, "File-backed MP4 payloads must expose the private CDP file bridge");
+  assert.equal(fileVideoState.artUrl, null);
+  assert.equal(fileVideoLayer.paused, true);
+  fileInput.files = [{ name: "background.mp4", size: 20 * 1024 * 1024, type: "video/mp4" }];
+  assert.equal(fileVideoState.bindVideoFile(), true);
+  assert.equal(fileVideoState.artUrl, "blob:fixture-1");
+  assert.equal(fileVideoState.artUrlOwned, true);
+  assert.equal(fileVideoLayer.src, "blob:fixture-1");
+  assert.equal(fileVideoLayer.paused, false);
+  assert.equal(fileVideoState.cleanup(), true);
+  assert.deepEqual(fileVideo.revoked, ["blob:fixture-1"]);
+  assert.equal(fileVideo.nodes.has("codex-dream-skin-video-file"), false);
+  const oversizedFileVideo = makeFixture({ nativeAppearance: "dark" });
+  vm.runInNewContext(
+    oversizedFileVideo.payloadFor({}, undefined, "dreamskin-file:video/mp4"),
+    oversizedFileVideo.context,
+  );
+  const oversizedInput = oversizedFileVideo.nodes.get("codex-dream-skin-video-file");
+  oversizedInput.files = [{
+    name: "background.mp4",
+    size: 30 * 1024 * 1024 + 1,
+    type: "video/mp4",
+  }];
+  assert.equal(oversizedFileVideo.window.__CODEX_DREAM_SKIN_STATE__.bindVideoFile(), false,
+    "The renderer file bridge must reject MP4 files above 30 MiB");
+  assert.equal(oversizedFileVideo.window.__CODEX_DREAM_SKIN_STATE__.artUrl, null);
+  const invalidMediaSource = makeFixture({ nativeAppearance: "dark" });
+  assert.throws(
+    () => vm.runInNewContext(
+      invalidMediaSource.payloadFor({}, undefined, "http://example.com/video.mp4"),
+      invalidMediaSource.context,
+    ),
+    /invalid Dream Skin media source/,
+  );
+
+  const offTaskVideo = makeFixture({ nativeAppearance: "dark", generic: true });
+  vm.runInNewContext(offTaskVideo.payloadFor(
+    { art: { taskMode: "off" } }, undefined, "data:video/mp4;base64,AA==",
+  ), offTaskVideo.context);
+  assert.equal(offTaskVideo.window.__CODEX_DREAM_SKIN_STATE__.scope.baseState, "thread");
+  const offTaskVideoLayer = offTaskVideo.nodes.get("codex-dream-skin-video");
+  assert.equal(offTaskVideoLayer.paused, true,
+    "Task mode off must pause video backgrounds on task routes");
+  assert.equal(offTaskVideoLayer.hidden, true,
+    "Task mode off must hide video backgrounds when exact shell selectors drift");
+  assert.equal(offTaskVideo.attrs.get("data-dream-video-hidden"), "true");
+  assert.match(
+    css,
+    /data-dream-video-hidden="true"[^\n]*#codex-dream-skin-video[\s\S]{0,220}display:\s*none\s*!important;/,
+    "Renderer state must hide video backgrounds independently of route selectors",
+  );
+  offTaskVideo.selectorNodes.set('[data-testid="home-icon"]', [offTaskVideo.partFixtures.main]);
+  offTaskVideo.selectorNodes.set(
+    '[role="main"]:has([data-testid="home-icon"])', [offTaskVideo.partFixtures.main],
+  );
+  const offTaskObserver = offTaskVideo.observers.find((observer) => observer.options?.childList);
+  offTaskObserver.callback([{ type: "childList" }]);
+  offTaskVideo.flushTimers(80);
+  assert.equal(offTaskVideo.window.__CODEX_DREAM_SKIN_STATE__.scope.baseState, "home");
+  assert.equal(offTaskVideoLayer.hidden, false,
+    "Task mode off must keep the video visible on the home route");
+  assert.equal(offTaskVideoLayer.paused, false,
+    "Returning home must resume an off-on-task video background");
+  offTaskVideo.selectorNodes.delete('[data-testid="home-icon"]');
+  offTaskVideo.selectorNodes.delete('[role="main"]:has([data-testid="home-icon"])');
+  offTaskObserver.callback([{ type: "childList" }]);
+  offTaskVideo.flushTimers(80);
+  assert.equal(offTaskVideoLayer.hidden, true);
+  assert.equal(offTaskVideoLayer.paused, true);
+
+  const rejectedVideo = makeFixture({ nativeAppearance: "dark", videoPlayReject: true });
+  vm.runInNewContext(
+    rejectedVideo.payloadFor({}, undefined, "data:video/mp4;base64,AA=="), rejectedVideo.context,
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  const rejectedVideoState = rejectedVideo.window.__CODEX_DREAM_SKIN_STATE__;
+  assert.match(rejectedVideoState.videoError, /Autoplay rejected/);
+  assert.equal(rejectedVideo.attrs.get("data-dream-video-status"), "error");
+  assert.equal(rejectedVideo.nodes.get("codex-dream-skin-video").hidden, true,
+    "A playback rejection must fall back to the theme background color");
+  assert.match(
+    css,
+    /data-dream-video-status="error"[\s\S]{0,180}body\s*\{[\s\S]{0,100}background-color:\s*var\(--ds-bg\)/,
+    "Video failures must restore the theme background color",
+  );
+
+  const mediaErrorVideo = makeFixture({ nativeAppearance: "dark" });
+  vm.runInNewContext(
+    mediaErrorVideo.payloadFor({}, undefined, "data:video/mp4;base64,AA=="),
+    mediaErrorVideo.context,
+  );
+  const mediaErrorLayer = mediaErrorVideo.nodes.get("codex-dream-skin-video");
+  mediaErrorLayer.error = { code: 3 };
+  mediaErrorLayer.dispatch("error");
+  assert.equal(mediaErrorVideo.window.__CODEX_DREAM_SKIN_STATE__.videoError, "Media error 3");
+  assert.equal(mediaErrorLayer.hidden, true, "Media decode errors must hide the broken video layer");
+
+  const staleVideoFailure = makeFixture({ nativeAppearance: "dark", deferFirstVideoPlay: true });
+  vm.runInNewContext(
+    staleVideoFailure.payloadFor({}, undefined, "data:video/mp4;base64,AA=="),
+    staleVideoFailure.context,
+  );
+  const staleVideoState = staleVideoFailure.window.__CODEX_DREAM_SKIN_STATE__;
+  vm.runInNewContext(
+    staleVideoFailure.payloadFor({}, undefined, "data:video/mp4;base64,AQ=="),
+    staleVideoFailure.context,
+  );
+  const replacementVideoState = staleVideoFailure.window.__CODEX_DREAM_SKIN_STATE__;
+  assert.notEqual(replacementVideoState, staleVideoState);
+  staleVideoFailure.rejectDeferredVideo();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(staleVideoFailure.window.__CODEX_DREAM_SKIN_STATE__, replacementVideoState);
+  assert.notEqual(staleVideoFailure.attrs.get("data-dream-video-status"), "error",
+    "A disposed video's delayed playback rejection must not poison its replacement");
+  assert.equal(replacementVideoState.videoError, null);
 
   const explicitColors = {
     background: "#abc",

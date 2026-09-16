@@ -1245,6 +1245,17 @@ try {
     throw 'The 10 MB image limit was not enforced before theme copy or payload construction.'
   }
 
+  $supportedVideo = Join-Path $temporaryRoot 'supported-video.mp4'
+  $supportedVideoStream = [System.IO.File]::Open($supportedVideo, [System.IO.FileMode]::CreateNew)
+  try { $supportedVideoStream.SetLength(20 * 1024 * 1024) } finally { $supportedVideoStream.Dispose() }
+  Assert-DreamSkinImageFile -Path $supportedVideo -SkipImageMetadata
+  $oversizedVideo = Join-Path $temporaryRoot 'oversized-video.mp4'
+  $oversizedVideoStream = [System.IO.File]::Open($oversizedVideo, [System.IO.FileMode]::CreateNew)
+  try { $oversizedVideoStream.SetLength((30 * 1024 * 1024) + 1) } finally { $oversizedVideoStream.Dispose() }
+  $oversizedVideoRejected = $false
+  try { Assert-DreamSkinImageFile -Path $oversizedVideo -SkipImageMetadata } catch { $oversizedVideoRejected = $true }
+  if (-not $oversizedVideoRejected) { throw 'The 30 MiB MP4 limit was not enforced.' }
+
   $oversizedDimensionImage = Join-Path $temporaryRoot 'oversized-dimension.png'
   $pngHeader = New-Object byte[] 24
   [byte[]](0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a) | ForEach-Object -Begin { $i = 0 } -Process { $pngHeader[$i++] = $_ }

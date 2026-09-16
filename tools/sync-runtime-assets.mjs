@@ -66,7 +66,16 @@ function compileSafeCssFileValidator(source) {
   return source.replace(canonicalImport, 'from "../assets/safe-css-validator.mjs"');
 }
 
-// Both injectors enforce the 16384px / 50MP decode limits through this parser,
+function compileThemePackageValidator(source) {
+  const canonicalImport = 'from "./image-metadata.mjs"';
+  const occurrences = source.split(canonicalImport).length - 1;
+  if (occurrences !== 1) {
+    throw new Error("runtime/theme-package-validator.mjs must import the canonical image metadata parser once");
+  }
+  return source.replace(canonicalImport, 'from "../scripts/image-metadata.mjs"');
+}
+
+// Both injectors enforce image dimensions plus MP4 codec, duration, and FPS limits through this parser,
 // so the two platform copies must not drift. Windows additionally needs a tiny
 // CLI so theme-windows.ps1 can shell out to it; that entry point is appended
 // here instead of being maintained as a second hand-edited copy of the parser.
@@ -86,7 +95,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       const metadata = readImageMetadata(bytes, path.extname(resolved));
       const animation = readImageAnimation(bytes, path.extname(resolved));
       if (!metadata || !animation || animation.frameCount > MAX_IMAGE_FRAMES) {
-        throw new Error("Image metadata is invalid or exceeds the 16384px / 50MP safety limit");
+        throw new Error("Media metadata is invalid or exceeds the image/video safety limits");
       }
       console.log(JSON.stringify({ ...metadata, ...animation }));
     } catch (error) {
@@ -150,7 +159,7 @@ const outputs = [
     paths: ["macos/assets/renderer-inject.js", "windows/assets/renderer-inject.js"],
   },
   {
-    content: sourceThemePackageValidator,
+    content: compileThemePackageValidator(sourceThemePackageValidator),
     paths: [
       "macos/assets/theme-package-validator.mjs",
       "windows/assets/theme-package-validator.mjs",

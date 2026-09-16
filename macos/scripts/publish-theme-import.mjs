@@ -17,6 +17,7 @@ if (!themesRootArg || (!recoveryOnly && !stageDirArg) || cliArgs.length !== 2) {
 
 const MAX_CONFIG_BYTES = 1024 * 1024;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
 const MAX_CSS_BYTES = 256 * 1024;
 const MAX_LICENSE_BYTES = 64 * 1024;
 const MAX_MANIFEST_BYTES = 64 * 1024;
@@ -29,6 +30,10 @@ const REPLACEMENT_CANDIDATE_NAME = "candidate";
 const REPLACEMENT_COMMIT_NAME = "committed";
 const REPLACEMENT_COMMIT_TEMP_NAME = "commit.tmp";
 const MAX_REPLACEMENT_JOURNAL_BYTES = 16 * 1024;
+
+function maxMediaBytes(name) {
+  return /\.mp4$/i.test(name) ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+}
 
 function assertContained(rootPath, candidatePath, label) {
   const relative = path.relative(rootPath, candidatePath);
@@ -226,7 +231,9 @@ async function readStoredTheme(directory) {
   try {
     const configBytes = await readRegular(path.join(directory, "theme.json"), "Saved theme config", MAX_CONFIG_BYTES);
     const theme = decodeTheme(configBytes, "Saved theme config");
-    const imageBytes = await readRegular(path.join(directory, theme.image), "Saved theme image", MAX_IMAGE_BYTES);
+    const imageBytes = await readRegular(
+      path.join(directory, theme.image), "Saved theme image", maxMediaBytes(theme.image),
+    );
     const [cssBytes, licenseBytes] = await Promise.all([
       readOptionalRegular(path.join(directory, "theme.css"), "Saved theme CSS", MAX_CSS_BYTES),
       readOptionalRegular(path.join(directory, "LICENSE.txt"), "Saved theme license", MAX_LICENSE_BYTES),
@@ -725,7 +732,9 @@ async function main() {
   const sourceTheme = decodeTheme(configBytes, "Imported theme config");
   const imagePath = path.join(stageRoot, sourceTheme.image);
   assertContained(stageRoot, imagePath, "Imported theme image");
-  const imageBytes = await readRegular(imagePath, "Imported theme image", MAX_IMAGE_BYTES);
+  const imageBytes = await readRegular(
+    imagePath, "Imported theme image", maxMediaBytes(sourceTheme.image),
+  );
   const [manifestBytes, cssBytes, licenseBytes, signatureBytes] = await Promise.all([
     readOptionalRegular(path.join(stageRoot, "manifest.json"), "Imported manifest", MAX_MANIFEST_BYTES),
     readOptionalRegular(path.join(stageRoot, "theme.css"), "Imported theme CSS", MAX_CSS_BYTES),

@@ -60,7 +60,7 @@ try {
   Remove-Item -LiteralPath $stateRoot -Recurse -Force
 
   $catalogImages = @(Get-ChildItem -LiteralPath (Join-Path $SkillRoot 'presets') -File |
-    Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|apng|webp|gif)$' } | Select-Object -First 2)
+    Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|apng|webp|gif|mp4)$' } | Select-Object -First 2)
   if ($catalogImages.Count -lt 2) { throw 'At least two preset images are required for the catalog test.' }
   $catalog = [ordered]@{
     schemaVersion = 1
@@ -241,7 +241,7 @@ try {
 
   $validated = Invoke-Manager -Arguments (@('-Action', 'ValidateImage', '-ImagePath', $sourceImage.FullName) + $common)
   Assert-True ($validated.width -gt 0 -and $validated.height -gt 0) 'Image dimensions were not returned.'
-  Assert-True ($validated.format -in @('png','apng','jpg','jpeg','webp','gif')) 'Image format was not returned.'
+  Assert-True ($validated.format -in @('png','apng','jpg','jpeg','webp','gif','mp4')) 'Image format was not returned.'
   Assert-Equal 'gif' $validated.format 'GIF format was not returned.'
   Assert-Equal $true $validated.animated 'GIF animation was not detected.'
   Assert-Equal 2 $validated.frameCount 'GIF frame count was not returned.'
@@ -268,7 +268,35 @@ try {
   $webp = Invoke-Manager -Arguments (@('-Action', 'ValidateImage', '-ImagePath', $webpImage) + $common)
   Assert-Equal 'webp' $webp.format 'WebP format was not identified.'
   Assert-Equal $false $webp.canPreview 'WebP preview capability was not reported conservatively.'
-  Write-Host 'PASS: image preflight validates real metadata'
+
+  $mp4Image = Join-Path $stateRoot 'video-background.mp4'
+  $mp4Fixture = Join-Path $PSScriptRoot 'fixtures\h264-32x18-2fps.mp4.base64'
+  [System.IO.File]::WriteAllBytes($mp4Image, [Convert]::FromBase64String(
+    [System.IO.File]::ReadAllText($mp4Fixture, [System.Text.Encoding]::ASCII).Trim()
+  ))
+  $mp4 = Invoke-Manager -Arguments (@('-Action', 'ValidateImage', '-ImagePath', $mp4Image) + $common)
+  Assert-Equal 'mp4' $mp4.format 'MP4 format was not identified.'
+  Assert-Equal '32' $mp4.width 'MP4 width was not returned.'
+  Assert-Equal '18' $mp4.height 'MP4 height was not returned.'
+  Assert-Equal $true $mp4.animated 'MP4 was not classified as moving media.'
+  Assert-Equal '0' $mp4.frameCount 'MP4 must not report a synthetic image frame count.'
+  Assert-Equal $true $mp4.canPreview 'MP4 static preview capability was not reported.'
+  $emptyMp4 = Join-Path $stateRoot 'empty-video.mp4'
+  [System.IO.File]::WriteAllBytes($emptyMp4, [Convert]::FromBase64String(
+    'AAAAHGZ0eXBpc29tAAAAAGlzb21tcDQyYXZjMQAAAMxtb292AAAAxHRyYWsAAABcdGtoZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHgAAABDgAAAAAAGBtZGlhAAAAFGhkbHIAAAAAAAAAAHZpZGUAAABEbWluZgAAADxzdGJsAAAANHN0c2QAAAAAAAAAAQAAACRhdmMxAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4AEOA=='
+  ))
+  $rejectedEmptyMp4 = $false
+  try { $null = Invoke-Manager -Arguments (@('-Action', 'ValidateImage', '-ImagePath', $emptyMp4) + $common) } catch { $rejectedEmptyMp4 = $true }
+  Assert-Equal $true $rejectedEmptyMp4 'ValidateImage accepted an MP4 without media samples.'
+  $mp4Import = Invoke-Manager -Arguments (@(
+      '-Action', 'ImportTheme', '-ImagePath', $mp4Image,
+      '-Name', 'MP4 集成测试主题', '-KeepCurrent'
+    ) + $common)
+  Assert-Equal '.mp4' ([System.IO.Path]::GetExtension((
+      [System.IO.File]::ReadAllText((Join-Path $mp4Import.themeDirectory 'theme.json'), [System.Text.Encoding]::UTF8) |
+        ConvertFrom-Json
+    ).image)) 'MP4 import did not preserve the source format.'
+  Write-Host 'PASS: image and MP4 preflight validates real metadata'
 
   $normalizedRoot = [System.IO.Path]::GetFullPath($stateRoot).TrimEnd('\').ToUpperInvariant()
   $sha = [System.Security.Cryptography.SHA256]::Create()

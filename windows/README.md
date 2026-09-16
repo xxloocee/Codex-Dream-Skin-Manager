@@ -80,7 +80,7 @@ powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\verify-d
 
 打开 `Codex Dream Skin - Tray` 后可以：
 
-- 更换 PNG、JPEG、WebP 或 GIF 背景图；PNG/APNG 和动画 WebP 也会保留动画。
+- 更换 PNG、APNG、JPEG、WebP、GIF 背景图或标准非分片 H.264/AVC MP4 视频；动画图片和 MP4 都保留原格式。MP4 验证后会生成只读的内容寻址快照，再通过受控文件桥创建本地 `blob:` 地址，不会编码为 Base64，并在 Codex 中静音循环播放。托盘管理器通过 Windows 系统媒体缩略图显示 MP4 静态封面，但不播放视频。
 - 导入普通 `.zip` 主题包到“已保存主题”（不支持 `.dreamskin`）。
 - 保存当前主题并从「已保存主题」切换。
 - 暂停或继续显示皮肤。
@@ -93,9 +93,9 @@ powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\verify-d
 Codex，并验证磁盘上的当前主题与可见主题一致；只有建立了可回滚的旧主题基线后，才会写入下载的新主题。
 确认前请保存输入。链接不能指定任意下载地址、文件路径或命令，也不能静默应用；不完整的旧主题仍会被客户端拒绝。
 
-导入图片必须是纯背景，不要使用包含窗口、侧栏、输入框、文字或按钮的效果截图。图片上限为 10 MB；宽或高不能超过 16384 像素，总像素不能超过 5000 万；动图最多 300 帧。
+导入背景必须是纯素材，不要使用包含窗口、侧栏、输入框、文字或按钮的效果截图。图片上限为 10 MiB，MP4 上限为 30 MiB；宽或高不能超过 16384 像素，总像素不能超过 5000 万；动图最多 300 帧。MP4 必须是标准非分片 H.264/AVC 文件，最长 60 秒、最高 60 FPS；原文件直接保存，不会转码。
 
-新的正式 Studio ZIP 必须包含 `manifest.json`、非空 `theme.json`、非空 `theme.css`、恰好一张 `background.webp|jpg|png|apng|gif`，并可选
+新的正式 Studio ZIP 必须包含 `manifest.json`、非空 `theme.json`、非空 `theme.css`、恰好一个 `background.webp|jpg|png|apng|gif|mp4`，并可选
 带 `LICENSE.txt`、`manifest.sig`；文件直接位于根目录或只包一层主题目录。本地简化包也必须恰好包含
 `theme.json`、`theme.css` 与其引用图片，且只应来自可信来源。压缩文件上限 32 MiB、最多
 32 个条目、解压后最多 64 MiB；路径穿越、链接/reparse、嵌套压缩包和未注册文件会被拒绝。正式包还会

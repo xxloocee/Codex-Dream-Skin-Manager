@@ -35,6 +35,7 @@ namespace CodexDreamSkinManager
         private const long MaxPackageBytes = 32L * 1024 * 1024;
         private const long MaxExpandedBytes = 64L * 1024 * 1024;
         private const long MaxImageBytes = 10L * 1024 * 1024;
+        private const long MaxVideoBytes = 30L * 1024 * 1024;
         private static readonly HashSet<string> AllowedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
             "dream", "nature", "cyber", "minimal", "dark", "warm", "custom", "uncategorized"
         };
@@ -87,8 +88,12 @@ namespace CodexDreamSkinManager
                     else if (!string.Equals(entry.FullName, "manifest.json", StringComparison.OrdinalIgnoreCase))
                         throw new InvalidDataException("主题包包含未注册文件。 ");
                 }
-                if (imageEntry == null || imageEntry.Length < 1 || imageEntry.Length > MaxImageBytes)
-                    throw new InvalidDataException("主题包图片缺失、为空或超过 10 MB。 ");
+                bool isVideo = string.Equals(Path.GetExtension(imageName), ".mp4", StringComparison.OrdinalIgnoreCase);
+                long maxMediaBytes = isVideo ? MaxVideoBytes : MaxImageBytes;
+                if (imageEntry == null || imageEntry.Length < 1 || imageEntry.Length > maxMediaBytes)
+                    throw new InvalidDataException(isVideo
+                        ? "主题包视频缺失、为空或超过 30 MB。 "
+                        : "主题包图片缺失、为空或超过 10 MB。 ");
                 if (cssEntry != null && (cssEntry.Length < 1 || cssEntry.Length > 256 * 1024))
                     throw new InvalidDataException("主题包 theme.css 为空或超过 256 KB。 ");
                 if (licenseEntry != null && (licenseEntry.Length < 1 || licenseEntry.Length > 64 * 1024))
@@ -141,10 +146,14 @@ namespace CodexDreamSkinManager
             if (!File.Exists(sourceImage)) throw new FileNotFoundException("导出主题图片不存在。", sourceImage);
             AssertNoReparsePoint(sourceImage);
             FileInfo imageInfo = new FileInfo(sourceImage);
-            if (imageInfo.Length < 1 || imageInfo.Length > MaxImageBytes) throw new InvalidDataException("导出主题图片为空或超过 10 MB。 ");
             string extension = Path.GetExtension(sourceImage).ToLowerInvariant();
-            if (extension != ".jpg" && extension != ".jpeg" && extension != ".png" && extension != ".apng" && extension != ".webp" && extension != ".gif")
+            if (extension != ".jpg" && extension != ".jpeg" && extension != ".png" && extension != ".apng" && extension != ".webp" && extension != ".gif" && extension != ".mp4")
                 throw new InvalidDataException("导出主题图片格式不受支持。 ");
+            long maxMediaBytes = extension == ".mp4" ? MaxVideoBytes : MaxImageBytes;
+            if (imageInfo.Length < 1 || imageInfo.Length > maxMediaBytes)
+                throw new InvalidDataException(extension == ".mp4"
+                    ? "导出主题视频为空或超过 30 MB。 "
+                    : "导出主题图片为空或超过 10 MB。 ");
             string imageName = "art" + extension;
             string safeCssSource = string.IsNullOrWhiteSpace(data.SafeCssPath) ? "" : Path.GetFullPath(data.SafeCssPath);
             string licenseSource = string.IsNullOrWhiteSpace(data.LicensePath) ? "" : Path.GetFullPath(data.LicensePath);
@@ -298,7 +307,7 @@ namespace CodexDreamSkinManager
             if (string.IsNullOrWhiteSpace(name) || Path.IsPathRooted(name) || Path.GetFileName(name) != name)
                 throw new InvalidDataException("主题包图片路径无效。 ");
             string extension = Path.GetExtension(name).ToLowerInvariant();
-            if (extension != ".jpg" && extension != ".jpeg" && extension != ".png" && extension != ".apng" && extension != ".webp" && extension != ".gif")
+            if (extension != ".jpg" && extension != ".jpeg" && extension != ".png" && extension != ".apng" && extension != ".webp" && extension != ".gif" && extension != ".mp4")
                 throw new InvalidDataException("主题包图片格式无效。 ");
         }
 

@@ -21,6 +21,7 @@
     "data-dream-art-wide", "data-dream-art-safe", "data-dream-task-mode",
     "data-dream-art-safe-area", "data-dream-art-task-mode", "data-dream-art-aspect",
     "data-dream-art-ready", "data-dream-art-framing", "data-dream-art-position-mode",
+    "data-dream-media", "data-dream-video-hidden", "data-dream-video-status",
   ];
   const initialRoute = new URLSearchParams(String(location.search || ""))
     .get("initialRoute") || "";
@@ -85,6 +86,12 @@
   let styleMode = null;
   let styleNode = null;
   let styleSheet = null;
+  let motionQuery = null;
+  let motionHandler = null;
+  let visibilityHandler = null;
+  let videoErrorHandler = null;
+  let videoFailure = null;
+  let videoDisposed = false;
   const now = () => typeof performance === "object" && typeof performance.now === "function"
     ? performance.now() : Date.now();
   const metrics = {
@@ -112,14 +119,124 @@
   const existingStyleRegistry = window[STYLE_REGISTRY_KEY];
   const styleRegistry = existingStyleRegistry instanceof Set ? existingStyleRegistry : new Set();
   window[STYLE_REGISTRY_KEY] = styleRegistry;
-  const artUrl = (() => {
+  const dataMime = /^data:([^;,]+)/.exec(artDataUrl)?.[1] || null;
+  const fileVideoSource = artDataUrl === "dreamskin-file:video/mp4";
+  if (!dataMime && !fileVideoSource) throw new Error("Rejected an invalid Dream Skin media source");
+  const artMime = fileVideoSource ? "video/mp4" : dataMime;
+  const artMediaType = artMime === "video/mp4" ? "video" : "image";
+  let artUrlOwned = !fileVideoSource;
+  let artUrl = (() => {
+    if (fileVideoSource) return null;
     const comma = artDataUrl.indexOf(",");
-    const mime = /^data:([^;,]+)/.exec(artDataUrl)?.[1] || "image/png";
     const binary = atob(artDataUrl.slice(comma + 1));
     const bytes = new Uint8Array(binary.length);
     for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-    return URL.createObjectURL(new Blob([bytes], { type: mime }));
+    return URL.createObjectURL(new Blob([bytes], { type: artMime }));
   })();
+  const videoLayer = artMediaType === "video" && document?.createElement
+    ? document.createElement("video") : null;
+  const videoFileInput = fileVideoSource && document?.createElement
+    ? document.createElement("input") : null;
+  if (videoLayer) {
+    videoLayer.id = "codex-dream-skin-video";
+    videoLayer.muted = true;
+    videoLayer.defaultMuted = true;
+    videoLayer.loop = true;
+    videoLayer.autoplay = true;
+    videoLayer.playsInline = true;
+    videoLayer.preload = "auto";
+    videoLayer.disablePictureInPicture = true;
+    videoLayer.setAttribute("aria-hidden", "true");
+    videoLayer.setAttribute("tabindex", "-1");
+  }
+  if (videoFileInput) {
+    videoFileInput.id = "codex-dream-skin-video-file";
+    videoFileInput.type = "file";
+    videoFileInput.accept = "video/mp4,.mp4";
+    videoFileInput.hidden = true;
+    videoFileInput.setAttribute("aria-hidden", "true");
+    videoFileInput.setAttribute("tabindex", "-1");
+  }
+
+  const failVideo = (error) => {
+    if (!videoLayer || videoFailure || videoDisposed || error?.name === "AbortError") return;
+    const currentState = window[STATE_KEY];
+    if (currentState && currentState.installToken !== installToken) return;
+    if (!currentState && window[DISABLED_KEY]) return;
+    const mediaCode = Number(videoLayer.error?.code) || 0;
+    const detail = typeof error?.message === "string" ? error.message.trim() : "";
+    videoFailure = detail || (mediaCode ? `Media error ${mediaCode}` : "Video playback failed");
+    if (currentState?.installToken === installToken) currentState.videoError = videoFailure;
+    const root = document.documentElement;
+    root?.setAttribute("data-dream-video-status", "error");
+    root?.setAttribute("data-dream-video-hidden", "true");
+    videoLayer.hidden = true;
+    videoLayer.pause?.();
+  };
+  if (videoLayer) {
+    videoErrorHandler = () => failVideo();
+    videoLayer.addEventListener?.("error", videoErrorHandler);
+    if (artUrl) videoLayer.src = artUrl;
+  }
+
+  const bindVideoFile = () => {
+    const file = videoFileInput?.files?.[0];
+    if (!file || !videoLayer || videoDisposed || videoFailure ||
+        file.size < 1 || file.size > 30 * 1024 * 1024 ||
+        !/\.mp4$/i.test(file.name || "") ||
+        file.type && file.type !== "video/mp4") return false;
+    const previousUrl = artUrl;
+    const previousOwned = artUrlOwned;
+    artUrl = URL.createObjectURL(file);
+    artUrlOwned = true;
+    const state = window[STATE_KEY];
+    if (state?.installToken === installToken) {
+      state.artUrl = artUrl;
+      state.artUrlOwned = true;
+    }
+    videoLayer.src = artUrl;
+    videoLayer.load?.();
+    if (previousUrl && previousOwned) URL.revokeObjectURL(previousUrl);
+    syncVideoPlayback();
+    return true;
+  };
+
+  const syncVideoPlayback = () => {
+    if (!videoLayer) return;
+    const state = window[STATE_KEY];
+    const root = document.documentElement;
+    const taskMode = root?.getAttribute("data-dream-task-mode") ||
+      root?.getAttribute("data-dream-art-task-mode");
+    const hiddenByTaskMode = taskMode === "off" && state?.scope?.baseState === "thread";
+    const shouldHide = hiddenByTaskMode || Boolean(videoFailure);
+    root?.setAttribute("data-dream-video-hidden", shouldHide ? "true" : "false");
+    videoLayer.hidden = shouldHide;
+    if (!artUrl) {
+      videoLayer.pause?.();
+      return;
+    }
+    if (videoFailure || document.hidden || motionQuery?.matches || hiddenByTaskMode) {
+      videoLayer.pause?.();
+      return;
+    }
+    if (videoLayer.paused) {
+      try {
+        const playback = videoLayer.play?.();
+        playback?.catch?.(failVideo);
+      } catch (error) {
+        failVideo(error);
+      }
+    }
+  };
+
+  const ensureVideoLayer = () => {
+    if (!videoLayer || !document.body) return;
+    if (videoFileInput && videoFileInput.parentElement !== document.body) {
+      document.body.appendChild(videoFileInput);
+    }
+    if (videoLayer.parentElement !== document.body) document.body.appendChild(videoLayer);
+    syncVideoPlayback();
+  };
 
   const cssString = (value) => JSON.stringify(String(value ?? ""));
 
@@ -416,7 +533,8 @@
     const focusY = typeof ART.focusY === "number" ? ART.focusY : profile?.focusY ?? 0.5;
     const taskMode = ART.taskMode && ART.taskMode !== "auto"
       ? ART.taskMode : profile?.taskMode || "ambient";
-    const wide = profile?.wide || profile?.aspect === "wide" || profile?.aspect === "ultrawide";
+    const wide = artMediaType === "video" || profile?.wide ||
+      profile?.aspect === "wide" || profile?.aspect === "ultrawide";
     const aspect = profile?.aspect || "unknown";
     const focusXValue = `${(clamp(focusX, 0, 1) * 100).toFixed(2)}%`;
     const focusYValue = `${(clamp(focusY, 0, 1) * 100).toFixed(2)}%`;
@@ -445,6 +563,7 @@
     setAttribute(root, "data-dream-art-ready", artAnalysis ? "true" : "false");
     setAttribute(root, "data-dream-art-framing", framingEnabled ? "true" : "false");
     setAttribute(root, "data-dream-art-position-mode", positionMode);
+    setAttribute(root, "data-dream-media", artMediaType);
     setStyleProperty(root, "--dream-art-focus-x", focusXValue);
     setStyleProperty(root, "--dream-art-focus-y", focusYValue);
     setStyleProperty(root, "--dream-art-position", `${focusXValue} ${focusYValue}`);
@@ -657,7 +776,7 @@
     const shell = resolvedShell();
     setAttribute(root, "data-dream-skin", "active");
     setAttribute(root, SHELL_ATTR, shell);
-    setStyleProperty(root, "--dream-skin-art", `url("${artUrl}")`);
+    setStyleProperty(root, "--dream-skin-art", artMediaType === "video" ? "none" : `url("${artUrl}")`);
     applyTheme(root, shell);
     applyArtMetadata(root);
     return shell;
@@ -872,7 +991,10 @@
     metrics.routePasses += 1;
     const scope = detectScope();
     const state = window[STATE_KEY];
-    if (state?.installToken === installToken) state.scope = scope;
+    if (state?.installToken === installToken) {
+      state.scope = scope;
+      syncVideoPlayback();
+    }
     return scope;
   };
 
@@ -881,7 +1003,10 @@
     const root = document.documentElement;
     if (!root) return;
     metrics.ensureCalls += 1;
-    if (rootPass) applyRootState(root);
+    if (rootPass) {
+      applyRootState(root);
+      ensureVideoLayer();
+    }
     if (partPass) refreshParts();
     if (scopePass) refreshScope();
   };
@@ -913,6 +1038,15 @@
     if (state?.mediaHandler && state?.mediaQuery) {
       try { state.mediaQuery.removeEventListener("change", state.mediaHandler); } catch {}
     }
+    if (state?.motionHandler && state?.motionQuery) {
+      try { state.motionQuery.removeEventListener("change", state.motionHandler); } catch {}
+    }
+    if (state?.visibilityHandler && typeof document.removeEventListener === "function") {
+      document.removeEventListener("visibilitychange", state.visibilityHandler);
+    }
+    if (state?.videoErrorHandler && state?.videoLayer) {
+      state.videoLayer.removeEventListener?.("error", state.videoErrorHandler);
+    }
     if (state?.navigationHandler && state?.navigation) {
       try { state.navigation.removeEventListener("navigate", state.navigationHandler); } catch {}
     }
@@ -926,7 +1060,13 @@
     styleNode?.remove();
     if (document.getElementById(STYLE_ID) === styleNode) document.getElementById(STYLE_ID)?.remove();
     if (styleRegistry.size === 0) delete window[STYLE_REGISTRY_KEY];
-    if (state?.artUrl) URL.revokeObjectURL(state.artUrl);
+    videoDisposed = true;
+    state?.videoLayer?.pause?.();
+    state?.videoLayer?.removeAttribute?.("src");
+    state?.videoLayer?.load?.();
+    state?.videoLayer?.remove?.();
+    state?.videoFileInput?.remove?.();
+    if (state?.artUrl && state.artUrlOwned) URL.revokeObjectURL(state.artUrl);
     delete window[STATE_KEY];
     return true;
   };
@@ -962,6 +1102,13 @@
     mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     mediaHandler = () => scheduleEnsure({ root: true });
   } catch {}
+  if (videoLayer) {
+    try {
+      motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+      motionHandler = syncVideoPlayback;
+    } catch {}
+    visibilityHandler = syncVideoPlayback;
+  }
 
   const navigationApi = window.navigation && typeof window.navigation.addEventListener === "function"
     ? window.navigation : null;
@@ -979,9 +1126,19 @@
     scheduler,
     mediaQuery,
     mediaHandler,
+    motionQuery,
+    motionHandler,
+    visibilityHandler,
     navigation: navigationApi,
     navigationHandler,
     artUrl,
+    artUrlOwned,
+    bindVideoFile,
+    mediaType: artMediaType,
+    videoLayer,
+    videoFileInput,
+    videoError: videoFailure,
+    videoErrorHandler,
     installToken,
     styleMode,
     styleNode,
@@ -1023,7 +1180,7 @@
     bodyReadyHandler = () => {
       if (!window[DISABLED_KEY]) {
         observeBody();
-        scheduleEnsure({ scope: true, parts: true }, 0);
+        scheduleEnsure({ root: true, scope: true, parts: true }, 0);
       }
     };
     document.addEventListener("DOMContentLoaded", bodyReadyHandler, { once: true });
@@ -1036,10 +1193,18 @@
   if (mediaHandler && mediaQuery && typeof mediaQuery.addEventListener === "function") {
     mediaQuery.addEventListener("change", mediaHandler);
   }
+  if (motionHandler && motionQuery && typeof motionQuery.addEventListener === "function") {
+    motionQuery.addEventListener("change", motionHandler);
+  }
+  if (visibilityHandler && typeof document.addEventListener === "function") {
+    document.addEventListener("visibilitychange", visibilityHandler);
+  }
+  syncVideoPlayback();
   if (navigationHandler && navigationApi) {
     navigationApi.addEventListener("navigate", navigationHandler);
   }
-  const analysisPromise = artAnalysis ? Promise.resolve(null) : analyzeArt();
+  const analysisPromise = artAnalysis || artMediaType === "video"
+    ? Promise.resolve(null) : analyzeArt();
   window[STATE_KEY].analysisTimer = analysisTimer;
   analysisPromise.then((analysis) => {
     const state = window[STATE_KEY];

@@ -57,7 +57,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 `
 
 构建脚本会：
 
-1. 编译并执行 54 项 C# 测试。
+1. 编译并执行 55 项 C# 测试。
 2. 复制已同步的上游 Windows 运行时。
 3. 覆盖本项目维护的 `manager-actions.ps1`、`presets` 和可再分发默认图片。
 4. 校验共享运行时中的图片位置、缩放和移动模式契约，并执行渲染行为测试。
@@ -144,7 +144,7 @@ build.ps1            统一测试、组装与构建入口
 - 不请求管理员权限。
 - 不修改 `WindowsApps`、`app.asar` 或 Codex 官方二进制文件。
 - 不读取、展示或记录 API Key、登录信息和对话内容。
-- 图片和主题包经过格式、体积、像素、路径、重解析点和元数据校验。
+- 图片、视频和主题包经过格式、体积、像素、路径、重解析点和元数据校验。
 - 启用与紧急恢复前由 WPF 窗口请求确认。
 - 构建清理只允许发生在项目 `build` 目录内，并拒绝 junction/symlink。
 
@@ -152,8 +152,8 @@ build.ps1            统一测试、组装与构建入口
 
 ## 已知限制
 
-- 支持 PNG/APNG、JPG/JPEG、WebP 和 GIF；APNG、动画 WebP 与 GIF 会按原格式保留并在 Codex 渲染层播放。Windows WPF 预览对 WebP 可能不可用，动图预览以首帧为主。
-- 动图最多 300 帧，仍受 10 MB、单边 16384 像素和 5000 万像素限制；macOS 的静态 PNG/WebP/GIF/HEIC/TIFF 仍会转换为 JPEG。
+- 支持 PNG/APNG、JPG/JPEG、WebP、GIF 和标准非分片 H.264/AVC MP4；动画图片与 MP4 都按原格式保留。MP4 验证后会生成只读的内容寻址快照，再通过受控文件桥创建本地 `blob:` 地址，在 Codex 渲染层静音、循环、自动播放，不会转码或编码为 Base64；每个活动注入器的快照缓存最多保留 16 个文件、合计 128 MiB，已退出实例的缓存会延迟回收。Windows WPF 管理器通过系统媒体缩略图显示 MP4 静态封面但不播放视频，WebP 预览也可能不可用，动图预览以首帧为主。
+- 动图最多 300 帧；MP4 最大 30 MiB、最长 60 秒、最高 60 FPS，其他最终背景文件最大 10 MiB。所有背景仍受单边 16384 像素和 5000 万像素限制。macOS 的静态 PNG/WebP/GIF/HEIC/TIFF 仍会转换为 JPEG，MP4 不转换。
 - EXE 和安装包未进行商业代码签名，Windows SmartScreen 可能显示“未知发布者”。
 - 外部 Codex Dream Skin 项目的完整测试仍有一个既有失败：桌面配置使用多行数组时没有按其测试预期拒绝；本项目的管理器测试不受影响。
 

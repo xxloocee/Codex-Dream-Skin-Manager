@@ -213,6 +213,39 @@ html[data-dream-skin="active"] body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif !important;
 }
 
+html[data-dream-skin="active"][data-dream-media="video"] body {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+html[data-dream-skin="active"][data-dream-media="video"] #codex-dream-skin-video {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  object-position: var(--ds-art-position, 50% 50%);
+  transform: scale(var(--dream-art-zoom, 1));
+  transform-origin: center center;
+  pointer-events: none;
+}
+
+html[data-dream-skin="active"][data-dream-media="video"] #codex-dream-skin-video[hidden],
+html[data-dream-skin="active"][data-dream-media="video"][data-dream-video-hidden="true"] #codex-dream-skin-video,
+html[data-dream-skin="active"][data-dream-media="video"][data-dream-video-status="error"] #codex-dream-skin-video {
+  display: none !important;
+}
+
+html[data-dream-skin="active"][data-dream-media="video"]:is([data-dream-video-hidden="true"], [data-dream-video-status="error"]) body {
+  background-color: var(--ds-bg) !important;
+  background-image: none !important;
+}
+
 html[data-dream-skin="active"] body::before {
   content: none;
 }

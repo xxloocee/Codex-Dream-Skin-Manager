@@ -11,6 +11,7 @@ if (!sourceDirArg || !stageDirArg) {
 
 const MAX_CONFIG_BYTES = 1024 * 1024;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
 const MAX_CSS_BYTES = 256 * 1024;
 const OPEN_FLAGS = fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0);
 
@@ -108,8 +109,9 @@ async function main() {
 
   const imagePath = path.resolve(sourceRoot, theme.image);
   assertContained(sourceRoot, imagePath, "Theme image");
+  const maxImageBytes = /\.mp4$/i.test(theme.image) ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
   const [image, safeCss] = await Promise.all([
-    readStableFile(imagePath, "Theme image", MAX_IMAGE_BYTES),
+    readStableFile(imagePath, "Theme image", maxImageBytes),
     readOptionalStableFile(path.join(sourceRoot, "theme.css"), "Theme Safe CSS", MAX_CSS_BYTES),
   ]);
   if (image.bytes.length < 1) throw new Error("Theme image is empty");

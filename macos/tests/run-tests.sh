@@ -167,6 +167,7 @@ fi
 # once, then staged byte-for-byte into both platform asset directories.
 PROJECT_ROOT="$(cd "$ROOT/.." && pwd -P)"
 "$NODE" "$PROJECT_ROOT/tools/sync-runtime-assets.mjs" --check
+"$NODE" "$PROJECT_ROOT/tools/mp4-file-bridge.test.mjs"
 "$NODE" "$PROJECT_ROOT/tools/doctor-selectors.test.mjs"
 if ! /usr/bin/cmp -s "$ROOT/assets/dream-skin.css" "$PROJECT_ROOT/windows/assets/dream-skin.css" ||
     ! /usr/bin/cmp -s "$ROOT/assets/renderer-inject.js" "$PROJECT_ROOT/windows/assets/renderer-inject.js" ||

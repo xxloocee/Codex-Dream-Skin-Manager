@@ -7,6 +7,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { decodeAndValidateSafeCss } from "./safe-css-validator.mjs";
+import { readImageMetadata } from "../scripts/image-metadata.mjs";
 
 const LIMITS = Object.freeze({
   manifest: 65_536,
@@ -14,6 +15,7 @@ const LIMITS = Object.freeze({
   simpleTheme: 1_048_576,
   css: 262_144,
   image: 10_485_760,
+  video: 31_457_280,
   license: 65_536,
   signature: 4_096,
 });
@@ -24,6 +26,7 @@ const BACKGROUND_MEDIA = new Map([
   ["background.png", "image/png"],
   ["background.apng", "image/png"],
   ["background.gif", "image/gif"],
+  ["background.mp4", "video/mp4"],
 ]);
 const PAYLOAD_MEDIA = new Map([
   ["theme.json", "application/json"],
@@ -208,6 +211,7 @@ function expectedLimit(name, simple = false) {
   if (name === "theme.css") return LIMITS.css;
   if (name === "LICENSE.txt") return LIMITS.license;
   if (name === "manifest.sig") return LIMITS.signature;
+  if (/\.mp4$/i.test(name)) return LIMITS.video;
   if (BACKGROUND_MEDIA.has(name) || /\.(?:png|apng|jpe?g|webp|gif)$/i.test(name)) return LIMITS.image;
   return 0;
 }
@@ -480,7 +484,17 @@ function detectedImageMedia(bytes) {
     && bytes.subarray(0, 4).toString() === "RIFF"
     && bytes.subarray(8, 12).toString() === "WEBP"
   ) return "image/webp";
+  if (bytes.length >= 12 && bytes.subarray(4, 8).toString() === "ftyp") return "video/mp4";
   return "";
+}
+
+function validateMediaPayload(name, bytes, expectedMedia) {
+  if (detectedImageMedia(bytes) !== expectedMedia) {
+    fail(`${name} content does not match its extension and mediaType`);
+  }
+  if (expectedMedia === "video/mp4" && !readImageMetadata(bytes, ".mp4")) {
+    fail(`${name} must be a standard non-fragmented H.264/AVC MP4 within the video safety limits`);
+  }
 }
 
 async function validateOfficial(root, names, platform, clientVersion) {
@@ -508,9 +522,7 @@ async function validateOfficial(root, names, platform, clientVersion) {
   const theme = validateOfficialTheme(decodeJson(bytes.get("theme.json"), "theme.json"));
   if (manifest.themeId !== theme.id) fail("manifest.themeId does not match theme.json id");
   if (theme.image !== background) fail("theme.json image does not match the manifest background file");
-  if (detectedImageMedia(bytes.get(background)) !== BACKGROUND_MEDIA.get(background)) {
-    fail(`${background} content does not match its extension and mediaType`);
-  }
+  validateMediaPayload(background, bytes.get(background), BACKGROUND_MEDIA.get(background));
   decodeAndValidateSafeCss(bytes.get("theme.css"));
   return {
     format: "official",
@@ -533,20 +545,19 @@ async function validateSimple(root, names) {
   if (
     path.basename(theme.image) !== theme.image
     || CONTROL_PATTERN.test(theme.image)
-    || !/\.(?:png|apng|jpe?g|webp|gif)$/i.test(theme.image)
+    || !/\.(?:png|apng|jpe?g|webp|gif|mp4)$/i.test(theme.image)
     || !names.includes(theme.image)
   ) fail("Local simplified theme image must be beside theme.json");
   const [imageBytes, cssBytes] = await Promise.all([
-    readStableFile(root, theme.image, LIMITS.image),
+    readStableFile(root, theme.image, expectedLimit(theme.image)),
     readStableFile(root, "theme.css", LIMITS.css),
   ]);
   const expectedMedia = /\.(?:png|apng)$/i.test(theme.image)
     ? "image/png"
     : /\.webp$/i.test(theme.image) ? "image/webp"
-      : /\.gif$/i.test(theme.image) ? "image/gif" : "image/jpeg";
-  if (detectedImageMedia(imageBytes) !== expectedMedia) {
-    fail(`${theme.image} content does not match its extension`);
-  }
+      : /\.gif$/i.test(theme.image) ? "image/gif"
+        : /\.mp4$/i.test(theme.image) ? "video/mp4" : "image/jpeg";
+  validateMediaPayload(theme.image, imageBytes, expectedMedia);
   decodeAndValidateSafeCss(cssBytes);
   return {
     format: "simple",

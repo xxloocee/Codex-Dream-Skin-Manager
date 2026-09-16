@@ -5,8 +5,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { loadTheme as loadMacTheme } from "../scripts/injector.mjs";
-import { loadTheme as loadWindowsTheme } from "../../windows/scripts/injector.mjs";
+import { loadPayload as loadMacPayload, loadTheme as loadMacTheme } from "../scripts/injector.mjs";
+import { loadPayload as loadWindowsPayload, loadTheme as loadWindowsTheme } from "../../windows/scripts/injector.mjs";
 import { readImageAnimation } from "../scripts/image-metadata.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -17,6 +17,9 @@ const macosInjector = path.join(macosRoot, "scripts", "injector.mjs");
 const windowsInjector = path.join(projectRoot, "windows", "scripts", "injector.mjs");
 const importer = path.join(macosRoot, "scripts", "import-theme-zip-macos.sh");
 const fixtureImage = path.join(macosRoot, "assets", "portal-hero.png");
+const fixtureMp4 = Buffer.from((await fs.readFile(path.join(
+  projectRoot, "tests", "fixtures", "h264-32x18-2fps.mp4.base64",
+), "utf8")).trim(), "base64");
 const tempRoot = await fs.mkdtemp(path.join("/tmp", "codex-dream-skin-package-contract-"));
 
 const colors = {
@@ -66,7 +69,7 @@ function fileEntry(filePath, mediaType, bytes) {
 async function makeOfficial(name, options = {}) {
   const source = path.join(tempRoot, name);
   await fs.mkdir(source);
-  const image = await fs.readFile(fixtureImage);
+  const image = options.backgroundBytes ?? await fs.readFile(fixtureImage);
   const backgroundName = options.backgroundName ?? "background.png";
   const backgroundMedia = options.backgroundMedia ?? "image/png";
   const theme = {
@@ -303,6 +306,47 @@ try {
   });
   const apngOfficialResult = await validate(apngOfficial.source, "macos", "official-apng");
   assert.equal(apngOfficialResult.output.image, "background.apng");
+
+  const mp4Official = await makeOfficial("official-mp4", {
+    backgroundName: "background.mp4",
+    backgroundMedia: "video/mp4",
+    backgroundBytes: Buffer.concat([
+      fixtureMp4,
+      Buffer.alloc((10 * 1024 * 1024) + 1 - fixtureMp4.length),
+    ]),
+  });
+  const [mp4Mac, mp4Windows] = await Promise.all([
+    validate(mp4Official.source, "macos", "official-mp4-macos"),
+    validate(mp4Official.source, "windows", "official-mp4-windows"),
+  ]);
+  assert.equal(mp4Mac.output.image, "background.mp4");
+  assert.equal(mp4Windows.output.image, "background.mp4");
+  const [macVideoPayload, windowsVideoPayload] = await Promise.all([
+    loadMacPayload(mp4Mac.stage),
+    loadWindowsPayload(mp4Windows.stage),
+  ]);
+  assert.equal(macVideoPayload.theme.artMetadata.video, true);
+  assert.equal(windowsVideoPayload.theme.artMetadata.video, true);
+  assert.match(macVideoPayload.payload, /dreamskin-file:video\/mp4/);
+  assert.match(windowsVideoPayload.payload, /dreamskin-file:video\/mp4/);
+  assert.doesNotMatch(macVideoPayload.payload, /data:video\/mp4;base64/);
+  assert.doesNotMatch(windowsVideoPayload.payload, /data:video\/mp4;base64/);
+
+  const fragmentedMp4 = Buffer.concat([
+    fixtureMp4,
+    Buffer.from([0, 0, 0, 8, 0x6d, 0x6f, 0x6f, 0x66]),
+  ]);
+  const fragmentedMp4Official = await makeOfficial("official-fragmented-mp4", {
+    backgroundName: "background.mp4",
+    backgroundMedia: "video/mp4",
+    backgroundBytes: fragmentedMp4,
+  });
+  await expectRejected(
+    fragmentedMp4Official.source,
+    "windows",
+    /standard non-fragmented H\.264\/AVC MP4/,
+    "official-fragmented-mp4",
+  );
 
   const simpleSource = path.join(tempRoot, "simple-source");
   await fs.mkdir(simpleSource);

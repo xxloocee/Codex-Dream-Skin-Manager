@@ -6,6 +6,8 @@ import {
   MAX_IMAGE_DIMENSION,
   MAX_IMAGE_FRAMES,
   MAX_IMAGE_PIXELS,
+  MAX_VIDEO_DURATION_SECONDS,
+  MAX_VIDEO_FPS,
   classifyImageDimensions,
   readImageAnimation,
   readImageMetadata,
@@ -14,6 +16,9 @@ import {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const macosRoot = path.resolve(here, "..");
+const mp4 = Buffer.from((await fs.readFile(path.join(
+  macosRoot, "..", "tests", "fixtures", "h264-32x18-2fps.mp4.base64",
+), "utf8")).trim(), "base64");
 
 const portal = await fs.readFile(path.join(macosRoot, "assets", "portal-hero.png"));
 assert.deepEqual(readImageMetadata(portal, ".png"), {
@@ -108,6 +113,72 @@ assert.deepEqual(readImageMetadata(vp8x, ".webp"), {
 
 assert.equal(readImageMetadata(new Uint8Array([0, 1, 2, 3]), ".png"), null);
 
+assert.deepEqual(readImageMetadata(mp4, ".mp4"), {
+  width: 32,
+  height: 18,
+  ratio: 32 / 18,
+  wide: true,
+  aspect: "wide",
+  taskMode: "ambient",
+});
+assert.deepEqual(readImageAnimation(mp4, ".mp4"), {
+  animated: true,
+  frameCount: 0,
+  video: true,
+  codec: "avc1",
+  sampleCount: 2,
+  durationSeconds: 1,
+  fps: 2,
+  peakFps: 2,
+});
+assert.equal(MAX_VIDEO_DURATION_SECONDS, 60);
+assert.equal(MAX_VIDEO_FPS, 60);
+const headerOnlyMp4 = Buffer.from(
+  "AAAAHGZ0eXBpc29tAAAAAGlzb21tcDQyYXZjMQAAAMxtb292AAAAxHRyYWsAAABcdGtoZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHgAAABDgAAAAAAGBtZGlhAAAAFGhkbHIAAAAAAAAAAHZpZGUAAABEbWluZgAAADxzdGJsAAAANHN0c2QAAAAAAAAAAQAAACRhdmMxAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4AEOA==",
+  "base64",
+);
+assert.equal(readImageMetadata(headerOnlyMp4, ".mp4"), null,
+  "MP4 backgrounds must contain real media samples");
+const unsupportedCodec = Buffer.from(mp4);
+unsupportedCodec.write("hvc1", unsupportedCodec.lastIndexOf(Buffer.from("avc1")), "ascii");
+assert.equal(readImageMetadata(unsupportedCodec, ".mp4"), null,
+  "MP4 backgrounds must use the Chromium-compatible H.264 codec");
+const unsupportedDescription = Buffer.from(mp4);
+unsupportedDescription.writeUInt32BE(
+  2, unsupportedDescription.indexOf(Buffer.from("stsc")) + 20,
+);
+assert.equal(readImageMetadata(unsupportedDescription, ".mp4"), null,
+  "Every referenced sample description must be a supported H.264 entry");
+const missingConfiguration = Buffer.from(mp4);
+missingConfiguration.write("junk", missingConfiguration.indexOf(Buffer.from("avcC")), "ascii");
+assert.equal(readImageMetadata(missingConfiguration, ".mp4"), null,
+  "MP4 backgrounds must contain an AVC decoder configuration");
+const chunkPastMedia = Buffer.from(mp4);
+const mdatTypeOffset = chunkPastMedia.indexOf(Buffer.from("mdat"));
+const mdatBoxOffset = mdatTypeOffset - 4;
+const mdatEnd = mdatBoxOffset + chunkPastMedia.readUInt32BE(mdatBoxOffset);
+chunkPastMedia.writeUInt32BE(
+  mdatEnd - 1, chunkPastMedia.indexOf(Buffer.from("stco")) + 12,
+);
+assert.equal(readImageMetadata(chunkPastMedia, ".mp4"), null,
+  "Every complete MP4 sample must remain inside media data");
+const fragmentedMp4 = Buffer.concat([
+  mp4,
+  Buffer.from([0, 0, 0, 8, 0x6d, 0x6f, 0x6f, 0x66]),
+]);
+assert.equal(readImageMetadata(fragmentedMp4, ".mp4"), null,
+  "Fragmented MP4 backgrounds are outside the supported media contract");
+assert.equal(readImageMetadata(mp4.subarray(0, mp4.length - 8), ".mp4"), null,
+  "Truncated MP4 media data must be rejected");
+const excessiveDuration = Buffer.from(mp4);
+excessiveDuration.writeUInt32BE(31 * 16384, excessiveDuration.indexOf(Buffer.from("stts")) + 16);
+assert.equal(readImageMetadata(excessiveDuration, ".mp4"), null,
+  "MP4 backgrounds must not exceed the duration limit");
+const excessiveFps = Buffer.from(mp4);
+excessiveFps.writeUInt32BE(136, excessiveFps.indexOf(Buffer.from("stts")) + 16);
+assert.equal(readImageMetadata(excessiveFps, ".mp4"), null,
+  "MP4 backgrounds must not exceed the frame-rate limit");
+
 const gifHeader = Buffer.from("GIF89a", "ascii");
 const gifFrame = Buffer.from([0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0x02, 0x02, 0x44, 0x01, 0x00]);
 const animatedGif = Buffer.concat([
@@ -177,4 +248,4 @@ oversized.set([0x00, 0x00, 0x4e, 0x20], 20); // height 20000
 assert.deepEqual(readRawDimensions(oversized, ".png"), { width: 20000, height: 20000 });
 assert.equal(readImageMetadata(oversized, ".png"), null); // 400 MP exceeds the cap
 
-console.log("PASS: image metadata classifies static and animated PNG/JPEG/WebP/GIF inputs and enforces safety caps.");
+console.log("PASS: image/video metadata classifies PNG/JPEG/WebP/GIF/MP4 inputs and enforces safety caps.");

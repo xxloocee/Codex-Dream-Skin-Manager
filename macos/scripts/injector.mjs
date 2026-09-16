@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import { constants as fsConstants, watch as watchFs } from "node:fs";
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -51,7 +52,24 @@ export { SKIN_VERSION };
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const CDP_ID_PATTERN = /^[A-Za-z0-9._-]{1,200}$/;
 const MAX_ART_BYTES = 10 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
 const MAX_SAFE_CSS_BYTES = 256 * 1024;
+const MAX_MEDIA_CACHE_BYTES = 128 * 1024 * 1024;
+const MAX_MEDIA_CACHE_FILES = 16;
+const STALE_MEDIA_TEMP_MS = 60 * 60 * 1000;
+const MEDIA_CACHE_PARENT = process.platform === "win32"
+  ? path.join(
+      process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"),
+      "CodexDreamSkinManager", "media-v1",
+    )
+  : process.platform === "darwin"
+    ? path.join(os.homedir(), "Library", "Caches", "CodexDreamSkinManager", "media-v1")
+    : path.join(os.homedir(), ".cache", "codex-dream-skin", "media-v1");
+const MEDIA_CACHE_INSTANCE = `${process.pid}.${randomUUID()}`;
+const MEDIA_CACHE_ROOT = path.join(MEDIA_CACHE_PARENT, MEDIA_CACHE_INSTANCE);
+const MEDIA_CACHE_HEARTBEAT_MS = 30000;
+const MEDIA_CACHE_STALE_MS = 10 * 60 * 1000;
+let mediaCacheHeartbeat = null;
 const OPERATION_UI_HOST_ID = "chatgpt-dream-skin-operation";
 const OPERATION_UI_REGISTRY_KEY = "__CHATGPT_DREAM_SKIN_OPERATION_UI__";
 const OPERATION_KINDS = new Set(["apply", "pause", "switch"]);
@@ -612,6 +630,160 @@ function sameFileStat(left, right) {
     && left.ctimeMs === right.ctimeMs;
 }
 
+async function verifyMediaSnapshot(snapshotPath, expectedBytes) {
+  let handle;
+  try {
+    handle = await fs.open(snapshotPath, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+    const before = await handle.stat();
+    if (!before.isFile() || before.size !== expectedBytes.length) {
+      throw new Error("Validated MP4 snapshot has an unexpected file type or size");
+    }
+    const actualBytes = await handle.readFile();
+    const after = await handle.stat();
+    if (!sameFileStat(before, after) || !actualBytes.equals(expectedBytes)) {
+      throw new Error("Validated MP4 snapshot content does not match the checked media");
+    }
+  } finally {
+    await handle?.close();
+  }
+}
+
+async function removeCachedMediaFile(filePath) {
+  try {
+    await fs.chmod(filePath, 0o600);
+    await fs.unlink(filePath);
+  } catch (error) {
+    if (!["ENOENT", "EBUSY", "EPERM"].includes(error?.code)) throw error;
+  }
+}
+
+function processIsRunning(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code !== "ESRCH";
+  }
+}
+
+async function cleanStaleMediaCacheInstances() {
+  const entries = await fs.readdir(MEDIA_CACHE_PARENT, { withFileTypes: true });
+  const staleBefore = Date.now() - MEDIA_CACHE_STALE_MS;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === MEDIA_CACHE_INSTANCE) continue;
+    const match = /^(\d+)\.([0-9a-f-]{36})$/.exec(entry.name);
+    if (!match) continue;
+    const instancePath = path.join(MEDIA_CACHE_PARENT, entry.name);
+    let activityStat;
+    try {
+      activityStat = await fs.stat(path.join(instancePath, ".lease"));
+    } catch (error) {
+      if (error?.code !== "ENOENT") continue;
+      try {
+        activityStat = await fs.stat(instancePath);
+      } catch {
+        continue;
+      }
+    }
+    if (activityStat.mtimeMs >= staleBefore || processIsRunning(Number(match[1]))) continue;
+    await fs.rm(instancePath, {
+      recursive: true, force: true, maxRetries: 2, retryDelay: 50,
+    }).catch(() => {});
+  }
+}
+
+async function ensureMediaCacheRoot(mediaCacheRoot) {
+  await fs.mkdir(mediaCacheRoot, { recursive: true, mode: 0o700 });
+  await fs.chmod(mediaCacheRoot, 0o700);
+  if (mediaCacheRoot !== MEDIA_CACHE_ROOT) return;
+  const leasePath = path.join(MEDIA_CACHE_ROOT, ".lease");
+  await fs.writeFile(leasePath, `${process.pid}\n`, { mode: 0o600 });
+  if (!mediaCacheHeartbeat) {
+    mediaCacheHeartbeat = setInterval(() => {
+      const now = new Date();
+      fs.utimes(leasePath, now, now).catch(() => {});
+    }, MEDIA_CACHE_HEARTBEAT_MS);
+    mediaCacheHeartbeat.unref?.();
+  }
+  await cleanStaleMediaCacheInstances();
+}
+
+async function pruneMediaCache(mediaCacheRoot, retainedPath) {
+  const entries = await fs.readdir(mediaCacheRoot, { withFileTypes: true });
+  const snapshots = [];
+  const staleBefore = Date.now() - STALE_MEDIA_TEMP_MS;
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const entryPath = path.join(mediaCacheRoot, entry.name);
+    if (/^[a-f0-9]{64}\.mp4$/.test(entry.name)) {
+      const stat = await fs.lstat(entryPath);
+      if (stat.isFile()) snapshots.push({ path: entryPath, size: stat.size, mtimeMs: stat.mtimeMs });
+      continue;
+    }
+    if (/^\.[a-f0-9]{64}\.\d+\.[0-9a-f-]{36}\.tmp$/.test(entry.name)) {
+      const stat = await fs.lstat(entryPath);
+      if (stat.isFile() && stat.mtimeMs < staleBefore) await removeCachedMediaFile(entryPath);
+    }
+  }
+  snapshots.sort((left, right) => {
+    if (left.path === retainedPath) return -1;
+    if (right.path === retainedPath) return 1;
+    return right.mtimeMs - left.mtimeMs;
+  });
+  let retainedBytes = 0;
+  let retainedFiles = 0;
+  for (const snapshot of snapshots) {
+    const keep = snapshot.path === retainedPath || (
+      retainedFiles < MAX_MEDIA_CACHE_FILES &&
+      retainedBytes + snapshot.size <= MAX_MEDIA_CACHE_BYTES
+    );
+    if (keep) {
+      retainedFiles += 1;
+      retainedBytes += snapshot.size;
+    } else {
+      await removeCachedMediaFile(snapshot.path);
+    }
+  }
+}
+
+export async function materializeMediaSnapshot(mediaBytes, mediaCacheRoot = MEDIA_CACHE_ROOT) {
+  const digest = createHash("sha256").update(mediaBytes).digest("hex");
+  await ensureMediaCacheRoot(mediaCacheRoot);
+  const snapshotPath = path.join(mediaCacheRoot, `${digest}.mp4`);
+  try {
+    await verifyMediaSnapshot(snapshotPath, mediaBytes);
+    await fs.chmod(snapshotPath, 0o400);
+    const realSnapshotPath = await fs.realpath(snapshotPath);
+    await pruneMediaCache(mediaCacheRoot, realSnapshotPath);
+    return realSnapshotPath;
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+
+  const temporaryPath = path.join(
+    mediaCacheRoot, `.${digest}.${process.pid}.${randomUUID()}.tmp`,
+  );
+  try {
+    await fs.writeFile(temporaryPath, mediaBytes, { flag: "wx", mode: 0o600 });
+    await fs.chmod(temporaryPath, 0o400);
+    try {
+      await fs.rename(temporaryPath, snapshotPath);
+    } catch (error) {
+      if (error?.code !== "EEXIST" && error?.code !== "EPERM") throw error;
+      await verifyMediaSnapshot(snapshotPath, mediaBytes);
+    }
+  } finally {
+    await fs.unlink(temporaryPath).catch((error) => {
+      if (error?.code !== "ENOENT") throw error;
+    });
+  }
+  await fs.chmod(snapshotPath, 0o400);
+  await verifyMediaSnapshot(snapshotPath, mediaBytes);
+  const realSnapshotPath = await fs.realpath(snapshotPath);
+  await pruneMediaCache(mediaCacheRoot, realSnapshotPath);
+  return realSnapshotPath;
+}
+
 async function loadSafeCss(assetsRoot) {
   const cssPath = path.join(assetsRoot, "theme.css");
   let handle;
@@ -765,9 +937,10 @@ export async function loadTheme(themeDir) {
   assertContainedPath(assetsRoot, imagePath, "Theme image");
   const imageStat = await fs.stat(imagePath);
   const extension = path.extname(theme.image).toLowerCase();
-  if (![".png", ".apng", ".jpg", ".jpeg", ".webp", ".gif"].includes(extension)) {
+  if (![".png", ".apng", ".jpg", ".jpeg", ".webp", ".gif", ".mp4"].includes(extension)) {
     throw new Error(`Unsupported theme image format: ${extension || "missing"}`);
   }
+  const maxArtBytes = extension === ".mp4" ? MAX_VIDEO_BYTES : MAX_ART_BYTES;
   let imageHandle;
   try {
     imageHandle = await fs.open(imagePath, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
@@ -783,13 +956,13 @@ export async function loadTheme(themeDir) {
       || imageStat.dev !== openedStat.dev
       || imageStat.ino !== openedStat.ino
       || openedStat.size < 1
-      || openedStat.size > MAX_ART_BYTES
+      || openedStat.size > maxArtBytes
     ) {
-      throw new Error(`Theme image must be a stable non-empty file no larger than ${MAX_ART_BYTES} bytes`);
+      throw new Error(`Theme media must be a stable non-empty file no larger than ${maxArtBytes} bytes`);
     }
     const art = await imageHandle.readFile();
-    if (art.length < 1 || art.length > MAX_ART_BYTES) {
-      throw new Error(`Theme image must be a non-empty file no larger than ${MAX_ART_BYTES} bytes`);
+    if (art.length < 1 || art.length > maxArtBytes) {
+      throw new Error(`Theme media must be a non-empty file no larger than ${maxArtBytes} bytes`);
     }
     const safeCss = await loadSafeCss(assetsRoot);
     return {
@@ -827,7 +1000,7 @@ function invalidateStaticPayloadAssets() {
   staticPayloadAssets = null;
 }
 
-export async function loadPayload(themeDir) {
+export async function loadPayload(themeDir, mediaCacheRoot = MEDIA_CACHE_ROOT) {
   const startedAt = performance.now();
   const [staticAssets, loaded] = await Promise.all([
     loadStaticPayloadAssets(),
@@ -839,7 +1012,7 @@ export async function loadPayload(themeDir) {
   const styleRevision = createHash("sha256").update(combinedCss).digest("hex").slice(0, 20);
   const artMetadata = readImageMetadata(art, extension);
   if (!artMetadata) {
-    throw new Error("Theme image metadata is invalid or exceeds the 16384px / 50MP safety limit");
+    throw new Error("Theme media metadata is invalid or exceeds the image/video safety limits");
   }
   const animation = readImageAnimation(art, extension);
   if (!animation || animation.frameCount > MAX_IMAGE_FRAMES) {
@@ -850,8 +1023,11 @@ export async function loadPayload(themeDir) {
   theme.artKey = artKey;
   const mime = extension === ".jpg" || extension === ".jpeg" ? "image/jpeg"
     : extension === ".webp" ? "image/webp"
-      : extension === ".gif" ? "image/gif" : "image/png";
-  const artDataUrl = `data:${mime};base64,${art.toString("base64")}`;
+      : extension === ".gif" ? "image/gif"
+        : extension === ".mp4" ? "video/mp4" : "image/png";
+  const artDataUrl = extension === ".mp4"
+    ? "dreamskin-file:video/mp4"
+    : `data:${mime};base64,${art.toString("base64")}`;
   const revision = createHash("sha256")
     .update(SKIN_VERSION)
     .update(combinedCss)
@@ -871,8 +1047,12 @@ export async function loadPayload(themeDir) {
     .replace("__DREAM_SKIN_STYLE_REVISION_JSON__", () => JSON.stringify(styleRevision))
     .replace("__DREAM_SKIN_PAYLOAD_REVISION_JSON__", () => JSON.stringify(revision));
   assertPayloadIntegrity(payload);
+  const mediaFilePath = extension === ".mp4"
+    ? await materializeMediaSnapshot(art, mediaCacheRoot)
+    : null;
   return {
     imageBytes: art.length,
+    mediaFilePath,
     payload,
     revision,
     safeCssStatus,
@@ -907,6 +1087,66 @@ export function assertPayloadIntegrity(payload) {
 
 async function applyToSession(session, payload) {
   return session.evaluate(payload);
+}
+
+export async function bindVideoFileToSession(session, loadedPayload, timeoutMs = 3000) {
+  if (!loadedPayload?.mediaFilePath) return true;
+  const deadline = Date.now() + timeoutMs;
+  const revision = JSON.stringify(loadedPayload.revision);
+  while (Date.now() < deadline) {
+    const result = await session.send("Runtime.evaluate", {
+      expression: `(() => {
+        const state = window.__CODEX_DREAM_SKIN_STATE__;
+        if (state?.revision !== ${revision} || state.mediaType !== "video") return null;
+        return document.getElementById("codex-dream-skin-video-file");
+      })()`,
+      returnByValue: false,
+    });
+    if (result.exceptionDetails) {
+      const detail = result.exceptionDetails.exception?.description ?? result.exceptionDetails.text;
+      throw new Error(`Video file bridge lookup failed: ${detail}`);
+    }
+    const objectId = result.result?.objectId;
+    if (!objectId) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      continue;
+    }
+    try {
+      await session.send("DOM.setFileInputFiles", {
+        files: [loadedPayload.mediaFilePath],
+        objectId,
+      });
+    } finally {
+      await session.send("Runtime.releaseObject", { objectId }).catch(() => {});
+    }
+    const bound = await session.evaluate(`(() => {
+      const state = window.__CODEX_DREAM_SKIN_STATE__;
+      return state?.revision === ${revision} && Boolean(state.bindVideoFile?.());
+    })()`);
+    if (!bound) throw new Error("Renderer rejected the validated MP4 file bridge");
+    while (Date.now() < deadline) {
+      const status = await session.evaluate(`(() => {
+        const state = window.__CODEX_DREAM_SKIN_STATE__;
+        if (state?.revision !== ${revision}) return { stale: true };
+        const video = state.videoLayer;
+        return {
+          error: state.videoError || null,
+          ready: Boolean(video && video.readyState >= 1 && video.videoWidth > 0 && video.videoHeight > 0),
+        };
+      })()`);
+      if (status?.stale) throw new Error("Renderer changed while binding the MP4 file bridge");
+      if (status?.error) throw new Error(`MP4 playback failed: ${status.error}`);
+      if (status?.ready) return true;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    break;
+  }
+  throw new Error("Timed out waiting for the renderer MP4 file bridge to load");
+}
+
+async function applyLoadedToSession(session, loadedPayload) {
+  await applyToSession(session, loadedPayload.payload);
+  await bindVideoFileToSession(session, loadedPayload);
 }
 
 function nextOperationToken() {
@@ -1379,7 +1619,6 @@ async function runOneShot(options) {
     for (const { session } of connected) session.close();
     throw error;
   }
-  const payload = loaded?.payload ?? null;
   const results = [];
   let screenshotCaptured = false;
 
@@ -1390,7 +1629,7 @@ async function runOneShot(options) {
         await bestEffortOperationUi(
           session, "update", operationToken, "loading", `正在应用「${loaded.theme.name}」…`,
         );
-        await applyToSession(session, payload);
+        await applyLoadedToSession(session, loaded);
       }
 
       if (options.reload) {
@@ -1402,7 +1641,7 @@ async function runOneShot(options) {
               session, operationToken, "loading", `正在应用「${loaded.theme.name}」…`,
             );
           }
-          await applyToSession(session, payload);
+          await applyLoadedToSession(session, loaded);
         }
       }
 
@@ -1879,7 +2118,7 @@ async function runWatch(options) {
         }
         record.earlyScriptId = nextIdentifier;
         record.needsLoadFallback = !nextIdentifier;
-        await applyToSession(session, current.payload);
+        await applyLoadedToSession(session, current);
         if (controlOnly || mutationEpoch !== refreshEpoch) continue;
         const verification = await waitForVerifiedSession(
           session,
@@ -2065,12 +2304,15 @@ async function runWatch(options) {
           connectionEpoch = mutationEpoch;
           sessions.set(target.id, record);
           session.on("Page.loadEventFired", () => {
-            if (!record.needsLoadFallback) return;
+            if (!record.needsLoadFallback && !current.mediaFilePath) return;
             const fallbackEpoch = mutationEpoch;
             setTimeout(() => {
               if (session.closed || controlOnly || mutationEpoch !== fallbackEpoch
-                || !record.needsLoadFallback) return;
-              applyToSession(session, current.payload).catch((error) => {
+                || (!record.needsLoadFallback && !current.mediaFilePath)) return;
+              const operation = record.needsLoadFallback
+                ? applyLoadedToSession(session, current)
+                : bindVideoFileToSession(session, current);
+              operation.catch((error) => {
                 console.error(`[dream-skin] fallback reinject failed: ${error.message}`);
               });
             }, 0);
@@ -2143,6 +2385,7 @@ async function runWatch(options) {
             );
             await applyToSession(session, current.payload);
           }
+          await bindVideoFileToSession(session, current);
           if (controlOnly || mutationEpoch !== connectionEpoch) {
             await invalidateEarly(record);
             continue;

@@ -423,6 +423,20 @@ namespace CodexDreamSkinManager
                     object legacyRoundtripData = read.Invoke(null,
                         new object[] { legacyRoundtrip, Path.Combine(root, "legacy-roundtrip-extract") });
                     AssertTrue(!Convert.ToBoolean(ReadMemberObject(legacyRoundtripData, "FramingEnabled")));
+
+                    string video = Path.Combine(root, "art.mp4");
+                    File.WriteAllBytes(video, new byte[] { 0, 0, 0, 16, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 0, 0 });
+                    using (FileStream videoStream = File.OpenWrite(video)) videoStream.SetLength((10L * 1024 * 1024) + 1);
+                    string videoPackage = Path.Combine(root, "video.cdskin");
+                    CreateCdskin(videoPackage, "{\"formatVersion\":1,\"id\":\"video\",\"name\":\"视频主题\",\"image\":\"art.mp4\",\"category\":\"custom\",\"appearance\":\"auto\",\"art\":{\"focusX\":0.5,\"focusY\":0.5,\"safeArea\":\"auto\",\"taskMode\":\"auto\"},\"palette\":{}}", video, null);
+                    object videoData = read.Invoke(null, new object[] { videoPackage, Path.Combine(root, "video-extract") });
+                    AssertEqual(".mp4", Path.GetExtension(ReadMember(videoData, "ImagePath")));
+                    string videoRoundtrip = Path.Combine(root, "video-roundtrip.cdskin");
+                    serviceType.GetMethod("WritePackage", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+                        .Invoke(null, new object[] { videoRoundtrip, videoData });
+                    object videoRoundtripData = read.Invoke(null,
+                        new object[] { videoRoundtrip, Path.Combine(root, "video-roundtrip-extract") });
+                    AssertEqual(".mp4", Path.GetExtension(ReadMember(videoRoundtripData, "ImagePath")));
                 }
                 finally { Directory.Delete(root, true); }
             });
@@ -1466,6 +1480,23 @@ namespace CodexDreamSkinManager
                 }
             });
 
+            Run("Extracts MP4 thumbnails for previews and theme cards", delegate
+            {
+                string fixture = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                    "..", "tests", "fixtures", "h264-320x180-preview.mp4.base64"));
+                string videoPath = Path.Combine(Path.GetTempPath(),
+                    "dream-skin-video-thumbnail-" + Guid.NewGuid().ToString("N") + ".mp4");
+                File.WriteAllBytes(videoPath, Convert.FromBase64String(File.ReadAllText(fixture).Trim()));
+                try
+                {
+                    BitmapSource thumbnail = new ThemeOption { ImagePath = videoPath }.ThumbnailImage as BitmapSource;
+                    AssertTrue(thumbnail != null);
+                    AssertTrue(thumbnail.PixelWidth > 0 && thumbnail.PixelHeight > 0);
+                    AssertTrue(thumbnail.PixelWidth <= 224 && thumbnail.PixelHeight <= 224);
+                }
+                finally { File.Delete(videoPath); }
+            });
+
             Run("Bounds the shared thumbnail cache to 64 images", delegate
             {
                 string root = Path.Combine(Path.GetTempPath(), "dream-skin-thumbnail-cache-" + Guid.NewGuid().ToString("N"));
@@ -1635,7 +1666,7 @@ namespace CodexDreamSkinManager
             {
                 ZipArchiveEntry manifestEntry = archive.CreateEntry("manifest.json");
                 using (StreamWriter writer = new StreamWriter(manifestEntry.Open(), new UTF8Encoding(false))) writer.Write(manifest);
-                ZipArchiveEntry imageEntry = archive.CreateEntry("art.jpg");
+                ZipArchiveEntry imageEntry = archive.CreateEntry(Path.GetFileName(imagePath));
                 using (Stream source = File.OpenRead(imagePath))
                 using (Stream target = imageEntry.Open()) source.CopyTo(target);
                 foreach (string extra in extraEntries ?? new string[0])

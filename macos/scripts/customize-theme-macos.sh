@@ -43,7 +43,7 @@ else
     fi
     IMAGE="$(/usr/bin/osascript - "$IMAGE_PROMPT" <<'APPLESCRIPT'
 on run argv
-  POSIX path of (choose file with prompt (item 1 of argv) of type {"public.image"})
+  POSIX path of (choose file with prompt (item 1 of argv) of type {"public.image", "public.mpeg-4"})
 end run
 APPLESCRIPT
 )" \
@@ -94,7 +94,7 @@ APPLESCRIPT
   ext="$(printf '%s' "$IMAGE" | /usr/bin/tr '[:upper:]' '[:lower:]')"
   if [ "$animated" = "true" ]; then
     case "$ext" in
-      *.gif|*.png|*.apng|*.webp) image_ext="$(printf '%s' "$ext" | /usr/bin/sed 's/.*\.//')" ;;
+      *.gif|*.png|*.apng|*.webp|*.mp4) image_ext="$(printf '%s' "$ext" | /usr/bin/sed 's/.*\.//')" ;;
       *) fail "Unsupported animated image type: $IMAGE" ;;
     esac
   else
@@ -109,11 +109,16 @@ APPLESCRIPT
     /bin/cp -f "$IMAGE" "$temporary"
   else
     /usr/bin/sips -s format jpeg -s formatOptions 84 -Z 3200 "$IMAGE" --out "$temporary" >/dev/null \
-      || fail "macOS could not convert the selected image. Use PNG, APNG, JPEG, GIF, HEIC, TIFF, or WebP."
+      || fail "macOS could not convert the selected image. Use PNG, APNG, JPEG, GIF, HEIC, TIFF, WebP, or MP4."
   fi
   [ -s "$temporary" ] || fail "The converted image is empty."
   PREPARED_BYTES="$(/usr/bin/stat -f '%z' "$temporary")"
-  [ "$PREPARED_BYTES" -le 10485760 ] || fail "The prepared image is larger than 10 MB. Choose a simpler or smaller image."
+  case "$image_name" in
+    *.mp4) MAX_PREPARED_BYTES=31457280; MAX_PREPARED_LABEL="30 MiB" ;;
+    *) MAX_PREPARED_BYTES=10485760; MAX_PREPARED_LABEL="10 MiB" ;;
+  esac
+  [ "$PREPARED_BYTES" -le "$MAX_PREPARED_BYTES" ] \
+    || fail "The prepared background is larger than $MAX_PREPARED_LABEL. Choose a simpler or smaller file."
   /bin/mv -f "$temporary" "$prepared"
   /bin/chmod 600 "$prepared"
 

@@ -3,7 +3,7 @@
 // `load-image-theme` converts non-JPEG sources with `sips -Z`, which must
 // fully decode the source first — a near-flat 30000×30000 PNG under the 50 MB
 // byte cap would still balloon to gigabytes of pixels. This preflight reads the
-// container header only (PNG/JPEG/WebP/GIF) and falls back to `sips -g` metadata for
+// container header only (PNG/JPEG/WebP/GIF/MP4) and falls back to `sips -g` metadata for
 // formats the header parser does not recognize (HEIC/TIFF); it never decodes.
 //
 // Exit 0 = dimensions are known and within caps,
@@ -35,9 +35,10 @@ function overCaps(width, height) {
 
 let dimensions = null;
 let bytes = null;
+const extension = path.extname(file).toLowerCase();
 try {
   bytes = new Uint8Array(await fs.readFile(file));
-  dimensions = readRawDimensions(bytes, path.extname(file));
+  dimensions = readRawDimensions(bytes, extension);
 } catch (error) {
   console.error(`Could not read image: ${error.message}`);
   process.exit(2);
@@ -45,7 +46,7 @@ try {
 
 // HEIC/TIFF and anything the header parser does not recognize: ask sips for
 // image properties only. Reading properties does not rasterize the file.
-if (!dimensions) {
+if (!dimensions && extension !== ".mp4") {
   try {
     const out = execFileSync(
       "/usr/bin/sips",
@@ -64,7 +65,9 @@ if (!dimensions) {
 }
 
 if (!dimensions) {
-  console.error("Could not determine image dimensions without rasterizing the source.");
+  console.error(extension === ".mp4"
+    ? "MP4 must be a standard non-fragmented H.264/AVC file with playable media and stay within the 60-second / 60-FPS limits."
+    : "Could not determine image dimensions without rasterizing the source.");
   process.exit(2);
 }
 
@@ -75,7 +78,7 @@ if (overCaps(dimensions.width, dimensions.height)) {
   );
   process.exit(1);
 }
-const animation = readImageAnimation(bytes, path.extname(file));
+const animation = readImageAnimation(bytes, extension);
 if (!animation || animation.frameCount > MAX_IMAGE_FRAMES) {
   console.error("Image animation exceeds the " + MAX_IMAGE_FRAMES + "-frame safety limit.");
   process.exit(1);

@@ -74,7 +74,7 @@ fi
 
 image_lower="$(LC_ALL=C /usr/bin/printf '%s' "$IMAGE" | /usr/bin/tr '[:upper:]' '[:lower:]')"
 case "$image_lower" in
-  *.png|*.apng|*.jpg|*.jpeg|*.webp|*.gif|*.heic|*.tif|*.tiff) ;;
+  *.png|*.apng|*.jpg|*.jpeg|*.webp|*.gif|*.mp4|*.heic|*.tif|*.tiff) ;;
   *) fail "Unsupported image type: $IMAGE" ;;
 esac
 
@@ -130,7 +130,7 @@ process.stdout.write(value.animated ? "true" : "false");
 ext="$(printf '%s' "$IMAGE" | /usr/bin/tr '[:upper:]' '[:lower:]')"
 if [ "$animated" = "true" ]; then
   case "$ext" in
-    *.gif|*.png|*.apng|*.webp) image_name="background.${ext##*.}" ;;
+    *.gif|*.png|*.apng|*.webp|*.mp4) image_name="background.${ext##*.}" ;;
     *) fail "Unsupported animated image type: $IMAGE" ;;
   esac
 else
@@ -152,14 +152,18 @@ else
     ;;
     *)
     /usr/bin/sips -s format jpeg -s formatOptions 82 -Z 2400 "$IMAGE" --out "$temporary" >/dev/null \
-      || fail "Could not convert image. Use PNG/APNG/JPEG/GIF/HEIC/TIFF/WebP."
+      || fail "Could not convert image. Use PNG/APNG/JPEG/GIF/HEIC/TIFF/WebP or MP4."
     [ -s "$temporary" ] || fail "Converted image is empty."
     ;;
   esac
 fi
 [ -s "$temporary" ] || fail "Prepared image is empty."
 PREPARED_BYTES="$(/usr/bin/stat -f '%z' "$temporary")"
-[ "$PREPARED_BYTES" -le 10485760 ] || fail "Prepared image larger than 10 MB."
+case "$image_name" in
+  *.mp4) MAX_PREPARED_BYTES=31457280; MAX_PREPARED_LABEL="30 MiB" ;;
+  *) MAX_PREPARED_BYTES=10485760; MAX_PREPARED_LABEL="10 MiB" ;;
+esac
+[ "$PREPARED_BYTES" -le "$MAX_PREPARED_BYTES" ] || fail "Prepared background larger than $MAX_PREPARED_LABEL."
 /bin/chmod 600 "$temporary"
 /bin/mv -f "$temporary" "$prepared"
 

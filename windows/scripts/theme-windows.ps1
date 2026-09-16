@@ -3,6 +3,7 @@
 }
 
 $script:DreamSkinMaxImageBytes = 10 * 1024 * 1024
+$script:DreamSkinMaxVideoBytes = 30 * 1024 * 1024
 $script:DreamSkinMaxThemeArchiveBytes = 32 * 1024 * 1024
 $script:DreamSkinMaxThemeArchiveExpandedBytes = 64 * 1024 * 1024
 $script:DreamSkinMaxThemeArchiveEntries = 32
@@ -287,13 +288,13 @@ function Get-DreamSkinValidatedImageMetadata {
   $metadataScript = Join-Path $PSScriptRoot 'image-metadata.mjs'
   $output = @(& $node.Path $metadataScript '--check' ([System.IO.Path]::GetFullPath($Path)) 2>&1)
   if ($LASTEXITCODE -ne 0) {
-    throw "Image metadata is invalid or exceeds the 16384px / 50MP safety limit: $Path"
+    throw "Media metadata is invalid or exceeds the image/video safety limits: $Path"
   }
   try { $metadata = ($output -join "`n") | ConvertFrom-Json -ErrorAction Stop } catch {
     throw "Image metadata helper returned invalid output: $Path"
   }
   if ($null -eq $metadata -or $null -eq $metadata.width -or $null -eq $metadata.height) {
-    throw "Image metadata is invalid or exceeds the 16384px / 50MP safety limit: $Path"
+    throw "Media metadata is invalid or exceeds the image/video safety limits: $Path"
   }
 }
 
@@ -307,12 +308,14 @@ function Assert-DreamSkinImageFile {
     throw "Image does not exist: $fullPath"
   }
   $extension = [System.IO.Path]::GetExtension($fullPath).ToLowerInvariant()
-  if ($extension -notin @('.png', '.apng', '.jpg', '.jpeg', '.webp', '.gif')) {
+  if ($extension -notin @('.png', '.apng', '.jpg', '.jpeg', '.webp', '.gif', '.mp4')) {
     throw "Unsupported image format: $extension"
   }
   $length = (Get-Item -LiteralPath $fullPath -Force).Length
   if ($length -lt 1) { throw 'Theme image cannot be empty.' }
-  if ($length -gt $script:DreamSkinMaxImageBytes) {
+  $maxBytes = if ($extension -eq '.mp4') { $script:DreamSkinMaxVideoBytes } else { $script:DreamSkinMaxImageBytes }
+  if ($length -gt $maxBytes) {
+    if ($extension -eq '.mp4') { throw 'Theme video exceeds the 30 MiB limit.' }
     throw 'Theme image exceeds the 10 MiB limit.'
   }
   if (-not $SkipImageMetadata) {
@@ -1237,7 +1240,7 @@ function Expand-DreamSkinThemeZipSecurely {
     $officialNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     foreach ($name in @(
       'manifest.json', 'manifest.sig', 'theme.json', 'theme.css', 'LICENSE.txt',
-      'background.webp', 'background.jpg', 'background.png', 'background.apng', 'background.gif'
+      'background.webp', 'background.jpg', 'background.png', 'background.apng', 'background.gif', 'background.mp4'
     )) { $null = $officialNames.Add($name) }
     foreach ($sourceFile in $sourceFiles) {
       if (-not $officialNames.Contains($sourceFile.Name)) {
@@ -1245,7 +1248,7 @@ function Expand-DreamSkinThemeZipSecurely {
       }
     }
     $backgroundCount = @($sourceFiles | Where-Object {
-      $_.Name -cin @('background.webp', 'background.jpg', 'background.png', 'background.apng', 'background.gif')
+      $_.Name -cin @('background.webp', 'background.jpg', 'background.png', 'background.apng', 'background.gif', 'background.mp4')
     }).Count
     if ($backgroundCount -ne 1) {
       throw 'Official theme ZIP must contain exactly one registered background file.'

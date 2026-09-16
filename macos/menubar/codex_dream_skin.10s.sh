@@ -189,7 +189,7 @@ if [ -d "$IMAGES_DIR" ]; then
     [ -f "$img" ] || continue
     img_lower="$(LC_ALL=C /usr/bin/printf '%s' "$img" | /usr/bin/tr '[:upper:]' '[:lower:]')"
     case "$img_lower" in
-      *.png|*.apng|*.jpg|*.jpeg|*.webp|*.gif) ;;
+      *.png|*.apng|*.jpg|*.jpeg|*.webp|*.gif|*.mp4) ;;
       *) continue ;;
     esac
     base="$(/usr/bin/basename "$img")"

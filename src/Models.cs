@@ -358,14 +358,8 @@ namespace CodexDreamSkinManager
             ImageSource image;
             try
             {
-                BitmapImage bitmap = new BitmapImage();
-                bitmap.BeginInit();
-                bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                bitmap.DecodePixelWidth = 224;
-                bitmap.UriSource = new Uri(info.FullName, UriKind.Absolute);
-                bitmap.EndInit();
-                bitmap.Freeze();
-                image = bitmap;
+                image = PreviewImageLoader.Load(info.FullName, 224);
+                if (image == null) return null;
             }
             catch { return null; }
             lock (Sync)

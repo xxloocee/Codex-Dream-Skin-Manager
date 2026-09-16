@@ -585,7 +585,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     panel.canChooseDirectories = false
     panel.canChooseFiles = true
     panel.allowsMultipleSelection = false
-    var imageTypes: [UTType] = [.png, .jpeg, .webP, .gif, .heic, .tiff]
+    var imageTypes: [UTType] = [.png, .jpeg, .webP, .gif, .mpeg4Movie, .heic, .tiff]
     if let apng = UTType(filenameExtension: "apng") { imageTypes.append(apng) }
     panel.allowedContentTypes = imageTypes
     activateForUserInteraction()

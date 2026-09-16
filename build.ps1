@@ -342,6 +342,10 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $testExe
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+$mp4FileBridgeTest = Join-Path $root 'tools\mp4-file-bridge.test.mjs'
+& $nodeExecutableFullPath $mp4FileBridgeTest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 $managerScript = Join-Path $root 'windows\scripts\manager-actions.ps1'
 if (-not (Test-Path -LiteralPath $managerScript)) { throw 'manager-actions.ps1 is missing.' }
 $recoveryScript = Join-Path $root 'windows\scripts\apply-theme-and-recover.ps1'

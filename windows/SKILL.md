@@ -30,7 +30,7 @@ Apply a reversible renderer skin through Chromium DevTools Protocol while launch
 - The default launcher scans for a free port when `9335` is occupied. An explicitly requested occupied port fails closed.
 - Keep the injection daemon running for navigation/reload resilience. Its state and logs live under `%LOCALAPPDATA%\CodexDreamSkin`.
 - The watcher registers a generation-checked early payload for connected renderers so reload/navigation can paint the skin before the normal load-event fallback; unsupported CDP targets fall back safely.
-- The active theme, saved themes, imported images, pause marker, and tray controls live under `%LOCALAPPDATA%\CodexDreamSkin`. Reject empty or over-10 MB images before copying or encoding them.
+- The active theme, saved themes, imported media, pause marker, and tray controls live under `%LOCALAPPDATA%\CodexDreamSkin`. Reject empty media, images over 10 MiB, and MP4 files over 30 MiB before copying them.
 - Theme-pack import does not support `.dreamskin`; reject traversal, links/reparse entries, nested archives, ambiguous roots, Windows-reserved paths, size/count abuse, and packs that fail the existing theme/image payload checks.
 - Community deep links accept only a canonical version ID. Reject redirects, non-approved or non-compatible metadata, mismatched IDs, non-boolean compatibility, unsafe display metadata, unexpected media types, byte/hash mismatches, and concurrent applies before changing the active theme.
 - Every managed-store write rejects junctions and other reparse points in every existing path component. Imports also use the bundled Node metadata parser before copying to reject dimensions above 16384px or 50MP.
