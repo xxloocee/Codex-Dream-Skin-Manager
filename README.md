@@ -17,6 +17,8 @@ Windows 安装版默认安装到当前用户目录，不请求管理员权限，
 桌面快捷方式可在安装时选择。Windows 发布包内置 Node.js，用户无需另行安装运行环境。
 便携版必须完整解压，不能只复制 EXE。macOS 使用方法见 [`macos/README.md`](macos/README.md)。
 
+维护者每次发布新版本前，必须完整阅读并逐项执行 [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md)。该清单包含版本同步、强制更新说明、构建、校验和发布步骤，并区分当前的 x64/universal 产物和未来四架构目标。
+
 ## 项目来源与致谢
 
 本项目复用 Codex Dream Skin 的 Windows/macOS 运行时、主题机制和恢复流程，并在此基础上增加 Windows 可视化管理界面与主题管理能力；构建和运行边界仍以该上游项目为基础。
