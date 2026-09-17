@@ -2,7 +2,7 @@
 
 ## Codex Dream Skin
 
-构建产物包含来自 [Codex Dream Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 的 Windows/macOS 运行时和相关软件文件。仓库内运行时以同步自上游 `main` 提交 `e0341de`（发布版本 `v1.5.16`）的代码为基础，并在本项目中扩展为 `v1.6.0`；本地传入 `build.ps1` 的 `-SkillRoot` 仅用于兼容性验证。
+构建产物包含来自 [Codex Dream Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 的 Windows/macOS 运行时和相关软件文件。仓库内运行时以同步自上游 `main` 提交 `e0341de`（发布版本 `v1.5.16`）的代码为基础，并在本项目中扩展为 `v1.6.1`；本地传入 `build.ps1` 的 `-SkillRoot` 仅用于兼容性验证。
 
 这些软件文件按上游 MIT License 提供。发布目录中会附带：
 

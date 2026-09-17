@@ -429,6 +429,45 @@
       "safeArea": "left",
       "taskMode": "ambient",
       "accent": "#9A7565"
+    },
+    {
+      "id": "ink-feather-glow",
+      "name": "墨羽流光",
+      "image": "ink-feather-glow.mp4",
+      "category": "dream",
+      "tags": ["人物", "幻想", "动态"],
+      "appearance": "auto",
+      "focusX": 0.5,
+      "focusY": 0.5,
+      "safeArea": "auto",
+      "taskMode": "auto",
+      "accent": "#FF8040"
+    },
+    {
+      "id": "silver-glass-dream",
+      "name": "银璃幻梦",
+      "image": "silver-glass-dream.mp4",
+      "category": "cyber",
+      "tags": ["人物", "银白", "动态"],
+      "appearance": "auto",
+      "focusX": 0.5,
+      "focusY": 0.5,
+      "safeArea": "auto",
+      "taskMode": "auto",
+      "accent": "#FF80C0"
+    },
+    {
+      "id": "lamplit-leisure",
+      "name": "灯下闲居",
+      "image": "lamplit-leisure.jpg",
+      "category": "warm",
+      "tags": ["人物", "居家", "灯光"],
+      "appearance": "auto",
+      "focusX": 0.5,
+      "focusY": 0.5,
+      "safeArea": "auto",
+      "taskMode": "auto",
+      "accent": "#FF8080"
     }
   ]
 }

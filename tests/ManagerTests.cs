@@ -175,7 +175,7 @@ namespace CodexDreamSkinManager
                 AssertEqual("#7B78D6", ReadMember(theme, "Accent"));
             });
 
-            Run("Ships a 33 theme preset catalog", delegate
+            Run("Ships a 36 theme preset catalog", delegate
             {
                 string presetRoot = Path.Combine(Environment.CurrentDirectory, "windows", "presets");
                 string catalogPath = Path.Combine(presetRoot, "catalog.json");
@@ -184,7 +184,7 @@ namespace CodexDreamSkinManager
                 AssertEqual("1", Convert.ToString(catalog["schemaVersion"]));
                 ArrayList themes = catalog["themes"] as ArrayList;
                 AssertTrue(themes != null);
-                AssertEqual("33", themes.Count.ToString());
+                AssertEqual("36", themes.Count.ToString());
                 string[] originalThemeIds = {
                     "romantic-rose", "sakura-dawn", "cloud-reverie", "moonlit-garden",
                     "forest-mist", "alpine-dawn", "ocean-glass", "bamboo-rain",
@@ -314,11 +314,11 @@ namespace CodexDreamSkinManager
             Run("Maps update check JSON", delegate
             {
                 UpdateCheckResult update = DreamSkinService.ParseUpdateResult(
-                    "{\"currentVersion\":\"v1.6.0\",\"latestVersion\":\"v1.7.0\",\"updateAvailable\":true," +
+                    "{\"currentVersion\":\"v1.6.1\",\"latestVersion\":\"v1.7.0\",\"updateAvailable\":true," +
                     "\"releaseUrl\":\"https://github.com/example/releases/tag/v1.7.0\"," +
                     "\"installerAssetName\":\"CodexDreamSkinManager-v1.7.0-windows-x64-setup.exe\"," +
                     "\"installerStarted\":false}");
-                AssertEqual("v1.6.0", update.CurrentVersion);
+                AssertEqual("v1.6.1", update.CurrentVersion);
                 AssertEqual("v1.7.0", update.LatestVersion);
                 AssertTrue(update.UpdateAvailable);
                 AssertEqual("CodexDreamSkinManager-v1.7.0-windows-x64-setup.exe", update.InstallerAssetName);
@@ -920,7 +920,7 @@ namespace CodexDreamSkinManager
 
             Run("Publishes semantic application version", delegate
             {
-                AssertEqual("1.6.0.0", typeof(Program).Assembly.GetName().Version.ToString());
+                AssertEqual("1.6.1.0", typeof(Program).Assembly.GetName().Version.ToString());
             });
 
             Run("Converts focus percentage", delegate
