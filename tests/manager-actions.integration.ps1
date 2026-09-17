@@ -227,7 +227,8 @@ try {
       '-Name', '集成测试主题', '-Appearance', 'dark', '-FocusX', '0.72', '-FocusY', '0.45',
       '-PositionX', '0.35', '-PositionY', '-0.2', '-Zoom', '1.6',
       '-PositionMode', 'free', '-FramingEnabled', 'true',
-      '-SafeArea', 'right', '-TaskMode', 'banner', '-Accent', '#12AB34', '-KeepCurrent'
+      '-SafeArea', 'right', '-TaskMode', 'banner', '-Accent', '#12AB34',
+      '-TagsJson', '[\"动态\",\"人物\",\"城市\"]', '-KeepCurrent'
     ) + $common)
 
   $after = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
@@ -246,6 +247,8 @@ try {
   $themePath = Join-Path $saved[0].themeDirectory 'theme.json'
   $theme = [System.IO.File]::ReadAllText($themePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
   Assert-Equal 'dark' $theme.appearance 'Appearance was not saved.'
+  Assert-Equal '动态,人物,城市' ($theme.tags -join ',') 'Multiple category tags were not saved.'
+  Assert-Equal '动态,人物,城市' ($saved[0].tags -join ',') 'Status did not return all category tags.'
   Assert-Equal '0.72' $theme.art.focusX 'Horizontal focus was not saved.'
   Assert-Equal '0.45' $theme.art.focusY 'Vertical focus was not saved.'
   Assert-Equal '0.35' $theme.art.positionX 'Horizontal image position was not saved.'

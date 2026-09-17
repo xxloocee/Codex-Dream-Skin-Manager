@@ -385,6 +385,7 @@ namespace CodexDreamSkinManager
             List<ScriptArgument> args = new List<ScriptArgument>(new[] {
                 P("-Action"), V("ImportTheme"), P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")),
                 P("-ImagePath"), V(options.ImagePath), P("-Name"), V(options.Name),
+                P("-TagsJson"), V(new JavaScriptSerializer().Serialize(options.Tags.ToArray())),
                 P("-Appearance"), V(options.Appearance),
                 P("-FocusX"), V(options.FocusX.ToString(CultureInfo.InvariantCulture)),
                 P("-FocusY"), V(options.FocusY.ToString(CultureInfo.InvariantCulture)),

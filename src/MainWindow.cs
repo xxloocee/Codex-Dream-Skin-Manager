@@ -98,6 +98,7 @@ namespace CodexDreamSkinManager
         private readonly List<ThemeOption> allThemes = new List<ThemeOption>();
         private TextBox themeSearchBox;
         private ComboBox themeCategoryCombo;
+        private readonly List<CheckBox> customTagChoices = new List<CheckBox>();
         private ListBox themeSourceSegment;
         private ComboBox themeSortCombo;
         private FrameworkElement emptyThemeState;
@@ -327,7 +328,9 @@ namespace CodexDreamSkinManager
             themeSearchBox.TextChanged += delegate { ApplyThemeFilters(); };
             filterBar.Children.Add(themeSearchBox);
 
-            themeCategoryCombo = CreateCombo(new[] { "全部分类", "梦幻", "自然", "赛博", "极简", "深色", "暖色", "未分类" }, 0);
+            List<string> categoryLabels = new List<string> { "全部分类" };
+            categoryLabels.AddRange(ThemeCategories.Labels);
+            themeCategoryCombo = CreateCombo(categoryLabels.ToArray(), 0);
             themeCategoryCombo.Width = 124;
             themeCategoryCombo.Margin = new Thickness(0, 0, 8, 8);
             AutomationProperties.SetName(themeCategoryCombo, "ThemeCategory");
@@ -478,7 +481,36 @@ namespace CodexDreamSkinManager
             customPreviewImageLayer = CreatePreviewImageLayer(customPreviewSurface, "CustomPreviewImageLayer");
             customPreviewSurface.IsHitTestVisible = false;
             customPreviewSurface.SizeChanged += delegate { UpdateCustomPreview(); };
-            grid.Children.Add(customPreviewSurface);
+            StackPanel previewColumn = new StackPanel();
+            Border tagPanel = PanelBorder();
+            tagPanel.Margin = new Thickness(0, 0, 0, 16);
+            StackPanel tagFields = new StackPanel();
+            tagFields.Children.Add(FieldLabel("标签（可多选）"));
+            WrapPanel tagChoices = new WrapPanel();
+            AutomationProperties.SetName(tagChoices, "CustomThemeTags");
+            foreach (string label in ThemeCategories.Labels)
+            {
+                CheckBox choice = new CheckBox
+                {
+                    Content = label,
+                    Margin = new Thickness(0, 4, 16, 8),
+                    Foreground = TextBrush
+                };
+                AutomationProperties.SetName(choice, "标签：" + label);
+                customTagChoices.Add(choice);
+                tagChoices.Children.Add(choice);
+            }
+            tagFields.Children.Add(tagChoices);
+            tagFields.Children.Add(new TextBlock
+            {
+                Text = "可同时选择多个分类；未选择时归入艺术。",
+                Foreground = MutedBrush,
+                TextWrapping = TextWrapping.Wrap
+            });
+            tagPanel.Child = tagFields;
+            previewColumn.Children.Add(tagPanel);
+            previewColumn.Children.Add(customPreviewSurface);
+            grid.Children.Add(previewColumn);
 
             Border panel = PanelBorder();
             panel.VerticalAlignment = VerticalAlignment.Top;
@@ -922,6 +954,9 @@ namespace CodexDreamSkinManager
             CustomThemeOptions options = new CustomThemeOptions();
             options.Name = themeNameBox.Text.Trim();
             options.ImagePath = imagePathBox.Text.Trim();
+            foreach (CheckBox choice in customTagChoices)
+                if (choice.IsChecked == true) options.Tags.Add((string)choice.Content);
+            if (options.Tags.Count == 0) options.Tags.Add("艺术");
             options.Appearance = MapAppearance(appearanceCombo == null ? 0 : appearanceCombo.SelectedIndex);
             options.SetFramingPercent(positionXSlider.Value, positionYSlider.Value, zoomSlider.Value);
             options.PositionMode = positionModeSegment != null && positionModeSegment.SelectedIndex == 1 ? "free" : "locked";
@@ -1759,6 +1794,7 @@ namespace CodexDreamSkinManager
             border.SetValue(Border.BorderBrushProperty, AppBorderBrush);
             border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
             border.SetValue(Border.BackgroundProperty, SurfaceBrush);
+            border.SetBinding(FrameworkElement.ToolTipProperty, new Binding("CategoryLabel"));
 
             FrameworkElementFactory stack = new FrameworkElementFactory(typeof(StackPanel));
             FrameworkElementFactory image = new FrameworkElementFactory(typeof(Image));
@@ -1818,7 +1854,7 @@ namespace CodexDreamSkinManager
         }
 
         private static string MapAppearance(int index) { return index == 1 ? "light" : index == 2 ? "dark" : "auto"; }
-        private static string MapCategory(int index) { string[] values = { "all", "dream", "nature", "cyber", "minimal", "dark", "warm", "uncategorized" }; return values[Math.Max(0, Math.Min(index, values.Length - 1))]; }
+        private static string MapCategory(int index) { return index <= 0 || index > ThemeCategories.Ids.Length ? "all" : ThemeCategories.Ids[index - 1]; }
         private static string MapSource(int index) { return index == 1 ? "preset" : index == 2 ? "saved" : "all"; }
         private static string MapSafeArea(int index) { string[] values = { "auto", "left", "right", "center", "none" }; return values[Math.Max(0, Math.Min(index, values.Length - 1))]; }
         private static string MapTaskMode(int index) { string[] values = { "auto", "ambient", "banner", "full", "off" }; return values[Math.Max(0, Math.Min(index, values.Length - 1))]; }

@@ -290,33 +290,23 @@ namespace CodexDreamSkinManager
 
         public string CategoryLabel
         {
-            get
-            {
-                switch (Category)
-                {
-                    case "dream": return "梦幻";
-                    case "nature": return "自然";
-                    case "cyber": return "赛博";
-                    case "minimal": return "极简";
-                    case "dark": return "深色";
-                    case "warm": return "暖色";
-                    default: return "未分类";
-                }
-            }
+            get { return ThemeCategories.GetLabel(this); }
         }
 
         public string CategoryColor
         {
             get
             {
-                switch (Category)
+                switch (ThemeCategories.GetIds(this)[0])
                 {
-                    case "dream": return "#B65CFF";
-                    case "nature": return "#29966F";
-                    case "cyber": return "#168AA3";
-                    case "minimal": return "#77808C";
-                    case "dark": return "#3B4F75";
-                    case "warm": return "#D47B3D";
+                    case "dynamic": return "#B65CFF";
+                    case "people": return "#D47B3D";
+                    case "anime": return "#CE6095";
+                    case "landscape": return "#29966F";
+                    case "city": return "#3B4F75";
+                    case "animals": return "#A28B35";
+                    case "technology": return "#168AA3";
+                    case "art": return "#77808C";
                     default: return "#98A1AD";
                 }
             }
@@ -401,10 +391,14 @@ namespace CodexDreamSkinManager
             List<ThemeOption> result = new List<ThemeOption>();
             foreach (ThemeOption theme in themes ?? new ThemeOption[0])
             {
-                if (!MatchesCategory(theme.Category, categoryValue)) continue;
+                if (Array.IndexOf(ThemeCategories.Ids, categoryValue) >= 0)
+                {
+                    if (!ThemeCategories.GetIds(theme).Contains(categoryValue)) continue;
+                }
+                else if (!MatchesCategory(theme.Category, categoryValue)) continue;
                 if (!string.Equals(sourceValue, "all", StringComparison.OrdinalIgnoreCase) &&
                     !string.Equals(theme.Source, sourceValue, StringComparison.OrdinalIgnoreCase)) continue;
-                if (query.Length > 0 && !ContainsText(theme.Name, query) &&
+                if (query.Length > 0 && !ContainsText(theme.Name, query) && !ContainsText(theme.CategoryLabel, query) &&
                     !(theme.Tags ?? new List<string>()).Exists(tag => ContainsText(tag, query))) continue;
                 result.Add(theme);
             }
@@ -433,6 +427,7 @@ namespace CodexDreamSkinManager
 
     internal sealed class CustomThemeOptions
     {
+        public List<string> Tags = new List<string>();
         public string ImagePath = "";
         public string Name = "";
         public string Appearance = "auto";

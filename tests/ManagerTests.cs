@@ -431,6 +431,63 @@ namespace CodexDreamSkinManager
                 AssertEqual("2", uncategorized.Count.ToString());
             });
 
+            Run("Filters one theme into multiple categories and preserves legacy themes", delegate
+            {
+                ThemeOption portrait = CreateThemeForFilter("portrait", "Portrait", "custom", "saved", 1,
+                    new[] { "人物", "动漫" });
+                portrait.ImagePath = "C:\\portrait.MP4";
+                ThemeOption nature = CreateThemeForFilter("old", "Old", "nature", "saved", 2, new string[0]);
+                ThemeOption untagged = CreateThemeForFilter("other", "Other", "custom", "saved", 3, new string[0]);
+                List<ThemeOption> themes = new List<ThemeOption> { portrait, nature, untagged };
+                foreach (string category in new[] { "dynamic", "people", "anime" })
+                    AssertEqual("portrait", ThemeLibraryFilter.Apply(themes, "", category, "all", "catalog")[0].Id);
+                AssertEqual("old", ThemeLibraryFilter.Apply(themes, "", "landscape", "all", "catalog")[0].Id);
+                AssertEqual("other", ThemeLibraryFilter.Apply(themes, "", "art", "all", "catalog")[0].Id);
+                AssertEqual("0", ThemeLibraryFilter.Apply(themes, "", "city", "all", "catalog").Count.ToString());
+                AssertEqual("portrait", ThemeLibraryFilter.Apply(themes, "动态", "people", "saved", "catalog")[0].Id);
+            });
+
+            Run("Custom theme form saves all selected category tags", delegate
+            {
+                MainWindow window = new MainWindow(null);
+                try
+                {
+                    List<CheckBox> choices = (List<CheckBox>)typeof(MainWindow)
+                        .GetField("customTagChoices", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(window);
+                    AssertEqual("8", choices.Count.ToString());
+                    choices[0].IsChecked = true;
+                    choices[1].IsChecked = true;
+                    choices[4].IsChecked = true;
+                    MethodInfo read = typeof(MainWindow).GetMethod("ReadCustomOptions", BindingFlags.Instance | BindingFlags.NonPublic);
+                    CustomThemeOptions options = (CustomThemeOptions)read.Invoke(window, null);
+                    AssertEqual("动态,人物,城市", string.Join(",", options.Tags.ToArray()));
+                    foreach (CheckBox choice in choices) choice.IsChecked = false;
+                    options = (CustomThemeOptions)read.Invoke(window, null);
+                    AssertEqual("艺术", options.Tags[0]);
+                }
+                finally { window.Close(); }
+            });
+
+            Run("Every bundled theme has explicit categories across all eight groups", delegate
+            {
+                string root = Environment.CurrentDirectory;
+                Dictionary<string, object> catalog = new JavaScriptSerializer().DeserializeObject(
+                    File.ReadAllText(Path.Combine(root, "windows", "presets", "catalog.json"))) as Dictionary<string, object>;
+                HashSet<string> groups = new HashSet<string>();
+                foreach (Dictionary<string, object> row in (IEnumerable)catalog["themes"])
+                {
+                    bool categorized = false;
+                    foreach (object tag in (IEnumerable)row["tags"])
+                        if (Array.IndexOf(ThemeCategories.Labels, Convert.ToString(tag)) >= 0)
+                        {
+                            categorized = true;
+                            groups.Add(Convert.ToString(tag));
+                        }
+                    AssertTrue(categorized);
+                }
+                AssertEqual("8", groups.Count.ToString());
+            });
+
             Run("Reads and writes safe cdskin packages", delegate
             {
                 string root = Path.Combine(Path.GetTempPath(), "dream-skin-package-" + Guid.NewGuid().ToString("N"));
