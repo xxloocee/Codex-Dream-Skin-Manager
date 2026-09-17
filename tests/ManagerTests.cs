@@ -1015,7 +1015,7 @@ namespace CodexDreamSkinManager
             {
                 MainWindow window = new MainWindow(null);
                 string[] names = {
-                    "StatusText", "CheckUpdateButton", "ThemeList", "ThemeGridScroll", "ThemeSearch", "ThemeCategory",
+                    "ThemeList", "ThemeGridScroll", "ThemeSearch", "ThemeCategory",
                     "ThemeSource", "ThemeSort", "AddImagesButton", "ImportPackageButton",
                     "ExportThemeButton", "DeleteThemeButton", "PreviewImage", "EnableButton", "PauseButton",
                     "ResetButton", "RestoreButton", "CustomSkinTab", "HorizontalPositionSlider",
@@ -1023,7 +1023,23 @@ namespace CodexDreamSkinManager
                 };
                 foreach (string name in names)
                     AssertTrue(FindAutomationName(window, name));
-                window.Close();
+                window.Show();
+                try
+                {
+                    TabControl tabs = FindVisualChild<TabControl>(window);
+                    for (int index = 0; index < 2; index++)
+                    {
+                        tabs.SelectedIndex = index;
+                        window.UpdateLayout();
+                        FrameworkElement status = FindAutomationElement(window, "StatusText");
+                        FrameworkElement update = FindAutomationElement(window, "CheckUpdateButton");
+                        AssertTrue(status != null && status.IsVisible);
+                        AssertTrue(update != null && update.IsVisible);
+                        Rect bounds = update.TransformToAncestor(tabs).TransformBounds(new Rect(update.RenderSize));
+                        AssertTrue(bounds.Top >= 0 && bounds.Bottom <= 48 && bounds.Right <= tabs.ActualWidth + 0.5);
+                    }
+                }
+                finally { window.Close(); }
             });
 
             Run("Blocks image selection while validation is running", delegate

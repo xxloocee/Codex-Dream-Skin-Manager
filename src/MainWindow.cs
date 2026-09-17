@@ -151,8 +151,8 @@ namespace CodexDreamSkinManager
         {
             this.service = service;
             Title = "Codex Dream Skin Manager";
-            Width = 980;
-            Height = 680;
+            Width = Math.Min(1280, SystemParameters.WorkArea.Width);
+            Height = Math.Min(720, SystemParameters.WorkArea.Height);
             MinWidth = 760;
             MinHeight = 560;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -179,21 +179,9 @@ namespace CodexDreamSkinManager
             Grid viewport = new Grid { Background = BackgroundBrush };
             Grid root = new Grid { MaxWidth = 1440, HorizontalAlignment = HorizontalAlignment.Stretch };
             AutomationProperties.SetName(root, "RootContent");
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             root.Margin = new Thickness(22);
-
-            Border header = new Border { Background = SurfaceBrush, BorderBrush = AppBorderBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(7), Padding = new Thickness(16, 12, 16, 12) };
-            Grid headerGrid = new Grid();
-            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            StackPanel brand = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            Border mark = new Border { Width = 34, Height = 34, Background = BrushFrom("#0F1012"), CornerRadius = new CornerRadius(7), Margin = new Thickness(0, 0, 10, 0) };
-            mark.Child = new TextBlock { Text = "DS", Foreground = BrushFrom("#E9CB7B"), FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-            brand.Children.Add(mark);
-            brand.Children.Add(new TextBlock { Text = "Codex Dream Skin", FontSize = 17, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
-            headerGrid.Children.Add(brand);
 
             StackPanel statePanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             statusDot = new Border { Width = 9, Height = 9, Background = MutedBrush, CornerRadius = new CornerRadius(5), Margin = new Thickness(0, 0, 8, 0) };
@@ -210,18 +198,13 @@ namespace CodexDreamSkinManager
             AutomationProperties.SetName(checkUpdateButton, "CheckUpdateButton");
             checkUpdateButton.Click += async delegate { await CheckForUpdateAsync(); };
             statePanel.Children.Add(checkUpdateButton);
-            Grid.SetColumn(statePanel, 1);
-            headerGrid.Children.Add(statePanel);
-            header.Child = headerGrid;
-            root.Children.Add(header);
-
-            TabControl tabs = new TabControl { Margin = new Thickness(0, 16, 0, 12), Background = Brushes.Transparent, BorderBrush = AppBorderBrush };
+            TabControl tabs = new TabControl { Margin = new Thickness(0, 0, 0, 12), Background = Brushes.Transparent, BorderBrush = AppBorderBrush, Tag = statePanel };
+            tabs.Style = ManagerControlStyles.Get("Tabs");
             TabItem dashboardTab = new TabItem { Header = "控制台", Content = BuildDashboard() };
             TabItem customTab = new TabItem { Header = "自定义换肤", Content = BuildCustomSkin() };
             AutomationProperties.SetName(customTab, "CustomSkinTab");
             tabs.Items.Add(dashboardTab);
             tabs.Items.Add(customTab);
-            Grid.SetRow(tabs, 1);
             root.Children.Add(tabs);
 
             messageText = new TextBlock { Text = "选择主题可预览；执行启用或恢复前会请求确认。", Foreground = MutedBrush, TextWrapping = TextWrapping.Wrap };
@@ -237,7 +220,7 @@ namespace CodexDreamSkinManager
             donateButton.Click += delegate { ShowDonationDialog(); };
             Grid.SetColumn(donateButton, 1);
             footer.Children.Add(donateButton);
-            Grid.SetRow(footer, 2);
+            Grid.SetRow(footer, 1);
             root.Children.Add(footer);
             viewport.Children.Add(root);
             return viewport;
@@ -322,6 +305,9 @@ namespace CodexDreamSkinManager
 
             WrapPanel filterBar = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
             themeSearchBox = InputBox("搜索名称或标签");
+            themeSearchBox.Style = ManagerControlStyles.Get("Search");
+            themeSearchBox.Padding = new Thickness(0);
+            themeSearchBox.MinHeight = 36;
             themeSearchBox.Width = 220;
             themeSearchBox.Margin = new Thickness(0, 0, 8, 8);
             AutomationProperties.SetName(themeSearchBox, "ThemeSearch");
@@ -331,6 +317,7 @@ namespace CodexDreamSkinManager
             List<string> categoryLabels = new List<string> { "全部分类" };
             categoryLabels.AddRange(ThemeCategories.Labels);
             themeCategoryCombo = CreateCombo(categoryLabels.ToArray(), 0);
+            themeCategoryCombo.MinHeight = 36;
             themeCategoryCombo.Width = 124;
             themeCategoryCombo.Margin = new Thickness(0, 0, 8, 8);
             AutomationProperties.SetName(themeCategoryCombo, "ThemeCategory");
@@ -353,6 +340,7 @@ namespace CodexDreamSkinManager
             filterBar.Children.Add(themeSourceSegment);
 
             themeSortCombo = CreateCombo(new[] { "目录顺序", "名称排序" }, 0);
+            themeSortCombo.MinHeight = 36;
             themeSortCombo.Width = 118;
             themeSortCombo.Margin = new Thickness(0, 0, 0, 8);
             AutomationProperties.SetName(themeSortCombo, "ThemeSort");
@@ -390,6 +378,7 @@ namespace CodexDreamSkinManager
                 BorderThickness = new Thickness(1), Padding = new Thickness(6) };
             ScrollViewer.SetHorizontalScrollBarVisibility(themeList, ScrollBarVisibility.Disabled);
             ScrollViewer.SetVerticalScrollBarVisibility(themeList, ScrollBarVisibility.Auto);
+            themeList.Resources[typeof(ScrollBar)] = ManagerControlStyles.Get("VerticalScroll");
             themeList.ItemsPanel = HorizontalItemsPanel();
             themeList.ItemTemplate = ThemeTemplate();
             themeList.SelectionChanged += ThemeSelectionChanged;
@@ -1597,7 +1586,8 @@ namespace CodexDreamSkinManager
 
         private static ComboBox CreateCombo(string[] items, int selected)
         {
-            ComboBox box = new ComboBox { MinHeight = 34, Padding = new Thickness(8, 4, 8, 4), BorderBrush = AppBorderBrush };
+            ComboBox box = new ComboBox { MinHeight = 34, Padding = new Thickness(0), BorderBrush = AppBorderBrush };
+            box.Style = ManagerControlStyles.Get("Combo");
             foreach (string item in items) box.Items.Add(item);
             box.SelectedIndex = selected;
             return box;
