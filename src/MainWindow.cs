@@ -224,10 +224,78 @@ namespace CodexDreamSkinManager
             root.Children.Add(tabs);
 
             messageText = new TextBlock { Text = "选择主题可预览；执行启用或恢复前会请求确认。", Foreground = MutedBrush, TextWrapping = TextWrapping.Wrap };
-            Grid.SetRow(messageText, 2);
-            root.Children.Add(messageText);
+            Grid footer = new Grid();
+            footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            messageText.VerticalAlignment = VerticalAlignment.Center;
+            footer.Children.Add(messageText);
+            Button donateButton = SecondaryButton("打赏");
+            donateButton.Margin = new Thickness(16, 0, 0, 0);
+            donateButton.ToolTip = "支持持续优化";
+            AutomationProperties.SetName(donateButton, "DonateButton");
+            donateButton.Click += delegate { ShowDonationDialog(); };
+            Grid.SetColumn(donateButton, 1);
+            footer.Children.Add(donateButton);
+            Grid.SetRow(footer, 2);
+            root.Children.Add(footer);
             viewport.Children.Add(root);
             return viewport;
+        }
+
+        private void ShowDonationDialog()
+        {
+            Window dialog = new Window
+            {
+                Title = "打赏",
+                Owner = this,
+                Width = 420,
+                SizeToContent = SizeToContent.Height,
+                MaxHeight = SystemParameters.WorkArea.Height,
+                MaxWidth = SystemParameters.WorkArea.Width,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ShowInTaskbar = false,
+                Background = SurfaceBrush,
+                Foreground = TextBrush,
+                FontFamily = FontFamily
+            };
+            StackPanel content = new StackPanel { Margin = new Thickness(24) };
+            content.Children.Add(new TextBlock
+            {
+                Text = "持续优化中，感谢支持，金额随意。",
+                FontSize = 16,
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 18)
+            });
+            BitmapImage paymentImage = new BitmapImage();
+            using (Stream stream = typeof(MainWindow).Assembly.GetManifestResourceStream("CodexDreamSkinManager.DonationQr.png"))
+            {
+                paymentImage.BeginInit();
+                paymentImage.CacheOption = BitmapCacheOption.OnLoad;
+                paymentImage.StreamSource = stream;
+                paymentImage.EndInit();
+                paymentImage.Freeze();
+            }
+            Image qrCode = new Image { Source = paymentImage, Stretch = Stretch.Uniform };
+            AutomationProperties.SetName(qrCode, "微信收款二维码");
+            content.Children.Add(qrCode);
+            Button closeButton = SecondaryButton("关闭");
+            closeButton.IsCancel = true;
+            closeButton.IsDefault = true;
+            closeButton.HorizontalAlignment = HorizontalAlignment.Center;
+            closeButton.MinWidth = 100;
+            closeButton.Margin = new Thickness(0, 18, 0, 0);
+            closeButton.Click += delegate { dialog.Close(); };
+            content.Children.Add(closeButton);
+            dialog.Content = new ScrollViewer
+            {
+                Background = SurfaceBrush,
+                Content = content,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+            };
+            dialog.ShowDialog();
         }
 
         private UIElement BuildDashboard()
