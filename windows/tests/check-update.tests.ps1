@@ -39,8 +39,8 @@ $release = [pscustomobject]@{
   )
 }
 
-$result = ConvertTo-DreamSkinUpdateResult -Release $release -CurrentVersionText '1.6.0'
-Assert-Equal 'v1.6.0' $result.currentVersion 'Current version was not normalized.'
+$result = ConvertTo-DreamSkinUpdateResult -Release $release -CurrentVersionText '1.6.1'
+Assert-Equal 'v1.6.1' $result.currentVersion 'Current version was not normalized.'
 Assert-Equal 'v1.7.0' $result.latestVersion 'Latest version was not normalized.'
 Assert-Equal $true $result.updateAvailable 'Newer release was not detected.'
 Assert-Equal $installerName $result.installerAssetName 'Installer asset was not selected exactly.'
@@ -55,17 +55,17 @@ $duplicate.assets = @($release.assets) + @([pscustomobject]@{
   name = $installerName
   browser_download_url = $installerUrl
 })
-Assert-Throws { ConvertTo-DreamSkinUpdateResult -Release $duplicate -CurrentVersionText '1.6.0' } `
+Assert-Throws { ConvertTo-DreamSkinUpdateResult -Release $duplicate -CurrentVersionText '1.6.1' } `
   'exactly one.*installer' 'Duplicate installer assets were accepted.'
 
 $missingChecksum = $release.PSObject.Copy()
 $missingChecksum.assets = @($release.assets[0])
-Assert-Throws { ConvertTo-DreamSkinUpdateResult -Release $missingChecksum -CurrentVersionText '1.6.0' } `
+Assert-Throws { ConvertTo-DreamSkinUpdateResult -Release $missingChecksum -CurrentVersionText '1.6.1' } `
   'exactly one.*checksum' 'A missing checksum manifest was accepted.'
 
 $prerelease = $release.PSObject.Copy()
 $prerelease.prerelease = $true
-Assert-Throws { ConvertTo-DreamSkinUpdateResult -Release $prerelease -CurrentVersionText '1.6.0' } `
+Assert-Throws { ConvertTo-DreamSkinUpdateResult -Release $prerelease -CurrentVersionText '1.6.1' } `
   'prerelease' 'A prerelease was accepted.'
 
 $foreign = $release.PSObject.Copy()
@@ -73,7 +73,7 @@ $foreign.assets = @(
   [pscustomobject]@{ name = $installerName; browser_download_url = "https://example.com/$installerName" },
   $release.assets[1]
 )
-Assert-Throws { ConvertTo-DreamSkinUpdateResult -Release $foreign -CurrentVersionText '1.6.0' } `
+Assert-Throws { ConvertTo-DreamSkinUpdateResult -Release $foreign -CurrentVersionText '1.6.1' } `
   'GitHub release URL' 'A foreign installer URL was accepted.'
 
 $hash = ('ab' * 32)
@@ -121,41 +121,41 @@ try {
       return [pscustomobject]@{ Id = 4242 }
     }
 
-    $installResult = ConvertTo-DreamSkinUpdateResult -Release $release -CurrentVersionText '1.6.0'
+    $installResult = ConvertTo-DreamSkinUpdateResult -Release $release -CurrentVersionText '1.6.1'
     $started = Install-DreamSkinUpdate -Result $installResult -Expected 'v1.7.0'
     Assert-Equal $true $started.installerStarted 'Verified update did not report a started installer.'
     Assert-Equal 1 $script:LaunchCount 'Verified update did not launch exactly once.'
 
     $script:LaunchCount = 0
-    $mismatchedVersion = ConvertTo-DreamSkinUpdateResult -Release $release -CurrentVersionText '1.6.0'
+    $mismatchedVersion = ConvertTo-DreamSkinUpdateResult -Release $release -CurrentVersionText '1.6.1'
     Assert-Throws { Install-DreamSkinUpdate -Result $mismatchedVersion -Expected 'v1.8.0' } `
       'latest release changed' 'An unexpected release version reached the launch boundary.'
     Assert-Equal 0 $script:LaunchCount 'Version mismatch launched an installer.'
 
     $script:LaunchCount = 0
     $script:MockChecksumText = "$('00' * 32)  $installerName`n"
-    $badChecksum = ConvertTo-DreamSkinUpdateResult -Release $release -CurrentVersionText '1.6.0'
+    $badChecksum = ConvertTo-DreamSkinUpdateResult -Release $release -CurrentVersionText '1.6.1'
     Assert-Throws { Install-DreamSkinUpdate -Result $badChecksum -Expected 'v1.7.0' } `
       'checksum.*match' 'A mismatched downloaded installer reached the launch boundary.'
     Assert-Equal 0 $script:LaunchCount 'Checksum mismatch launched an installer.'
 
     $script:LaunchCount = 0
     $script:MockChecksumText = "$('11' * 32)  unrelated.zip`n"
-    $missingChecksumEntry = ConvertTo-DreamSkinUpdateResult -Release $release -CurrentVersionText '1.6.0'
+    $missingChecksumEntry = ConvertTo-DreamSkinUpdateResult -Release $release -CurrentVersionText '1.6.1'
     Assert-Throws { Install-DreamSkinUpdate -Result $missingChecksumEntry -Expected 'v1.7.0' } `
       'exactly one checksum' 'A missing installer checksum reached the launch boundary.'
     Assert-Equal 0 $script:LaunchCount 'Missing installer checksum launched an installer.'
 
     $script:LaunchCount = 0
     $script:MockChecksumText = "$actualHash  $installerName`n$actualHash *$installerName`n"
-    $duplicateChecksumEntry = ConvertTo-DreamSkinUpdateResult -Release $release -CurrentVersionText '1.6.0'
+    $duplicateChecksumEntry = ConvertTo-DreamSkinUpdateResult -Release $release -CurrentVersionText '1.6.1'
     Assert-Throws { Install-DreamSkinUpdate -Result $duplicateChecksumEntry -Expected 'v1.7.0' } `
       'exactly one checksum' 'Duplicate installer checksums reached the launch boundary.'
     Assert-Equal 0 $script:LaunchCount 'Duplicate installer checksums launched an installer.'
 
     $script:LaunchCount = 0
     $script:MockChecksumText = "$actualHash  $installerName`n$('x' * 64)  $installerName`n"
-    $malformedChecksumEntry = ConvertTo-DreamSkinUpdateResult -Release $release -CurrentVersionText '1.6.0'
+    $malformedChecksumEntry = ConvertTo-DreamSkinUpdateResult -Release $release -CurrentVersionText '1.6.1'
     Assert-Throws { Install-DreamSkinUpdate -Result $malformedChecksumEntry -Expected 'v1.7.0' } `
       'malformed' 'A malformed checksum line reached the launch boundary.'
     Assert-Equal 0 $script:LaunchCount 'Malformed checksum manifest launched an installer.'

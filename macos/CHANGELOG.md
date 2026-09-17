@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.1 — 2026-09-17
+
+- 与 Windows 主题更新同步版本号，继续提供支持 Apple Silicon 与 Intel 的 universal DMG；macOS 内置主题内容不变。
+
 ## 1.6.0 — 2026-09-16
 
 ### 新增

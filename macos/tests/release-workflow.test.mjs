@@ -87,9 +87,9 @@ assert.match(
 );
 
 for (const asset of [
-  "CodexDreamSkinManager-v1.6.0-windows-x64-setup.exe",
-  "CodexDreamSkinManager-v1.6.0-windows-x64-portable.zip",
-  "CodexDreamSkinManager-v1.6.0-macos-universal.dmg",
+  "CodexDreamSkinManager-v1.6.1-windows-x64-setup.exe",
+  "CodexDreamSkinManager-v1.6.1-windows-x64-portable.zip",
+  "CodexDreamSkinManager-v1.6.1-macos-universal.dmg",
   "SHA256SUMS.txt",
 ]) {
   assert.ok(readme.includes(asset), `README must name release asset: ${asset}`);
