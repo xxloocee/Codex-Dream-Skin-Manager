@@ -331,8 +331,12 @@ $compressionReferences = @(
 $testExe = Join-Path $build 'ManagerTests.exe'
 $sources = @(Get-ChildItem -LiteralPath (Join-Path $root 'src') -Filter '*.cs' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
 $testSources = @((Join-Path $root 'tests\ManagerTests.cs')) + $sources
+$donationImage = Join-Path $root 'assets\donation-wechat.png'
+if (-not (Test-Path -LiteralPath $donationImage -PathType Leaf)) { throw 'Donation QR image is missing.' }
+$donationResource = '/resource:' + $donationImage + ',CodexDreamSkinManager.DonationQr.png'
 
 & $csc /nologo /target:exe /platform:anycpu /out:$testExe /main:CodexDreamSkinManager.ManagerTests `
+  $donationResource `
   /reference:System.dll /reference:System.Core.dll /reference:System.Web.Extensions.dll /reference:System.Xml.dll `
   /reference:System.Drawing.dll /reference:System.Windows.Forms.dll `
   $($compressionReferences | ForEach-Object { '/reference:' + $_ }) `
@@ -341,6 +345,9 @@ $testSources = @((Join-Path $root 'tests\ManagerTests.cs')) + $sources
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 & $testExe
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+& $nodeExecutableFullPath (Join-Path $root 'tools\video-decode-probe.test.mjs')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $mp4FileBridgeTest = Join-Path $root 'tools\mp4-file-bridge.test.mjs'
@@ -428,6 +435,7 @@ $appExe = Join-Path $packageRoot 'CodexDreamSkinManager.exe'
 $appIcon = Join-Path $root 'assets\CodexDreamSkinManager.ico'
 if (-not (Test-Path -LiteralPath $appIcon -PathType Leaf)) { throw 'CodexDreamSkinManager.ico is missing.' }
 & $csc /nologo /target:winexe /platform:anycpu /optimize+ /out:$appExe `
+  $donationResource `
   ('/win32icon:' + $appIcon) `
   /main:CodexDreamSkinManager.Program `
   /reference:System.dll /reference:System.Core.dll /reference:System.Web.Extensions.dll /reference:System.Xml.dll `

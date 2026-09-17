@@ -2,10 +2,10 @@
   . (Join-Path $PSScriptRoot 'config-utf8.ps1')
 }
 
-$script:DreamSkinMaxImageBytes = 10 * 1024 * 1024
-$script:DreamSkinMaxVideoBytes = 30 * 1024 * 1024
-$script:DreamSkinMaxThemeArchiveBytes = 32 * 1024 * 1024
-$script:DreamSkinMaxThemeArchiveExpandedBytes = 64 * 1024 * 1024
+$script:DreamSkinMaxImageBytes = 128 * 1024 * 1024
+$script:DreamSkinMaxVideoBytes = 128 * 1024 * 1024
+$script:DreamSkinMaxThemeArchiveBytes = 160 * 1024 * 1024
+$script:DreamSkinMaxThemeArchiveExpandedBytes = 192 * 1024 * 1024
 $script:DreamSkinMaxThemeArchiveEntries = 32
 $script:DreamSkinCommunityApiOrigin = 'https://api.dreamskin.cc'
 $script:DreamSkinMaxCommunityMetadataBytes = 64 * 1024
@@ -181,7 +181,7 @@ function ConvertFrom-DreamSkinCommunityThemeMetadata {
   }
   $packageBytes = [int64]$packageBytesValue
   if ($packageBytes -lt 1 -or $packageBytes -gt $script:DreamSkinMaxThemeArchiveBytes) {
-    throw 'Community theme package size must be between 1 byte and 32 MiB.'
+    throw 'Community theme package size must be between 1 byte and 160 MiB.'
   }
 
   return [pscustomobject]@{
@@ -315,11 +315,26 @@ function Assert-DreamSkinImageFile {
   if ($length -lt 1) { throw 'Theme image cannot be empty.' }
   $maxBytes = if ($extension -eq '.mp4') { $script:DreamSkinMaxVideoBytes } else { $script:DreamSkinMaxImageBytes }
   if ($length -gt $maxBytes) {
-    if ($extension -eq '.mp4') { throw 'Theme video exceeds the 30 MiB limit.' }
-    throw 'Theme image exceeds the 10 MiB limit.'
+    if ($extension -eq '.mp4') { throw 'Theme video exceeds the 128 MiB limit.' }
+    throw 'Theme image exceeds the 128 MiB limit.'
   }
   if (-not $SkipImageMetadata) {
     Get-DreamSkinValidatedImageMetadata -Path $fullPath
+  }
+}
+
+function Assert-DreamSkinVideoDecodable {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [string]$StateRoot = (Join-Path $env:LOCALAPPDATA 'CodexDreamSkin')
+  )
+  if ([System.IO.Path]::GetExtension($Path) -ine '.mp4') { return }
+  Assert-DreamSkinImageFile -Path $Path
+  $node = Get-DreamSkinNodeRuntime
+  $stateFile = (Get-DreamSkinThemePaths -StateRoot $StateRoot).State
+  $output = @(& $node.Path (Join-Path $PSScriptRoot 'validate-video-file.mjs') $Path $stateFile 2>&1)
+  if ($LASTEXITCODE -ne 0) {
+    throw (($output | ForEach-Object { "$_" }) -join "`n")
   }
 }
 
@@ -628,6 +643,7 @@ function Set-DreamSkinActiveTheme {
     Copy-Item -LiteralPath $source -Destination $temporary -Force
     Assert-DreamSkinNoReparseComponents -Path $temporary
     Assert-DreamSkinImageFile -Path $temporary
+    Assert-DreamSkinVideoDecodable -Path $temporary -StateRoot $StateRoot
     Move-Item -LiteralPath $temporary -Destination $target -Force
     Assert-DreamSkinNoReparseComponents -Path $target
     Assert-DreamSkinImageFile -Path $target
@@ -696,6 +712,7 @@ function Save-DreamSkinCurrentTheme {
   Ensure-DreamSkinManagedDirectory -Path $paths.Root -Root $paths.Root
   Ensure-DreamSkinManagedDirectory -Path $paths.Saved -Root $paths.Root
   $active = Read-DreamSkinTheme -ThemeDirectory $paths.Active
+  Assert-DreamSkinVideoDecodable -Path $active.ImagePath -StateRoot $StateRoot
   $id = (Get-Date).ToString('yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
   $destination = Join-Path $paths.Saved $id
   Ensure-DreamSkinManagedDirectory -Path $destination -Root $paths.Root
@@ -1067,7 +1084,7 @@ function Expand-DreamSkinThemeZipSecurely {
   $archiveLength = (Get-Item -LiteralPath $archiveFullPath -Force).Length
   if ($archiveLength -lt 1) { throw 'Theme ZIP cannot be empty.' }
   if ($archiveLength -gt $script:DreamSkinMaxThemeArchiveBytes) {
-    throw 'Theme ZIP exceeds the 32 MB archive limit.'
+    throw 'Theme ZIP exceeds the 160 MiB archive limit.'
   }
 
   $destinationFullPath = [System.IO.Path]::GetFullPath($DestinationRoot)
@@ -1095,7 +1112,7 @@ function Expand-DreamSkinThemeZipSecurely {
     $openedArchiveLength = [int64]$archiveStream.Length
     if ($openedArchiveLength -lt 1) { throw 'Theme ZIP cannot be empty.' }
     if ($openedArchiveLength -gt $script:DreamSkinMaxThemeArchiveBytes) {
-      throw 'Theme ZIP exceeds the 32 MB archive limit.'
+      throw 'Theme ZIP exceeds the 160 MiB archive limit.'
     }
     if ($hasExpectedBytes) {
       if ($openedArchiveLength -ne $ExpectedArchiveBytes) {
@@ -1164,7 +1181,7 @@ function Expand-DreamSkinThemeZipSecurely {
       if ($entryLength -lt 0) { throw "Theme ZIP contains an invalid entry size: $rawName" }
       $expandedBytes += $entryLength
       if ($expandedBytes -gt $script:DreamSkinMaxThemeArchiveExpandedBytes) {
-        throw 'Theme ZIP exceeds the 64 MB expanded-size limit.'
+        throw 'Theme ZIP exceeds the 192 MiB expanded-size limit.'
       }
       if ($metadataEntry) { continue }
       if (-not $isDirectory -and (Test-DreamSkinNestedArchiveName -Name $components[$components.Count - 1])) {
@@ -1963,6 +1980,7 @@ function Import-DreamSkinThemeZip {
     # and completes before any existing saved theme is moved or replaced.
     $stagedPayloadCheck = @(& $node.Path $injector '--check-payload' '--theme-dir' $publishStage 2>&1)
     if ($LASTEXITCODE -ne 0) { throw 'Imported theme failed final payload validation.' }
+    Assert-DreamSkinVideoDecodable -Path $stagedImage -StateRoot $StateRoot
 
     $destination = Join-Path $paths.Saved $id
     $backup = $null

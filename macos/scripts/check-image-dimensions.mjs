@@ -1,7 +1,7 @@
 // Reject oversized images BEFORE anything rasterizes them.
 //
 // `load-image-theme` converts non-JPEG sources with `sips -Z`, which must
-// fully decode the source first — a near-flat 30000×30000 PNG under the 50 MB
+// fully decode the source first — a near-flat 30000×30000 PNG under the 128 MiB
 // byte cap would still balloon to gigabytes of pixels. This preflight reads the
 // container header only (PNG/JPEG/WebP/GIF/MP4) and falls back to `sips -g` metadata for
 // formats the header parser does not recognize (HEIC/TIFF); it never decodes.
@@ -59,7 +59,7 @@ if (!dimensions && extension !== ".mp4") {
       dimensions = { width, height };
     }
   } catch {
-    // sips unavailable or refused the file: fall through. The 50 MB byte cap and
+    // sips unavailable or refused the file: fall through. The 128 MiB byte cap and
     // the inject-time dimension check remain as backstops.
   }
 }

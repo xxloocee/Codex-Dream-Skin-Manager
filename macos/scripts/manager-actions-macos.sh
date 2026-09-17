@@ -142,6 +142,13 @@ case "$ACTION" in
     printf '{"isPaused":true}\n'
     ;;
   Resume)
+    resume_image="$("$NODE" -e '
+      const fs = require("node:fs"), path = require("node:path");
+      const theme = JSON.parse(fs.readFileSync(path.join(process.argv[1], "theme.json"), "utf8"));
+      if (typeof theme.image !== "string" || path.basename(theme.image) !== theme.image) process.exit(1);
+      process.stdout.write(path.join(process.argv[1], theme.image));
+    ' "$THEME_DIR")"
+    "$NODE" "$SCRIPT_DIR/validate-video-file.mjs" "$resume_image" "$STATE_PATH" >/dev/null
     "$SCRIPT_DIR/start-dream-skin-macos.sh" --restart-existing >/dev/null
     printf '{"isPaused":false}\n'
     ;;

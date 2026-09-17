@@ -60,11 +60,16 @@ if (-not $ThemeDirectory -and -not $ImagePath) {
 
 # Validate the selected theme before stopping Codex or changing the active theme.
 if ($ThemeDirectory) {
-  $null = Read-DreamSkinTheme -ThemeDirectory $ThemeDirectory
+  $recoveryTheme = Read-DreamSkinTheme -ThemeDirectory $ThemeDirectory
+  $recoveryMedia = $recoveryTheme.ImagePath
 } else {
-  Assert-DreamSkinImageFile -Path ([System.IO.Path]::GetFullPath($ImagePath))
+  $recoveryMedia = [System.IO.Path]::GetFullPath($ImagePath)
+  Assert-DreamSkinImageFile -Path $recoveryMedia
   if (-not $Name -or -not $Name.Trim()) { throw 'Theme name is required.' }
 }
+
+$videoRecovery = [System.IO.Path]::GetExtension($recoveryMedia) -ieq '.mp4'
+if ($videoRecovery) { Assert-DreamSkinVideoDecodable -Path $recoveryMedia -StateRoot $StateRoot }
 
 $operationLock = $null
 $previousRecoveryLockHeld = $env:CODEX_DREAM_SKIN_RECOVERY_LOCK_HELD
@@ -118,6 +123,9 @@ try {
       }
     }
 
+    # Reconnect using the previous active theme before committing a video candidate.
+    if ($videoRecovery) { & $startScript -RestartExisting }
+
     $applyArguments = @('-Action', 'ApplyTheme', '-SkillRoot', $SkillRoot, '-StateRoot', $StateRoot)
     if ($ThemeDirectory) {
       $applyArguments += @('-ThemeDirectory', $ThemeDirectory)
@@ -139,7 +147,7 @@ try {
       }
     }
     $null = Invoke-RecoveryManager -Arguments $applyArguments
-    & $startScript -RestartExisting
+    if (-not $videoRecovery) { & $startScript -RestartExisting }
 
     [ordered]@{
       recovered = $true

@@ -377,6 +377,8 @@ function Install-DreamSkinRuntimeEngine {
     'scripts\check-update.ps1',
     'scripts\config-utf8.ps1',
     'scripts\image-metadata.mjs',
+    'scripts\video-decode-probe.mjs',
+    'scripts\validate-video-file.mjs',
     'scripts\injector.mjs',
     'scripts\install-dream-skin.ps1',
     'scripts\localization-windows.ps1',

@@ -2,7 +2,7 @@ import Foundation
 
 public enum CommunityThemeContract {
   public static let apiOrigin = "https://api.dreamskin.cc"
-  public static let maximumPackageBytes: Int64 = 32 * 1024 * 1024
+  public static let maximumPackageBytes: Int64 = 160 * 1024 * 1024
 
   private static let linkPattern = #"^dreamskin://apply\?version=(ver_[a-z0-9]{8,64})$"#
   private static let versionPattern = #"^ver_[a-z0-9]{8,64}$"#

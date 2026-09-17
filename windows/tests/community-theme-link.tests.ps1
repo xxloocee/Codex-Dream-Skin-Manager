@@ -86,7 +86,7 @@ $invalidMetadata = @(
   @{ Label = 'missing apply compatibility'; Json = $validJson.Replace(',"applyCompatible":true', '') },
   @{ Label = 'uppercase hash'; Json = $validJson.Replace(('a' * 64), ('A' * 64)) },
   @{ Label = 'zero bytes'; Json = $validJson.Replace('"packageBytes":2048', '"packageBytes":0') },
-  @{ Label = 'oversized bytes'; Json = $validJson.Replace('"packageBytes":2048', '"packageBytes":33554433') },
+  @{ Label = 'oversized bytes'; Json = $validJson.Replace('"packageBytes":2048', '"packageBytes":167772161') },
   @{ Label = 'string bytes'; Json = $validJson.Replace('"packageBytes":2048', '"packageBytes":"2048"') },
   @{ Label = 'fractional bytes'; Json = $validJson.Replace('"packageBytes":2048', '"packageBytes":2048.5') },
   @{ Label = 'unsafe display whitespace'; Json = $validJson.Replace('"name":"Paper"', '"name":" Paper"') },

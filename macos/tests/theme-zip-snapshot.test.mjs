@@ -126,18 +126,18 @@ await test("macOS ZIP snapshot and extraction boundaries", {
   const oversizedSnapshot = path.join(tempRoot, "oversized-snapshot.zip");
   const oversizedHandle = await fs.open(oversizedArchive, "wx");
   try {
-    await oversizedHandle.truncate((32 * 1024 * 1024) + 1);
+    await oversizedHandle.truncate((160 * 1024 * 1024) + 1);
   } finally {
     await oversizedHandle.close();
   }
-  await expectSnapshotRejected(oversizedArchive, oversizedSnapshot, /32 MB archive limit/);
+  await expectSnapshotRejected(oversizedArchive, oversizedSnapshot, /160 MiB archive limit/);
 
   const forgedArchive = path.join(tempRoot, "forged-expanded-size.zip");
   const forgedDestination = path.join(tempRoot, "forged-expanded-output");
-  await fs.writeFile(forgedArchive, forgedExpandedZip(65 * 1024 * 1024, 1));
+  await fs.writeFile(forgedArchive, forgedExpandedZip(193 * 1024 * 1024, 1));
   assert.ok((await fs.stat(forgedArchive)).size < 1024 * 1024);
   await fs.mkdir(forgedDestination);
-  await assert.rejects(run(extractor, [forgedArchive, forgedDestination]), /64 MB expanded-size limit/);
+  await assert.rejects(run(extractor, [forgedArchive, forgedDestination]), /192 MiB expanded-size limit/);
   assert.deepEqual(await fs.readdir(forgedDestination), []);
 
   console.log("PASS: macOS ZIP snapshots and actual expansion are bounded before staged writes.");

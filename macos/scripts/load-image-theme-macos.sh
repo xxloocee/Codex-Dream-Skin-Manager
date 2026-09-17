@@ -79,7 +79,7 @@ case "$image_lower" in
 esac
 
 SOURCE_BYTES="$(/usr/bin/stat -f '%z' "$IMAGE")"
-[ "$SOURCE_BYTES" -le 52428800 ] || fail "Image larger than 50 MB."
+[ "$SOURCE_BYTES" -le 134217728 ] || fail "Image larger than 128 MiB."
 
 if [ -z "$THEME_NAME" ]; then
   base="$(/usr/bin/basename "$IMAGE")"
@@ -160,11 +160,14 @@ fi
 [ -s "$temporary" ] || fail "Prepared image is empty."
 PREPARED_BYTES="$(/usr/bin/stat -f '%z' "$temporary")"
 case "$image_name" in
-  *.mp4) MAX_PREPARED_BYTES=31457280; MAX_PREPARED_LABEL="30 MiB" ;;
-  *) MAX_PREPARED_BYTES=10485760; MAX_PREPARED_LABEL="10 MiB" ;;
+  *.mp4) MAX_PREPARED_BYTES=134217728; MAX_PREPARED_LABEL="128 MiB" ;;
+  *) MAX_PREPARED_BYTES=134217728; MAX_PREPARED_LABEL="128 MiB" ;;
 esac
 [ "$PREPARED_BYTES" -le "$MAX_PREPARED_BYTES" ] || fail "Prepared background larger than $MAX_PREPARED_LABEL."
 /bin/chmod 600 "$temporary"
+case "$image_name" in
+  *.mp4) "$NODE" "$SCRIPT_DIR/validate-video-file.mjs" "$temporary" "$STATE_PATH" --mp4 >/dev/null ;;
+esac
 /bin/mv -f "$temporary" "$prepared"
 
 theme_args=(

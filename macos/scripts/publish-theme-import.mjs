@@ -1,3 +1,4 @@
+import { validateVideoFile } from "./video-decode-probe.mjs";
 import fs from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
 import path from "node:path";
@@ -16,8 +17,8 @@ if (!themesRootArg || (!recoveryOnly && !stageDirArg) || cliArgs.length !== 2) {
 }
 
 const MAX_CONFIG_BYTES = 1024 * 1024;
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 128 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 128 * 1024 * 1024;
 const MAX_CSS_BYTES = 256 * 1024;
 const MAX_LICENSE_BYTES = 64 * 1024;
 const MAX_MANIFEST_BYTES = 64 * 1024;
@@ -863,6 +864,7 @@ async function main() {
     if (licenseBytes) {
       await writeDurableExclusive(path.join(temporary, "LICENSE.txt"), licenseBytes);
     }
+    await validateVideoFile(path.join(temporary, theme.image), path.join(themesRoot, "..", "state.json"));
     let replacementTransaction = null;
     let publishedDestination = false;
     if (replaceExisting) {

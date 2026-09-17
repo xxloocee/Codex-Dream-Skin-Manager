@@ -118,7 +118,7 @@ const dollarConstructs = {
 test("payload substitution preserves $ constructs in theme display text", async () => {
   for (const [label, name] of Object.entries(dollarConstructs)) {
     const { directory, theme } = await makeThemeDir({ name, statusText: name, quote: name });
-    const loaded = await loadPayload(directory);
+    const loaded = await loadPayload(directory, path.join(directory, "media-cache"));
 
     assert.equal(
       loaded.theme.name,
@@ -149,7 +149,7 @@ test("payload substitution preserves $ constructs in theme display text", async 
       `${label}: CSS must still be substituted`,
     );
     assert.ok(
-      captured.artDataUrl.startsWith("data:image/png;base64,"),
+      captured.artDataUrl === "dreamskin-file:image/png",
       `${label}: art data URL must still be substituted`,
     );
   }
@@ -158,7 +158,7 @@ test("payload substitution preserves $ constructs in theme display text", async 
 test("a benign theme name is unaffected by the substitution fix", async () => {
   const name = "Aurora Terminal 极光";
   const { directory } = await makeThemeDir({ name });
-  const loaded = await loadPayload(directory);
+  const loaded = await loadPayload(directory, path.join(directory, "media-cache"));
   const captured = readPayloadArguments(loaded.payload);
   assert.equal(captured.themeConfig.name, name);
   assert.ok(!/__DREAM_SKIN_[A-Z0-9_]+_JSON__/.test(loaded.payload));
@@ -183,7 +183,7 @@ test("payload injects only the compiled Safe CSS cascade, on both clients", asyn
 }`;
   const { directory } = await makeThemeDir({ name: "Safe CSS cascade" });
   await addSafeCss(directory, source);
-  const loaded = await loadPayload(directory);
+  const loaded = await loadPayload(directory, path.join(directory, "media-cache"));
   const captured = readPayloadArguments(loaded.payload);
   assert.equal(loaded.safeCssStatus, "validated");
   assert.match(captured.cssText, /@layer dreamskin-accessibility, dreamskin-community;/);
@@ -207,8 +207,8 @@ test("payload byte length does not drift with $ constructs", async () => {
   const baseline = await makeThemeDir({ name: "AAAA" });
   const dollars = await makeThemeDir({ name: "$$$$" });
   const [baselineLoaded, dollarLoaded] = await Promise.all([
-    loadPayload(baseline.directory),
-    loadPayload(dollars.directory),
+    loadPayload(baseline.directory, path.join(baseline.directory, "media-cache")),
+    loadPayload(dollars.directory, path.join(dollars.directory, "media-cache")),
   ]);
   assert.equal(
     Buffer.byteLength(dollarLoaded.payload),
@@ -231,7 +231,7 @@ test("assertPayloadIntegrity rejects unresolved placeholders and unparsable payl
   );
 
   const { directory } = await makeThemeDir({ name: "Integrity" });
-  const loaded = await loadPayload(directory);
+  const loaded = await loadPayload(directory, path.join(directory, "media-cache"));
   assert.equal(assertPayloadIntegrity(loaded.payload), true);
 });
 

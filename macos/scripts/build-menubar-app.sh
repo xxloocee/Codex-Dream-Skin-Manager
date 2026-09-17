@@ -96,6 +96,8 @@ RUNTIME_SCRIPTS=(
   doctor-macos.sh
   extract-theme-zip-macos.sh
   image-metadata.mjs
+  video-decode-probe.mjs
+  validate-video-file.mjs
   import-batch-macos.mjs
   import-theme-zip-macos.sh
   injector.mjs

@@ -14,8 +14,8 @@ const LIMITS = Object.freeze({
   theme: 65_536,
   simpleTheme: 1_048_576,
   css: 262_144,
-  image: 10_485_760,
-  video: 31_457_280,
+  image: 134_217_728,
+  video: 134_217_728,
   license: 65_536,
   signature: 4_096,
 });
@@ -493,7 +493,7 @@ function validateMediaPayload(name, bytes, expectedMedia) {
     fail(`${name} content does not match its extension and mediaType`);
   }
   if (expectedMedia === "video/mp4" && !readImageMetadata(bytes, ".mp4")) {
-    fail(`${name} must be a standard non-fragmented H.264/AVC MP4 within the video safety limits`);
+    fail(`${name} must be a standard non-fragmented H.264/AVC or H.265/HEVC MP4 within the video safety limits`);
   }
 }
 

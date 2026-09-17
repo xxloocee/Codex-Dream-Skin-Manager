@@ -7,6 +7,7 @@ const SOF_MARKERS = new Set([
   0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf,
 ]);
 const MP4_VIDEO_CODECS = new Set(["avc1", "avc3"]);
+const MP4_HEVC_CODECS = new Set(["hvc1", "hev1"]);
 export const MAX_IMAGE_DIMENSION = 16384;
 export const MAX_IMAGE_PIXELS = 50_000_000;
 export const MAX_IMAGE_FRAMES = 300;
@@ -124,6 +125,33 @@ function mp4AvcConfiguration(bytes, entry) {
     compatibility: bytes[avcC.data + 2],
     level: bytes[avcC.data + 3],
   };
+}
+
+function mp4HevcConfiguration(bytes, entry) {
+  const childrenStart = entry.data + 78;
+  if (childrenStart > entry.end) return null;
+  const config = isoBoxes(bytes, childrenStart, entry.end)?.find((box) => box.type === "hvcC");
+  if (!config || config.data + 23 > config.end || bytes[config.data] !== 1) return null;
+  let offset = config.data + 23;
+  const parameterSets = new Set();
+  for (let array = 0; array < bytes[config.data + 22]; array += 1) {
+    if (offset + 3 > config.end) return null;
+    const type = bytes[offset++] & 0x3f;
+    const count = uint16be(bytes, offset);
+    offset += 2;
+    for (let index = 0; index < count; index += 1) {
+      if (offset + 2 > config.end) return null;
+      const length = uint16be(bytes, offset);
+      offset += 2;
+      if (length < 2 || offset + length > config.end || ((bytes[offset] >> 1) & 0x3f) !== type) return null;
+      parameterSets.add(type);
+      offset += length;
+    }
+  }
+  if (offset !== config.end) return null;
+  // hvc1 carries parameter sets in the configuration; hev1 may carry them in-band.
+  if (entry.type === "hvc1" && ![32, 33, 34].every((type) => parameterSets.has(type))) return null;
+  return { profile: bytes[config.data + 1] & 0x1f, level: bytes[config.data + 12] };
 }
 
 function mp4SampleSizes(bytes, stbl) {
@@ -278,7 +306,8 @@ function mp4VideoMetadata(bytes) {
       const entry = isoBoxAt(bytes, entryOffset, stsd.end);
       if (!entry) break;
       const configuration = MP4_VIDEO_CODECS.has(entry.type)
-        ? mp4AvcConfiguration(bytes, entry) : null;
+        ? mp4AvcConfiguration(bytes, entry)
+        : MP4_HEVC_CODECS.has(entry.type) ? mp4HevcConfiguration(bytes, entry) : null;
       if (configuration && entry.data + 28 <= entry.end) {
         const width = uint16be(bytes, entry.data + 24);
         const height = uint16be(bytes, entry.data + 26);
@@ -586,7 +615,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       const metadata = readImageMetadata(bytes, path.extname(resolved));
       const animation = readImageAnimation(bytes, path.extname(resolved));
       if (!metadata || !animation || animation.frameCount > MAX_IMAGE_FRAMES) {
-        throw new Error("Media metadata is invalid or exceeds the image/video safety limits");
+        throw new Error(path.extname(resolved).toLowerCase() === ".mp4"
+          ? "MP4 must be non-fragmented H.264/AVC or H.265/HEVC, within 60 seconds, 60 FPS and dimension limits."
+          : "Media metadata is invalid or exceeds the image/video safety limits");
       }
       console.log(JSON.stringify({ ...metadata, ...animation }));
     } catch (error) {

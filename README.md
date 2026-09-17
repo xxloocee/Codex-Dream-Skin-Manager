@@ -2,22 +2,21 @@
 
 基于 [Fei-Away/Codex-Dream-Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 开发的跨平台主题管理项目：Windows 保留本项目的 WPF 可视化管理器，macOS 复用上游菜单栏客户端，并共享同一套运行时、主题契约和图片 framing 能力。
 
-当前版本：`1.6.1`。运行时支持 Windows 和 macOS；WPF 管理器仍是 Windows 专用界面，macOS 提供原生菜单栏界面及一个共享状态/framing 契约的 `manager-actions-macos.sh` 动作适配层。
+当前版本：`1.7.0`。运行时支持 Windows 和 macOS；WPF 管理器仍是 Windows 专用界面，macOS 提供原生菜单栏界面及一个共享状态/framing 契约的 `manager-actions-macos.sh` 动作适配层。
 
 ## 下载
 
 正式版本从 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载：
 
-- `CodexDreamSkinManager-v1.6.1-windows-x64-setup.exe`：Windows 10/11 x64 推荐安装版。
-- `CodexDreamSkinManager-v1.6.1-windows-x64-portable.zip`：Windows 10/11 x64 便携版。
-- `CodexDreamSkinManager-v1.6.1-macos-universal.dmg`：macOS 13+ 通用安装包，同时支持 Apple Silicon 与 Intel。
+- `CodexDreamSkinManager-v1.7.0-windows-x64-setup.exe`：Windows 10/11 x64 推荐安装版。
+- `CodexDreamSkinManager-v1.7.0-windows-x64-portable.zip`：Windows 10/11 x64 便携版。
+- `CodexDreamSkinManager-v1.7.0-macos-universal.dmg`：macOS 13+ 通用安装包，同时支持 Apple Silicon 与 Intel。
 - `SHA256SUMS.txt`：上述安装包的 SHA-256 校验清单。
 
 Windows 安装版默认安装到当前用户目录，不请求管理员权限，并创建开始菜单快捷方式；
 桌面快捷方式可在安装时选择。Windows 发布包内置 Node.js，用户无需另行安装运行环境。
 便携版必须完整解压，不能只复制 EXE。macOS 使用方法见 [`macos/README.md`](macos/README.md)。
 
-维护者每次发布新版本前，必须完整阅读并逐项执行 [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md)。该清单包含版本同步、强制更新说明、构建、校验和发布步骤，并区分当前的 x64/universal 产物和未来四架构目标。
 
 ## 项目来源与致谢
 
@@ -29,6 +28,7 @@ Windows 安装版默认安装到当前用户目录，不请求管理员权限，
 
 - 浏览 36 套目录内置主题和已保存主题，内置主题会跟随 Codex 的浅色/深色外观，并支持名称、标签、分类、来源与排序筛选。
 - 单击主题只更新预览；“应用选中主题”才会切换活动主题。
+- 主题按动态、人物、动漫、风景、城市、萌宠、科技、艺术 8 类筛选，同一主题可属于多个分类。自定义换肤支持标签多选，未选择时归入艺术；MP4、GIF、APNG 文件会自动出现在动态分类中。
 - “我的”已保存主题可从主题库删除；当前活动主题需先切换后才能删除。
 - 批量导入最多 50 张图片，按图片内容和视觉参数去重。
 - 导入、导出 `.cdskin` 主题包，并保留分类、标签和视觉参数。
@@ -94,7 +94,7 @@ $iscc = .\tools\prepare-inno-setup.ps1
 .\tools\package-installer.ps1 -IsccPath $iscc
 ```
 
-安装包会生成到 `dist\CodexDreamSkinManager-v1.6.1-windows-x64-setup.exe`。Inno Setup 只用于构建，
+安装包会生成到 `dist\CodexDreamSkinManager-v1.7.0-windows-x64-setup.exe`。Inno Setup 只用于构建，
 不会成为用户电脑上的运行依赖。
 
 仅执行测试：
@@ -155,8 +155,9 @@ build.ps1            统一测试、组装与构建入口
 
 ## 已知限制
 
-- 支持 PNG/APNG、JPG/JPEG、WebP、GIF 和标准非分片 H.264/AVC MP4；动画图片与 MP4 都按原格式保留。MP4 验证后会生成只读的内容寻址快照，再通过受控文件桥创建本地 `blob:` 地址，在 Codex 渲染层静音、循环、自动播放，不会转码或编码为 Base64；每个活动注入器的快照缓存最多保留 16 个文件、合计 128 MiB，已退出实例的缓存会延迟回收。Windows WPF 管理器通过系统媒体缩略图显示 MP4 静态封面但不播放视频，WebP 预览也可能不可用，动图预览以首帧为主。
-- 动图最多 300 帧；MP4 最大 30 MiB、最长 60 秒、最高 60 FPS，其他最终背景文件最大 10 MiB。所有背景仍受单边 16384 像素和 5000 万像素限制。macOS 的静态 PNG/WebP/GIF/HEIC/TIFF 仍会转换为 JPEG，MP4 不转换。
+- 支持 PNG/APNG、JPG/JPEG、WebP、GIF 和标准非分片 H.264/AVC 或 H.265/HEVC MP4；动画图片与 MP4 都按原格式保留。图片与 MP4 验证后均生成只读的内容寻址快照，通过受控文件桥创建本地 `blob:` 地址，由浏览器加载与解码，不再将图片编码为 Base64 注入；MP4 不转码，在 Codex 渲染层静音、循环、自动播放；每个活动注入器的快照缓存最多保留 16 个文件、合计 256 MiB，图片与视频共用缓存预算，已退出实例的缓存会延迟回收。Windows WPF 管理器通过系统媒体缩略图显示 MP4 静态封面但不播放视频，WebP 预览也可能不可用，动图预览以首帧为主。
+- MP4 素材选择、主题导入与应用前，必须连接 Codex 主窗口并在实际渲染器中解码出视频帧；未连接、解码失败或超时会阻止操作并保留当前主题。HEVC 是否可用取决于当前 Codex 与设备的解码能力，不自动转码。
+- 动图最多 300 帧；MP4 最大 128 MiB、最长 60 秒、最高 60 FPS，其他最终背景文件最大 128 MiB。ZIP 主题包最大 160 MiB、解压总量最大 192 MiB。128 MiB 是文件导入上限，不保证大尺寸动图的播放性能。所有背景仍受单边 16384 像素和 5000 万像素限制。macOS 的静态 PNG/WebP/GIF/HEIC/TIFF 仍会转换为 JPEG，MP4 不转换。
 - EXE 和安装包未进行商业代码签名，Windows SmartScreen 可能显示“未知发布者”。
 - 外部 Codex Dream Skin 项目的完整测试仍有一个既有失败：桌面配置使用多行数组时没有按其测试预期拒绝；本项目的管理器测试不受影响。
 

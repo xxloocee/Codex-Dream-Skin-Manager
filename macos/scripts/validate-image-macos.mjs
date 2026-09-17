@@ -1,3 +1,5 @@
+import os from "node:os";
+import { validateVideoFile } from "./video-decode-probe.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -22,10 +24,7 @@ if (!format) throw new Error("仅支持 PNG、APNG、JPEG、WebP、GIF、MP4、H
 
 const stat = await fs.stat(fullPath).catch(() => null);
 if (!stat?.isFile() || stat.size < 1) throw new Error("图片必须是非空普通文件。");
-if (stat.size > 50 * 1024 * 1024) throw new Error("图片不能超过 50 MB。");
-if (format === "mp4" && stat.size > 30 * 1024 * 1024) {
-  throw new Error("MP4 视频不能超过 30 MiB；视频会按原文件保存，不会转码压缩。");
-}
+if (stat.size > 128 * 1024 * 1024) throw new Error("图片或视频不能超过 128 MiB。");
 
 const bytes = await fs.readFile(fullPath);
 let dimensions = readRawDimensions(bytes, path.extname(fullPath));
@@ -49,12 +48,14 @@ if (!dimensions && format !== "mp4") {
 }
 const metadata = dimensions && classifyImageDimensions(dimensions);
 if (!metadata) throw new Error(format === "mp4"
-  ? "MP4 必须是标准非分片 H.264/AVC 文件，包含可播放媒体，且不能超过 60 秒 / 60 FPS 限制。"
+  ? "MP4 必须是标准非分片 H.264/AVC 或 H.265/HEVC 文件，包含可播放媒体，且不能超过 60 秒 / 60 FPS 限制。"
   : "图片已损坏，或超过 16384 像素 / 5000 万像素限制。");
 const animation = readImageAnimation(bytes, path.extname(fullPath));
 if (!animation || animation.frameCount > MAX_IMAGE_FRAMES) {
   throw new Error("动图帧数不能超过 " + MAX_IMAGE_FRAMES + " 帧。");
 }
+
+await validateVideoFile(fullPath, path.join(os.homedir(), "Library", "Application Support", "CodexDreamSkinStudio", "state.json"));
 
 const canPreview = !["webp", "mp4"].includes(format);
 console.log(JSON.stringify({

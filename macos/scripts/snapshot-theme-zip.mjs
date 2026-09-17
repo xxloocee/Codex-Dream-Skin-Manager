@@ -6,7 +6,7 @@ if (!sourcePath || !destinationPath) {
   throw new Error("Usage: snapshot-theme-zip.mjs <source.zip> <private-snapshot.zip>");
 }
 
-const MAX_ARCHIVE_BYTES = 32 * 1024 * 1024;
+const MAX_ARCHIVE_BYTES = 160 * 1024 * 1024;
 const COPY_BUFFER_BYTES = 64 * 1024;
 if (typeof fsConstants.O_NOFOLLOW !== "number") {
   throw new Error("This platform cannot safely open a theme ZIP without following links");
@@ -37,7 +37,7 @@ async function main() {
     if (!before.isFile()) throw new Error("Theme ZIP must be a regular file");
     if (before.size < 1n) throw new Error("Theme ZIP is empty");
     if (before.size > BigInt(MAX_ARCHIVE_BYTES)) {
-      throw new Error("Theme ZIP exceeds the 32 MB archive limit");
+      throw new Error("Theme ZIP exceeds the 160 MiB archive limit");
     }
 
     destination = await fs.open(destinationPath, "wx", 0o600);
@@ -48,7 +48,7 @@ async function main() {
       if (bytesRead === 0) break;
       copied += bytesRead;
       if (copied > MAX_ARCHIVE_BYTES) {
-        throw new Error("Theme ZIP exceeds the 32 MB archive limit while being copied");
+        throw new Error("Theme ZIP exceeds the 160 MiB archive limit while being copied");
       }
       let written = 0;
       while (written < bytesRead) {

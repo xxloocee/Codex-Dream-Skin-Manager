@@ -98,6 +98,7 @@ namespace CodexDreamSkinManager
         private readonly List<ThemeOption> allThemes = new List<ThemeOption>();
         private TextBox themeSearchBox;
         private ComboBox themeCategoryCombo;
+        private readonly List<CheckBox> customTagChoices = new List<CheckBox>();
         private ListBox themeSourceSegment;
         private ComboBox themeSortCombo;
         private FrameworkElement emptyThemeState;
@@ -150,8 +151,8 @@ namespace CodexDreamSkinManager
         {
             this.service = service;
             Title = "Codex Dream Skin Manager";
-            Width = 980;
-            Height = 680;
+            Width = Math.Min(1280, SystemParameters.WorkArea.Width);
+            Height = Math.Min(720, SystemParameters.WorkArea.Height);
             MinWidth = 760;
             MinHeight = 560;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -178,21 +179,9 @@ namespace CodexDreamSkinManager
             Grid viewport = new Grid { Background = BackgroundBrush };
             Grid root = new Grid { MaxWidth = 1440, HorizontalAlignment = HorizontalAlignment.Stretch };
             AutomationProperties.SetName(root, "RootContent");
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             root.Margin = new Thickness(22);
-
-            Border header = new Border { Background = SurfaceBrush, BorderBrush = AppBorderBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(7), Padding = new Thickness(16, 12, 16, 12) };
-            Grid headerGrid = new Grid();
-            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            StackPanel brand = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            Border mark = new Border { Width = 34, Height = 34, Background = BrushFrom("#0F1012"), CornerRadius = new CornerRadius(7), Margin = new Thickness(0, 0, 10, 0) };
-            mark.Child = new TextBlock { Text = "DS", Foreground = BrushFrom("#E9CB7B"), FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-            brand.Children.Add(mark);
-            brand.Children.Add(new TextBlock { Text = "Codex Dream Skin", FontSize = 17, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
-            headerGrid.Children.Add(brand);
 
             StackPanel statePanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             statusDot = new Border { Width = 9, Height = 9, Background = MutedBrush, CornerRadius = new CornerRadius(5), Margin = new Thickness(0, 0, 8, 0) };
@@ -209,25 +198,88 @@ namespace CodexDreamSkinManager
             AutomationProperties.SetName(checkUpdateButton, "CheckUpdateButton");
             checkUpdateButton.Click += async delegate { await CheckForUpdateAsync(); };
             statePanel.Children.Add(checkUpdateButton);
-            Grid.SetColumn(statePanel, 1);
-            headerGrid.Children.Add(statePanel);
-            header.Child = headerGrid;
-            root.Children.Add(header);
-
-            TabControl tabs = new TabControl { Margin = new Thickness(0, 16, 0, 12), Background = Brushes.Transparent, BorderBrush = AppBorderBrush };
+            TabControl tabs = new TabControl { Margin = new Thickness(0, 0, 0, 12), Background = Brushes.Transparent, BorderBrush = AppBorderBrush, Tag = statePanel };
+            tabs.Style = ManagerControlStyles.Get("Tabs");
             TabItem dashboardTab = new TabItem { Header = "控制台", Content = BuildDashboard() };
             TabItem customTab = new TabItem { Header = "自定义换肤", Content = BuildCustomSkin() };
             AutomationProperties.SetName(customTab, "CustomSkinTab");
             tabs.Items.Add(dashboardTab);
             tabs.Items.Add(customTab);
-            Grid.SetRow(tabs, 1);
             root.Children.Add(tabs);
 
             messageText = new TextBlock { Text = "选择主题可预览；执行启用或恢复前会请求确认。", Foreground = MutedBrush, TextWrapping = TextWrapping.Wrap };
-            Grid.SetRow(messageText, 2);
-            root.Children.Add(messageText);
+            Grid footer = new Grid();
+            footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            messageText.VerticalAlignment = VerticalAlignment.Center;
+            footer.Children.Add(messageText);
+            Button donateButton = SecondaryButton("打赏");
+            donateButton.Margin = new Thickness(16, 0, 0, 0);
+            donateButton.ToolTip = "支持持续优化";
+            AutomationProperties.SetName(donateButton, "DonateButton");
+            donateButton.Click += delegate { ShowDonationDialog(); };
+            Grid.SetColumn(donateButton, 1);
+            footer.Children.Add(donateButton);
+            Grid.SetRow(footer, 1);
+            root.Children.Add(footer);
             viewport.Children.Add(root);
             return viewport;
+        }
+
+        private void ShowDonationDialog()
+        {
+            Window dialog = new Window
+            {
+                Title = "打赏",
+                Owner = this,
+                Width = 420,
+                SizeToContent = SizeToContent.Height,
+                MaxHeight = SystemParameters.WorkArea.Height,
+                MaxWidth = SystemParameters.WorkArea.Width,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ShowInTaskbar = false,
+                Background = SurfaceBrush,
+                Foreground = TextBrush,
+                FontFamily = FontFamily
+            };
+            StackPanel content = new StackPanel { Margin = new Thickness(24) };
+            content.Children.Add(new TextBlock
+            {
+                Text = "持续优化中，感谢支持，金额随意。",
+                FontSize = 16,
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 18)
+            });
+            BitmapImage paymentImage = new BitmapImage();
+            using (Stream stream = typeof(MainWindow).Assembly.GetManifestResourceStream("CodexDreamSkinManager.DonationQr.png"))
+            {
+                paymentImage.BeginInit();
+                paymentImage.CacheOption = BitmapCacheOption.OnLoad;
+                paymentImage.StreamSource = stream;
+                paymentImage.EndInit();
+                paymentImage.Freeze();
+            }
+            Image qrCode = new Image { Source = paymentImage, Stretch = Stretch.Uniform };
+            AutomationProperties.SetName(qrCode, "微信收款二维码");
+            content.Children.Add(qrCode);
+            Button closeButton = SecondaryButton("关闭");
+            closeButton.IsCancel = true;
+            closeButton.IsDefault = true;
+            closeButton.HorizontalAlignment = HorizontalAlignment.Center;
+            closeButton.MinWidth = 100;
+            closeButton.Margin = new Thickness(0, 18, 0, 0);
+            closeButton.Click += delegate { dialog.Close(); };
+            content.Children.Add(closeButton);
+            dialog.Content = new ScrollViewer
+            {
+                Background = SurfaceBrush,
+                Content = content,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+            };
+            dialog.ShowDialog();
         }
 
         private UIElement BuildDashboard()
@@ -253,13 +305,19 @@ namespace CodexDreamSkinManager
 
             WrapPanel filterBar = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
             themeSearchBox = InputBox("搜索名称或标签");
+            themeSearchBox.Style = ManagerControlStyles.Get("Search");
+            themeSearchBox.Padding = new Thickness(0);
+            themeSearchBox.MinHeight = 36;
             themeSearchBox.Width = 220;
             themeSearchBox.Margin = new Thickness(0, 0, 8, 8);
             AutomationProperties.SetName(themeSearchBox, "ThemeSearch");
             themeSearchBox.TextChanged += delegate { ApplyThemeFilters(); };
             filterBar.Children.Add(themeSearchBox);
 
-            themeCategoryCombo = CreateCombo(new[] { "全部分类", "梦幻", "自然", "赛博", "极简", "深色", "暖色", "未分类" }, 0);
+            List<string> categoryLabels = new List<string> { "全部分类" };
+            categoryLabels.AddRange(ThemeCategories.Labels);
+            themeCategoryCombo = CreateCombo(categoryLabels.ToArray(), 0);
+            themeCategoryCombo.MinHeight = 36;
             themeCategoryCombo.Width = 124;
             themeCategoryCombo.Margin = new Thickness(0, 0, 8, 8);
             AutomationProperties.SetName(themeCategoryCombo, "ThemeCategory");
@@ -282,6 +340,7 @@ namespace CodexDreamSkinManager
             filterBar.Children.Add(themeSourceSegment);
 
             themeSortCombo = CreateCombo(new[] { "目录顺序", "名称排序" }, 0);
+            themeSortCombo.MinHeight = 36;
             themeSortCombo.Width = 118;
             themeSortCombo.Margin = new Thickness(0, 0, 0, 8);
             AutomationProperties.SetName(themeSortCombo, "ThemeSort");
@@ -319,6 +378,7 @@ namespace CodexDreamSkinManager
                 BorderThickness = new Thickness(1), Padding = new Thickness(6) };
             ScrollViewer.SetHorizontalScrollBarVisibility(themeList, ScrollBarVisibility.Disabled);
             ScrollViewer.SetVerticalScrollBarVisibility(themeList, ScrollBarVisibility.Auto);
+            themeList.Resources[typeof(ScrollBar)] = ManagerControlStyles.Get("VerticalScroll");
             themeList.ItemsPanel = HorizontalItemsPanel();
             themeList.ItemTemplate = ThemeTemplate();
             themeList.SelectionChanged += ThemeSelectionChanged;
@@ -410,7 +470,36 @@ namespace CodexDreamSkinManager
             customPreviewImageLayer = CreatePreviewImageLayer(customPreviewSurface, "CustomPreviewImageLayer");
             customPreviewSurface.IsHitTestVisible = false;
             customPreviewSurface.SizeChanged += delegate { UpdateCustomPreview(); };
-            grid.Children.Add(customPreviewSurface);
+            StackPanel previewColumn = new StackPanel();
+            Border tagPanel = PanelBorder();
+            tagPanel.Margin = new Thickness(0, 0, 0, 16);
+            StackPanel tagFields = new StackPanel();
+            tagFields.Children.Add(FieldLabel("标签（可多选）"));
+            WrapPanel tagChoices = new WrapPanel();
+            AutomationProperties.SetName(tagChoices, "CustomThemeTags");
+            foreach (string label in ThemeCategories.Labels)
+            {
+                CheckBox choice = new CheckBox
+                {
+                    Content = label,
+                    Margin = new Thickness(0, 4, 16, 8),
+                    Foreground = TextBrush
+                };
+                AutomationProperties.SetName(choice, "标签：" + label);
+                customTagChoices.Add(choice);
+                tagChoices.Children.Add(choice);
+            }
+            tagFields.Children.Add(tagChoices);
+            tagFields.Children.Add(new TextBlock
+            {
+                Text = "可同时选择多个分类；未选择时归入艺术。",
+                Foreground = MutedBrush,
+                TextWrapping = TextWrapping.Wrap
+            });
+            tagPanel.Child = tagFields;
+            previewColumn.Children.Add(tagPanel);
+            previewColumn.Children.Add(customPreviewSurface);
+            grid.Children.Add(previewColumn);
 
             Border panel = PanelBorder();
             panel.VerticalAlignment = VerticalAlignment.Top;
@@ -854,6 +943,9 @@ namespace CodexDreamSkinManager
             CustomThemeOptions options = new CustomThemeOptions();
             options.Name = themeNameBox.Text.Trim();
             options.ImagePath = imagePathBox.Text.Trim();
+            foreach (CheckBox choice in customTagChoices)
+                if (choice.IsChecked == true) options.Tags.Add((string)choice.Content);
+            if (options.Tags.Count == 0) options.Tags.Add("艺术");
             options.Appearance = MapAppearance(appearanceCombo == null ? 0 : appearanceCombo.SelectedIndex);
             options.SetFramingPercent(positionXSlider.Value, positionYSlider.Value, zoomSlider.Value);
             options.PositionMode = positionModeSegment != null && positionModeSegment.SelectedIndex == 1 ? "free" : "locked";
@@ -1494,7 +1586,8 @@ namespace CodexDreamSkinManager
 
         private static ComboBox CreateCombo(string[] items, int selected)
         {
-            ComboBox box = new ComboBox { MinHeight = 34, Padding = new Thickness(8, 4, 8, 4), BorderBrush = AppBorderBrush };
+            ComboBox box = new ComboBox { MinHeight = 34, Padding = new Thickness(0), BorderBrush = AppBorderBrush };
+            box.Style = ManagerControlStyles.Get("Combo");
             foreach (string item in items) box.Items.Add(item);
             box.SelectedIndex = selected;
             return box;
@@ -1691,6 +1784,7 @@ namespace CodexDreamSkinManager
             border.SetValue(Border.BorderBrushProperty, AppBorderBrush);
             border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
             border.SetValue(Border.BackgroundProperty, SurfaceBrush);
+            border.SetBinding(FrameworkElement.ToolTipProperty, new Binding("CategoryLabel"));
 
             FrameworkElementFactory stack = new FrameworkElementFactory(typeof(StackPanel));
             FrameworkElementFactory image = new FrameworkElementFactory(typeof(Image));
@@ -1750,7 +1844,7 @@ namespace CodexDreamSkinManager
         }
 
         private static string MapAppearance(int index) { return index == 1 ? "light" : index == 2 ? "dark" : "auto"; }
-        private static string MapCategory(int index) { string[] values = { "all", "dream", "nature", "cyber", "minimal", "dark", "warm", "uncategorized" }; return values[Math.Max(0, Math.Min(index, values.Length - 1))]; }
+        private static string MapCategory(int index) { return index <= 0 || index > ThemeCategories.Ids.Length ? "all" : ThemeCategories.Ids[index - 1]; }
         private static string MapSource(int index) { return index == 1 ? "preset" : index == 2 ? "saved" : "all"; }
         private static string MapSafeArea(int index) { string[] values = { "auto", "left", "right", "center", "none" }; return values[Math.Max(0, Math.Min(index, values.Length - 1))]; }
         private static string MapTaskMode(int index) { string[] values = { "auto", "ambient", "banner", "full", "off" }; return values[Math.Max(0, Math.Min(index, values.Length - 1))]; }

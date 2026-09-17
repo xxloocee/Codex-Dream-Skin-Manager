@@ -217,8 +217,8 @@ assert.match(
 );
 assert.match(
   source,
-  /const earlyApplied = await session\.evaluate\([\s\S]*if \(!earlyApplied\) \{[\s\S]*applyToSession/,
-  "The watcher must not run the full payload twice after a successful early install.",
+  /const earlyApplied = await session\.evaluate\([\s\S]*if \(!earlyApplied \|\| current\.theme\?\.artMetadata\?\.video\) \{[\s\S]*applyLoadedToSession/,
+  "The watcher must preserve early image installs and always preflight video installs.",
 );
 assert.match(
   source,
