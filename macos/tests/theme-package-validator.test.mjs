@@ -322,8 +322,8 @@ try {
   assert.equal(mp4Mac.output.image, "background.mp4");
   assert.equal(mp4Windows.output.image, "background.mp4");
   const [macVideoPayload, windowsVideoPayload] = await Promise.all([
-    loadMacPayload(mp4Mac.stage),
-    loadWindowsPayload(mp4Windows.stage),
+    loadMacPayload(mp4Mac.stage, path.join(tempRoot, "mac-media-cache")),
+    loadWindowsPayload(mp4Windows.stage, null, path.join(tempRoot, "windows-media-cache")),
   ]);
   assert.equal(macVideoPayload.theme.artMetadata.video, true);
   assert.equal(windowsVideoPayload.theme.artMetadata.video, true);
@@ -344,7 +344,7 @@ try {
   await expectRejected(
     fragmentedMp4Official.source,
     "windows",
-    /standard non-fragmented H\.264\/AVC MP4/,
+    /standard non-fragmented H\.264\/AVC or H\.265\/HEVC MP4/,
     "official-fragmented-mp4",
   );
 
@@ -479,13 +479,13 @@ try {
     const oversizedArchive = path.join(tempRoot, "oversized-source.zip");
     const oversizedHandle = await fs.open(oversizedArchive, "wx");
     try {
-      await oversizedHandle.truncate((32 * 1024 * 1024) + 1);
+      await oversizedHandle.truncate((160 * 1024 * 1024) + 1);
     } finally {
       await oversizedHandle.close();
     }
     await assert.rejects(run(importer, ["--file", oversizedArchive], {
       env: { ...process.env, HOME: importHome, LC_ALL: "C", LANG: "C" },
-    }), /32 MB archive limit/);
+    }), /160 MiB archive limit/);
     const savedThemesRoot = path.join(
       importHome,
       "Library",

@@ -4,12 +4,12 @@ import os from "node:os";
 import path from "node:path";
 
 import {
-  bindVideoFileToSession as bindMacVideo,
+  bindMediaFileToSession as bindMacVideo,
   loadPayload as loadMacPayload,
   materializeMediaSnapshot as materializeMacSnapshot,
 } from "../macos/scripts/injector.mjs";
 import {
-  bindVideoFileToSession as bindWindowsVideo,
+  bindMediaFileToSession as bindWindowsVideo,
   loadPayload as loadWindowsPayload,
   materializeMediaSnapshot as materializeWindowsSnapshot,
 } from "../windows/scripts/injector.mjs";
@@ -88,6 +88,7 @@ try {
       },
       async evaluate(expression) {
         calls.push({ method: "evaluate", expression });
+        if (expression.includes("?.start()")) return { pass: true };
         if (expression.includes("video.readyState")) {
           return { error: null, ready: true };
         }
@@ -109,8 +110,64 @@ try {
       call.method !== "DOM.setFileInputFiles"), false,
     "The file path may only cross CDP as a structured DOM.setFileInputFiles parameter");
   }
+
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=", "base64");
+  for (const [load, bind, platform] of [
+    [(dir, cache) => loadWindowsPayload(dir, null, cache), bindWindowsVideo, "windows"],
+    [loadMacPayload, bindMacVideo, "macos"],
+  ]) {
+    for (const [extension, bytes, mime] of [["png", png, "image/png"], ["mp4", mp4, "video/mp4"]]) {
+      const source = path.join(tempRoot, `large.${extension}`);
+      await fs.writeFile(source, bytes);
+      await fs.truncate(source, 128 * 1024 * 1024);
+      await fs.writeFile(path.join(tempRoot, "theme.json"), JSON.stringify({ ...theme, image: `large.${extension}` }));
+      const loaded = await load(tempRoot, path.join(tempRoot, `${platform}-large-cache`));
+      assert.ok(loaded.payload.includes(`dreamskin-file:${mime}`));
+      assert.doesNotMatch(loaded.payload, /data:(?:image|video)\/[^;]+;base64/);
+      assert.equal(path.extname(loaded.mediaFilePath), `.${extension}`);
+      assert.equal((await fs.stat(loaded.mediaFilePath)).size, 128 * 1024 * 1024);
+      assert.ok(Buffer.byteLength(loaded.payload) < 500_000);
+      await fs.truncate(source, 128 * 1024 * 1024 + 1);
+      await assert.rejects(load(tempRoot, path.join(tempRoot, `${platform}-large-cache`)), /128/);
+      if (extension === "png") {
+        for (const [status, expected] of [
+          [{ ready: true }, null], [{ error: "Image decode failed" }, /Image decode failed/],
+          [{ stale: true }, /Renderer changed/], [{ ready: false }, /Timed out/],
+        ]) {
+          const session = {
+            async send(method, params) {
+              if (method === "Runtime.evaluate") return { result: { objectId: "image-input" } };
+              if (method === "DOM.setFileInputFiles") assert.equal(params.files[0], loaded.mediaFilePath);
+              return {};
+            },
+            async evaluate(expression) {
+              return expression.includes("state.bindMediaFile") ? true : status;
+            },
+          };
+          if (expected) await assert.rejects(bind(session, loaded, 100), expected);
+          else assert.equal(await bind(session, loaded), true);
+        }
+      }
+    }
+  }
+
+  for (const [materialize, platform] of [[materializeWindowsSnapshot, "win"], [materializeMacSnapshot, "mac"]]) {
+    const cache = path.join(tempRoot, `${platform}-mixed-cache`);
+    await fs.mkdir(cache);
+    for (const [index, extension] of ["png", "gif", "mp4"].entries()) {
+      const file = path.join(cache, `${String(index).repeat(64)}.${extension}`);
+      await fs.writeFile(file, "");
+      await fs.truncate(file, 100 * 1024 * 1024);
+    }
+    const retained = await materialize(png, cache, ".png");
+    const sizes = await Promise.all((await fs.readdir(cache)).map(async name => (await fs.stat(path.join(cache, name))).size));
+    assert.ok(sizes.reduce((sum, size) => sum + size, 0) <= 256 * 1024 * 1024,
+      "Images and videos must share the same 256 MiB cache budget");
+    assert.deepEqual(await fs.readFile(retained), png);
+    await assert.rejects(materialize(png, cache, "/../outside.png"), /Unsupported/);
+  }
 } finally {
   await fs.rm(tempRoot, { recursive: true, force: true });
 }
 
-console.log("PASS: MP4 payloads use the private CDP file bridge without Base64 or path disclosure.");
+console.log("PASS: image/video file bridge, 128 MiB boundaries, decode errors, and shared cache budget.");

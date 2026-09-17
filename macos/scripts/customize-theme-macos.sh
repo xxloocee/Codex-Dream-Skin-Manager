@@ -51,7 +51,7 @@ APPLESCRIPT
   fi
   [ -f "$IMAGE" ] || fail "Selected image does not exist: $IMAGE"
   SOURCE_BYTES="$(/usr/bin/stat -f '%z' "$IMAGE")"
-  [ "$SOURCE_BYTES" -le 52428800 ] || fail "Selected image is larger than 50 MB. Choose a smaller file."
+  [ "$SOURCE_BYTES" -le 134217728 ] || fail "Selected image is larger than 128 MiB. Choose a smaller file."
   image_metadata="$("$NODE" "$SCRIPT_DIR/check-image-dimensions.mjs" "$IMAGE" 2>&1)" \
     || fail "$image_metadata"
   animated="$("$NODE" --input-type=module -e '
@@ -114,12 +114,15 @@ APPLESCRIPT
   [ -s "$temporary" ] || fail "The converted image is empty."
   PREPARED_BYTES="$(/usr/bin/stat -f '%z' "$temporary")"
   case "$image_name" in
-    *.mp4) MAX_PREPARED_BYTES=31457280; MAX_PREPARED_LABEL="30 MiB" ;;
-    *) MAX_PREPARED_BYTES=10485760; MAX_PREPARED_LABEL="10 MiB" ;;
+    *.mp4) MAX_PREPARED_BYTES=134217728; MAX_PREPARED_LABEL="128 MiB" ;;
+    *) MAX_PREPARED_BYTES=134217728; MAX_PREPARED_LABEL="128 MiB" ;;
   esac
   [ "$PREPARED_BYTES" -le "$MAX_PREPARED_BYTES" ] \
     || fail "The prepared background is larger than $MAX_PREPARED_LABEL. Choose a simpler or smaller file."
-  /bin/mv -f "$temporary" "$prepared"
+  case "$image_name" in
+  *.mp4) "$NODE" "$SCRIPT_DIR/validate-video-file.mjs" "$temporary" "$STATE_PATH" --mp4 >/dev/null ;;
+esac
+/bin/mv -f "$temporary" "$prepared"
   /bin/chmod 600 "$prepared"
 
   "$NODE" "$SCRIPT_DIR/write-theme.mjs" custom \

@@ -347,6 +347,9 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $testExe
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+& $nodeExecutableFullPath (Join-Path $root 'tools\video-decode-probe.test.mjs')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 $mp4FileBridgeTest = Join-Path $root 'tools\mp4-file-bridge.test.mjs'
 & $nodeExecutableFullPath $mp4FileBridgeTest
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

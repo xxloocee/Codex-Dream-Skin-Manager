@@ -1168,6 +1168,8 @@ try {
   Copy-Item -LiteralPath (Join-Path $Root 'scripts\check-update.ps1') -Destination $releaseFixtureScripts -Force
   Copy-Item -LiteralPath (Join-Path $Root 'scripts\config-utf8.ps1') -Destination $releaseFixtureScripts -Force
   Copy-Item -LiteralPath (Join-Path $Root 'scripts\image-metadata.mjs') -Destination $releaseFixtureScripts -Force
+  Copy-Item -LiteralPath (Join-Path $Root 'scripts\video-decode-probe.mjs') -Destination $releaseFixtureScripts -Force
+  Copy-Item -LiteralPath (Join-Path $Root 'scripts\validate-video-file.mjs') -Destination $releaseFixtureScripts -Force
   Copy-Item -LiteralPath (Join-Path $Root 'scripts\injector.mjs') -Destination $releaseFixtureScripts -Force
   Copy-Item -LiteralPath (Join-Path $Root 'scripts\install-dream-skin.ps1') -Destination $releaseFixtureScripts -Force
   Copy-Item -LiteralPath (Join-Path $Root 'scripts\localization-windows.ps1') -Destination $releaseFixtureScripts -Force
@@ -1232,7 +1234,7 @@ try {
   New-Item -ItemType Directory -Path $oversizedTheme | Out-Null
   $oversizedImage = Join-Path $oversizedTheme 'oversized.jpg'
   $oversizedStream = [System.IO.File]::Open($oversizedImage, [System.IO.FileMode]::CreateNew)
-  try { $oversizedStream.SetLength((10 * 1024 * 1024) + 1) } finally { $oversizedStream.Dispose() }
+  try { $oversizedStream.SetLength((128 * 1024 * 1024) + 1) } finally { $oversizedStream.Dispose() }
   Write-DreamSkinUtf8FileAtomically -Path (Join-Path $oversizedTheme 'theme.json') `
     -Content "{`"image`":`"oversized.jpg`"}`r`n"
   $oversizedReadRejected = $false
@@ -1242,19 +1244,24 @@ try {
     $null = Set-DreamSkinActiveTheme -ImagePath $oversizedImage -Theme $null -StateRoot $themeStateRoot
   } catch { $oversizedSetRejected = $true }
   if (-not $oversizedReadRejected -or -not $oversizedSetRejected) {
-    throw 'The 10 MB image limit was not enforced before theme copy or payload construction.'
+    throw 'The 128 MiB image limit was not enforced before theme copy or payload construction.'
   }
 
   $supportedVideo = Join-Path $temporaryRoot 'supported-video.mp4'
   $supportedVideoStream = [System.IO.File]::Open($supportedVideo, [System.IO.FileMode]::CreateNew)
-  try { $supportedVideoStream.SetLength(20 * 1024 * 1024) } finally { $supportedVideoStream.Dispose() }
+  try { $supportedVideoStream.SetLength(128 * 1024 * 1024) } finally { $supportedVideoStream.Dispose() }
   Assert-DreamSkinImageFile -Path $supportedVideo -SkipImageMetadata
+  $supportedImage = Join-Path $temporaryRoot 'supported-image.png'
+  $supportedImageStream = [System.IO.File]::Open($supportedImage, [System.IO.FileMode]::CreateNew)
+  try { $supportedImageStream.SetLength(128 * 1024 * 1024) } finally { $supportedImageStream.Dispose() }
+  Assert-DreamSkinImageFile -Path $supportedImage -SkipImageMetadata
+
   $oversizedVideo = Join-Path $temporaryRoot 'oversized-video.mp4'
   $oversizedVideoStream = [System.IO.File]::Open($oversizedVideo, [System.IO.FileMode]::CreateNew)
-  try { $oversizedVideoStream.SetLength((30 * 1024 * 1024) + 1) } finally { $oversizedVideoStream.Dispose() }
+  try { $oversizedVideoStream.SetLength((128 * 1024 * 1024) + 1) } finally { $oversizedVideoStream.Dispose() }
   $oversizedVideoRejected = $false
   try { Assert-DreamSkinImageFile -Path $oversizedVideo -SkipImageMetadata } catch { $oversizedVideoRejected = $true }
-  if (-not $oversizedVideoRejected) { throw 'The 30 MiB MP4 limit was not enforced.' }
+  if (-not $oversizedVideoRejected) { throw 'The 128 MiB MP4 limit was not enforced.' }
 
   $oversizedDimensionImage = Join-Path $temporaryRoot 'oversized-dimension.png'
   $pngHeader = New-Object byte[] 24
@@ -1561,7 +1568,7 @@ try {
     'Get-DreamSkinValidatedImageMetadata',
     '[System.IO.Compression.ZipArchive]',
     'Only ordinary .zip theme packages are supported',
-    'Theme ZIP exceeds the 64 MB expanded-size limit',
+    'Theme ZIP exceeds the 192 MiB expanded-size limit',
     'theme-package-validator.mjs',
     '16384px / 50MP safety limit',
     'Assert-DreamSkinImageFile -Path $temporary',
@@ -1655,7 +1662,7 @@ try {
   }
   $oversizedPayloadTest = Invoke-DreamSkinNative -FilePath $node.Path -ArgumentList @(
     (Join-Path $Root 'scripts\injector.mjs'), '--check-payload', '--theme-dir', $oversizedTheme)
-  if ($oversizedPayloadTest.ExitCode -eq 0) { throw 'Node injector accepted an image over the 10 MB limit.' }
+  if ($oversizedPayloadTest.ExitCode -eq 0) { throw 'Node injector accepted an image over the 128 MiB limit.' }
   $safeCssTest = Invoke-DreamSkinNative -FilePath $node.Path -ArgumentList @(
     (Join-Path $projectRoot 'macos\tests\safe-css-validator.test.mjs'))
   if ($safeCssTest.ExitCode -ne 0) { throw 'Safe CSS validator regression test failed.' }

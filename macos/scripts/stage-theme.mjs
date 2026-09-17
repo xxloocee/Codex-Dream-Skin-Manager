@@ -10,8 +10,8 @@ if (!sourceDirArg || !stageDirArg) {
 }
 
 const MAX_CONFIG_BYTES = 1024 * 1024;
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 128 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 128 * 1024 * 1024;
 const MAX_CSS_BYTES = 256 * 1024;
 const OPEN_FLAGS = fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0);
 

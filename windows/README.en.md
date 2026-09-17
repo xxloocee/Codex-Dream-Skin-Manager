@@ -87,7 +87,7 @@ Next, use the generated screenshot to check horizontal overflow and text contras
 
 Open `Codex Dream Skin - Tray` to:
 
-- Import a PNG, APNG, JPEG, WebP, or GIF image, or a standard non-fragmented H.264/AVC MP4 video. Animated images and MP4 files are preserved as-is. After validation, MP4 uses a read-only content-addressed snapshot that the controlled file bridge exposes as a local `blob:` URL instead of Base64, then plays muted and looped in Codex. The tray manager shows a static MP4 cover through Windows media thumbnails but does not play the video.
+- Import a PNG, APNG, JPEG, WebP, or GIF image, or a standard non-fragmented H.264/AVC or H.265/HEVC MP4 video. Animated images and MP4 files are preserved as-is. After validation, MP4 uses a read-only content-addressed snapshot that the controlled file bridge exposes as a local `blob:` URL instead of Base64, then plays muted and looped in Codex. The tray manager shows a static MP4 cover through Windows media thumbnails but does not play the video.
 - Import an ordinary `.zip` theme pack into Saved Themes (`.dreamskin` is not supported).
 - Save the active theme and switch through saved themes.
 - Pause or resume the skin.
@@ -105,15 +105,15 @@ rollback baseline is always available. Save unfinished input first. The link
 cannot provide an arbitrary download URL, file path, command, or silent-apply
 option. Incomplete legacy themes remain rejected by the client.
 
-Import UI-free background media rather than a preview containing a window, sidebar, composer, text, or buttons. Images may be at most 10 MiB and MP4 files at most 30 MiB; all media is limited to 16384 pixels on either side and 50 million total pixels, while animated images may contain at most 300 frames. MP4 files must be standard non-fragmented H.264/AVC, be no longer than 60 seconds or higher than 60 FPS, and are stored without transcoding.
+Import UI-free background media rather than a preview containing a window, sidebar, composer, text, or buttons. Images may be at most 128 MiB and MP4 files at most 128 MiB; all media is limited to 16384 pixels on either side and 50 million total pixels, while animated images may contain at most 300 frames. MP4 files must be standard non-fragmented H.264/AVC or H.265/HEVC, be no longer than 60 seconds or higher than 60 FPS, and are stored without transcoding.
 
 Every new official Studio ZIP contains `manifest.json`, non-empty `theme.json`,
 non-empty `theme.css`, and exactly one `background.webp|jpg|png|apng|gif|mp4`, with optional `LICENSE.txt` and the
 reserved `manifest.sig`. Place them at archive root or inside exactly one
 top-level theme folder. A local simplified ZIP must contain exactly `theme.json`,
 `theme.css`, and its referenced image; because it lacks manifest integrity and compatibility
-data, use that format only for trusted content. Limits are 32 MiB compressed,
-32 entries, and 64 MiB expanded. Traversal, links/reparse entries, nested
+data, use that format only for trusted content. Limits are 160 MiB compressed,
+32 entries, and 192 MiB expanded. Traversal, links/reparse entries, nested
 archives, and unregistered files are rejected. Official packs also verify the
 platform, minimum client version, and each payload's declared byte length and
 SHA-256. Safe CSS is locally revalidated on import and every apply, then runs
@@ -221,3 +221,5 @@ Open the repository's [new issue page](https://github.com/Fei-Away/Codex-Dream-S
 - See [`../SECURITY.md`](../SECURITY.md) for the complete threat model and operating guidance.
 
 Maintainer and agent constraints live in [`SKILL.md`](./SKILL.md). See [`references/runtime-notes.md`](./references/runtime-notes.md) for deeper runtime troubleshooting.
+
+MP4 imports and application require a connected Codex renderer and a successfully decoded frame. Connection failures, decode errors, and timeouts block the operation. HEVC support depends on the current runtime and device; videos are not automatically transcoded.

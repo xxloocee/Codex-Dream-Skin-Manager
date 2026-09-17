@@ -309,13 +309,10 @@ try {
   [System.IO.File]::WriteAllBytes($mp4Image, [Convert]::FromBase64String(
     [System.IO.File]::ReadAllText($mp4Fixture, [System.Text.Encoding]::ASCII).Trim()
   ))
-  $mp4 = Invoke-Manager -Arguments (@('-Action', 'ValidateImage', '-ImagePath', $mp4Image) + $common)
-  Assert-Equal 'mp4' $mp4.format 'MP4 format was not identified.'
-  Assert-Equal '32' $mp4.width 'MP4 width was not returned.'
-  Assert-Equal '18' $mp4.height 'MP4 height was not returned.'
-  Assert-Equal $true $mp4.animated 'MP4 was not classified as moving media.'
-  Assert-Equal '0' $mp4.frameCount 'MP4 must not report a synthetic image frame count.'
-  Assert-Equal $true $mp4.canPreview 'MP4 static preview capability was not reported.'
+  $rejectedUnverifiedMp4 = $false
+  try { $null = Invoke-Manager -Arguments (@('-Action', 'ValidateImage', '-ImagePath', $mp4Image) + $common) }
+  catch { $rejectedUnverifiedMp4 = $_.Exception.Message -match 'Codex' }
+  Assert-Equal $true $rejectedUnverifiedMp4 'MP4 selection must require a connected Codex decoder.'
   $emptyMp4 = Join-Path $stateRoot 'empty-video.mp4'
   [System.IO.File]::WriteAllBytes($emptyMp4, [Convert]::FromBase64String(
     'AAAAHGZ0eXBpc29tAAAAAGlzb21tcDQyYXZjMQAAAMxtb292AAAAxHRyYWsAAABcdGtoZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHgAAABDgAAAAAAGBtZGlhAAAAFGhkbHIAAAAAAAAAAHZpZGUAAABEbWluZgAAADxzdGJsAAAANHN0c2QAAAAAAAAAAQAAACRhdmMxAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4AEOA=='
@@ -323,15 +320,17 @@ try {
   $rejectedEmptyMp4 = $false
   try { $null = Invoke-Manager -Arguments (@('-Action', 'ValidateImage', '-ImagePath', $emptyMp4) + $common) } catch { $rejectedEmptyMp4 = $true }
   Assert-Equal $true $rejectedEmptyMp4 'ValidateImage accepted an MP4 without media samples.'
-  $mp4Import = Invoke-Manager -Arguments (@(
-      '-Action', 'ImportTheme', '-ImagePath', $mp4Image,
-      '-Name', 'MP4 集成测试主题', '-KeepCurrent'
-    ) + $common)
-  Assert-Equal '.mp4' ([System.IO.Path]::GetExtension((
-      [System.IO.File]::ReadAllText((Join-Path $mp4Import.themeDirectory 'theme.json'), [System.Text.Encoding]::UTF8) |
-        ConvertFrom-Json
-    ).image)) 'MP4 import did not preserve the source format.'
-  Write-Host 'PASS: image and MP4 preflight validates real metadata'
+  $savedBeforeVideo = @(Get-ChildItem -LiteralPath (Join-Path $stateRoot 'themes') -Directory).Count
+  $activeBeforeVideo = Get-FileHash -LiteralPath (Join-Path $stateRoot 'active-theme\theme.json')
+  $rejectedUnverifiedImport = $false
+  try {
+    $null = Invoke-Manager -Arguments (@('-Action', 'ImportTheme', '-ImagePath', $mp4Image,
+      '-Name', 'MP4 集成测试主题', '-KeepCurrent') + $common)
+  } catch { $rejectedUnverifiedImport = $_.Exception.Message -match 'Codex' }
+  Assert-Equal $true $rejectedUnverifiedImport 'MP4 import must require a successful decoder preflight.'
+  Assert-Equal $savedBeforeVideo @(Get-ChildItem -LiteralPath (Join-Path $stateRoot 'themes') -Directory).Count 'Failed decode preflight published a theme.'
+  Assert-Equal $activeBeforeVideo.Hash (Get-FileHash -LiteralPath (Join-Path $stateRoot 'active-theme\theme.json')).Hash 'Failed preflight changed the active theme.'
+  Write-Host 'PASS: image metadata and fail-closed MP4 decode preflight'
 
   $normalizedRoot = [System.IO.Path]::GetFullPath($stateRoot).TrimEnd('\').ToUpperInvariant()
   $sha = [System.Security.Cryptography.SHA256]::Create()
@@ -639,7 +638,9 @@ if (args.includes("--watch")) {
     'assets\selectors.json',
     'assets\safe-css-validator.mjs',
     'assets\theme-package-validator.mjs',
-    'scripts\image-metadata.mjs'
+    'scripts\image-metadata.mjs',
+    'scripts\video-decode-probe.mjs',
+    'scripts\validate-video-file.mjs'
   )) {
     $sourceRuntimeAsset = Join-Path $SkillRoot $runtimeAsset
     if (Test-Path -LiteralPath $sourceRuntimeAsset -PathType Leaf) {

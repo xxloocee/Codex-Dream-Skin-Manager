@@ -538,6 +538,7 @@ function Save-ManagerThemeDirectly {
       Copy-Item -LiteralPath $licenseSource -Destination (Join-Path $temporary 'LICENSE.txt') -Force
     }
     $null = Read-DreamSkinTheme -ThemeDirectory $temporary
+    Assert-DreamSkinVideoDecodable -Path $targetImage -StateRoot $StateRoot
     Move-Item -LiteralPath $temporary -Destination $destination
     Assert-DreamSkinNoReparseComponents -Path $destination
     return Read-DreamSkinTheme -ThemeDirectory $destination
@@ -776,13 +777,14 @@ function Get-ManagerImageMetadata {
   $output = @(& $node.Path $metadataScript '--check' $fullPath 2>&1)
   if ($LASTEXITCODE -ne 0) {
     if ($format -eq 'mp4') {
-      throw 'MP4 验证失败：仅支持标准非分片 H.264/AVC MP4，且视频不能超过 60 秒、60 FPS 或 30 MiB。'
+      throw 'MP4 验证失败：仅支持标准非分片 H.264/AVC 或 H.265/HEVC MP4，且视频不能超过 60 秒、60 FPS 或 128 MiB。'
     }
     throw '背景文件验证失败：文件已损坏，或超过图片/视频安全限制。'
   }
   try { $metadata = ($output -join "`n") | ConvertFrom-Json -ErrorAction Stop } catch {
     throw '图片验证失败：元数据工具返回了无效结果。'
   }
+  Assert-DreamSkinVideoDecodable -Path $fullPath -StateRoot $StateRoot
   $canPreview = $format -ne 'webp'
   return [ordered]@{
     path = $fullPath
@@ -1234,6 +1236,8 @@ switch ($Action) {
   }
   'Resume' {
     Invoke-ManagerWriteLock {
+      $resumeTheme = Read-DreamSkinTheme -ThemeDirectory $paths.Active
+      Assert-DreamSkinVideoDecodable -Path $resumeTheme.ImagePath -StateRoot $StateRoot
       Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
       $rendererApplied = Invoke-ManagerLiveApplyIfRunning
       [ordered]@{ isPaused = $false; rendererApplied = [bool]$rendererApplied } | ConvertTo-Json

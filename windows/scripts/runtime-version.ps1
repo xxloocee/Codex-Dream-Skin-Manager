@@ -11,7 +11,9 @@ function Get-DreamSkinRuntimeFingerprint {
       (Join-Path $SkillRoot 'assets\selectors.json'),
       (Join-Path $SkillRoot 'assets\safe-css-validator.mjs'),
       (Join-Path $SkillRoot 'assets\theme-package-validator.mjs'),
-      (Join-Path $SkillRoot 'scripts\image-metadata.mjs')
+      (Join-Path $SkillRoot 'scripts\image-metadata.mjs'),
+      (Join-Path $SkillRoot 'scripts\video-decode-probe.mjs'),
+      (Join-Path $SkillRoot 'scripts\validate-video-file.mjs')
     )
     # Treat the generated validator set as one versioned unit. A legacy engine
     # either has all of it or is fingerprinted by the original three files.

@@ -109,9 +109,14 @@ function Start-DreamSkinCodex {
 function Read-DreamSkinTheme {
   param([string]$ThemeDirectory)
   if (-not (Test-Path -LiteralPath (Join-Path $ThemeDirectory 'theme.json'))) { throw 'missing theme' }
-  return [pscustomobject]@{ Theme = [pscustomobject]@{ name = 'Selected' } }
+  return [pscustomobject]@{ Theme = [pscustomobject]@{ name = 'Selected' }; ImagePath = (Join-Path $ThemeDirectory 'background.jpg') }
 }
 function Assert-DreamSkinImageFile { param([string]$Path) if (-not (Test-Path -LiteralPath $Path)) { throw 'missing image' } }
+function Assert-DreamSkinVideoDecodable {
+  param([string]$Path,[string]$StateRoot)
+  Add-Content -LiteralPath $env:RECOVERY_TEST_LOG -Value 'decode'
+  if ((Get-Content -LiteralPath $Path -Raw) -eq 'reject') { throw 'decode failed' }
+}
 '@
   Write-Utf8 (Join-Path $scripts 'manager-actions.ps1') @'
 param([string]$Action,[string]$SkillRoot,[string]$StateRoot,[string]$ThemeDirectory,[string]$ImagePath,
@@ -168,6 +173,21 @@ Add-Content -LiteralPath $env:RECOVERY_TEST_LOG -Value 'start'
     Assert-Equal 0 $imageRecovery.ExitCode 'Image recovery with an empty accent failed.'
     Assert-Equal "restore`r`napply`r`nstart" ((Get-Content -LiteralPath $logPath) -join "`r`n") 'Image recovery order changed.'
     Write-Host 'PASS: image recovery omits an empty accent argument safely'
+
+    $imagePath = Join-Path $testRoot 'selected.mp4'
+    Write-Utf8 $imagePath 'reject'
+    Remove-Item -LiteralPath $logPath -Force
+    Write-TestState
+    $rejectedVideo = Invoke-Recovery -UseImage
+    Assert-True ($rejectedVideo.ExitCode -ne 0) 'Undecodable video recovery was accepted.'
+    Assert-Equal 'decode' ((Get-Content -LiteralPath $logPath) -join "`r`n") 'Rejected video stopped Codex or changed the theme.'
+    Write-Utf8 $imagePath 'decodable'
+    Remove-Item -LiteralPath $logPath -Force
+    $videoRecovery = Invoke-Recovery -UseImage
+    Assert-Equal 0 $videoRecovery.ExitCode 'Decodable video recovery failed.'
+    Assert-Equal "decode`r`nrestore`r`nstart`r`napply" ((Get-Content -LiteralPath $logPath) -join "`r`n") 'Video must reconnect before candidate application.'
+    $imagePath = Join-Path $testRoot 'selected.jpg'
+    Write-Host 'PASS: video recovery rejects before stopping and reconnects before applying'
 
     Remove-Item -LiteralPath $logPath -Force -ErrorAction SilentlyContinue
     Get-ChildItem -LiteralPath $stateRoot -Filter 'state.archived-*.json' | Remove-Item -Force

@@ -7,8 +7,8 @@ set -euo pipefail
 
 ARCHIVE="${1:-}"
 DESTINATION="${2:-}"
-MAX_ARCHIVE_BYTES=$((32 * 1024 * 1024))
-MAX_EXPANDED_BYTES=$((64 * 1024 * 1024))
+MAX_ARCHIVE_BYTES=$((160 * 1024 * 1024))
+MAX_EXPANDED_BYTES=$((192 * 1024 * 1024))
 MAX_ENTRIES=32
 EXTRACT_ROOT=""
 PROBE_COUNT_FILE=""
@@ -43,7 +43,7 @@ archive_bytes="$(/usr/bin/stat -f '%z' "$ARCHIVE")"
 case "$archive_bytes" in ''|*[!0-9]*) fail_extract "Could not read theme ZIP size." ;; esac
 [ "$archive_bytes" -gt 0 ] || fail_extract "Theme ZIP is empty."
 [ "$archive_bytes" -le "$MAX_ARCHIVE_BYTES" ] \
-  || fail_extract "Theme ZIP exceeds the 32 MB archive limit."
+  || fail_extract "Theme ZIP exceeds the 160 MiB archive limit."
 
 # Read only central-directory metadata here. Content integrity is checked later
 # by a bounded expansion probe, so a compression bomb cannot consume unbounded
@@ -91,7 +91,7 @@ EOF
 [ "$entry_count" -le "$MAX_ENTRIES" ] \
   || fail_extract "Theme ZIP exceeds the 32-entry limit."
 [ "$expanded_bytes" -le "$MAX_EXPANDED_BYTES" ] \
-  || fail_extract "Theme ZIP exceeds the 64 MB expanded-size limit."
+  || fail_extract "Theme ZIP exceeds the 192 MiB expanded-size limit."
 
 destination_parent="$(cd "$(dirname "$DESTINATION")" && pwd -P)"
 EXTRACT_ROOT="$(/usr/bin/mktemp -d "$destination_parent/.theme-zip-extract.XXXXXX")"
@@ -111,7 +111,7 @@ set -e
 probe_bytes="$(LC_ALL=C /usr/bin/tr -d '[:space:]' < "$PROBE_COUNT_FILE")"
 case "$probe_bytes" in ''|*[!0-9]*) fail_extract "Could not measure expanded theme ZIP content." ;; esac
 if [ "$probe_bytes" -gt "$MAX_EXPANDED_BYTES" ]; then
-  fail_extract "Theme ZIP exceeds the 64 MB expanded-size limit."
+  fail_extract "Theme ZIP exceeds the 192 MiB expanded-size limit."
 fi
 [ "${probe_status[0]:-1}" -eq 0 ] \
   && [ "${probe_status[1]:-1}" -eq 0 ] \
@@ -150,7 +150,7 @@ while IFS= read -r -d '' entry; do
     entry_bytes="$(/usr/bin/stat -f '%z' "$entry")"
     actual_bytes=$((actual_bytes + entry_bytes))
     [ "$actual_bytes" -le "$MAX_EXPANDED_BYTES" ] \
-      || fail_extract "Theme ZIP exceeds the 64 MB expanded-size limit."
+      || fail_extract "Theme ZIP exceeds the 192 MiB expanded-size limit."
     lower="$(LC_ALL=C /usr/bin/printf '%s' "$relative" | /usr/bin/tr '[:upper:]' '[:lower:]')"
     case "$lower" in
       *.zip|*.dreamskin|*.7z|*.rar|*.tar|*.tar.gz|*.tgz|*.gz|*.bz2|*.xz)

@@ -77,8 +77,8 @@ CSS/images.
 2. Start Codex via user `launchd` with CDP bound to `127.0.0.1` only.
 3. Accept the debug port only when it belongs to Codex (or a legitimate child).
 4. Inject only into expected `app://` renderer targets.
-5. Resolve the selected theme and media to real paths, then enforce 10 MiB for
-   images or 30 MiB for MP4, plus `16384px`-per-side and 50-megapixel limits.
+5. Resolve the selected theme and media to real paths, then enforce 128 MiB for
+   images or 128 MiB for MP4, plus `16384px`-per-side and 50-megapixel limits.
 6. Keep a small injector alive across reloads and route changes.
 7. Pause/Restore stops the injector only when PID, executable, script path, and
    start time match the recorded job; a stop failure preserves state and aborts.
@@ -142,7 +142,7 @@ folder. A local simplified pack must contain exactly `theme.json`, `theme.css`, 
 referenced image; because it lacks manifest integrity and compatibility data,
 use that format only for trusted local content.
 
-The importer allows at most 32 MiB compressed, 32 entries, and 64 MiB expanded.
+The importer allows at most 160 MiB compressed, 32 entries, and 192 MiB expanded.
 It rejects links, traversal, nested archives, unregistered payload files, and
 anything that fails theme/image validation. Official packs also verify the
 platform, minimum client version, and each manifest payload's byte length and
@@ -166,9 +166,9 @@ manual placement bypasses archive checks, so use trusted content only.
 
 ## Image guidelines
 
-- PNG / APNG / JPEG / HEIC / TIFF / WebP / GIF, plus standard non-fragmented H.264/AVC MP4 (animated images and MP4 are preserved)
-- Image source ≤ 50 MB; prepared image ≤ 10 MiB, MP4 ≤ 30 MiB, ≤ 16384 px per side, and ≤ 50 MP. MP4 is not transcoded.
-- Animated images are limited to 300 frames; MP4 is limited to 60 seconds and 60 FPS. Static PNG/WebP/GIF/HEIC/TIFF continue to be normalized to JPEG. After validation, MP4 uses a read-only content-addressed snapshot that the controlled file bridge exposes as a local `blob:` URL instead of Base64, then plays muted and looped in Codex; the menu-bar manager does not play a video preview.
+- PNG / APNG / JPEG / HEIC / TIFF / WebP / GIF, plus standard non-fragmented H.264/AVC or H.265/HEVC MP4 (animated images and MP4 are preserved)
+- Image source ≤ 128 MiB; prepared image ≤ 128 MiB, MP4 ≤ 128 MiB, ≤ 16384 px per side, and ≤ 50 MP. MP4 is not transcoded.
+- Animated images are limited to 300 frames; MP4 is limited to 60 seconds and 60 FPS. Static PNG/WebP/GIF/HEIC/TIFF continue to be normalized to JPEG. After validation, images and MP4 use read-only content-addressed snapshots exposed through the controlled file bridge as local `blob:` URLs instead of Base64. Images and videos share a 256 MiB / 16-file cache per active injector. MP4 plays muted and looped in Codex; the menu-bar manager does not play a video preview.
 - `2560 × 1440` (16:9) is the recommended master size; width ≥ 2000 px minimum
 - Keep roughly the left 50%–58% calm and low-contrast for native home content;
   place the subject in the right 58%–88% without touching the edge
@@ -277,3 +277,5 @@ Thanks to **[passion8.cc](https://passion8.cc/register?aff=TuPe)** for sponsorin
 - Not an API proxy: theming does not change model providers or API keys
 
 If you use a third-party API relay, configure it separately — keep theme install and API config as two explicit steps.
+
+MP4 imports and theme application require a connected Codex main window and a successfully decoded video frame in its renderer. Missing connections, decode errors, and timeouts block publication. HEVC availability depends on the current Codex runtime and device; no automatic transcoding is performed.

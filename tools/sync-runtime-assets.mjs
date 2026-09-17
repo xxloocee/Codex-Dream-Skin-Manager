@@ -95,7 +95,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       const metadata = readImageMetadata(bytes, path.extname(resolved));
       const animation = readImageAnimation(bytes, path.extname(resolved));
       if (!metadata || !animation || animation.frameCount > MAX_IMAGE_FRAMES) {
-        throw new Error("Media metadata is invalid or exceeds the image/video safety limits");
+        throw new Error(path.extname(resolved).toLowerCase() === ".mp4"
+          ? "MP4 must be non-fragmented H.264/AVC or H.265/HEVC, within 60 seconds, 60 FPS and dimension limits."
+          : "Media metadata is invalid or exceeds the image/video safety limits");
       }
       console.log(JSON.stringify({ ...metadata, ...animation }));
     } catch (error) {
@@ -143,6 +145,14 @@ const sourceImageMetadata = await fs.readFile(
   "utf8",
 );
 const outputs = [
+  {
+    content: await fs.readFile(path.join(projectRoot, "runtime", "validate-video-file.mjs"), "utf8"),
+    paths: ["windows/scripts/validate-video-file.mjs", "macos/scripts/validate-video-file.mjs"],
+  },
+  {
+    content: await fs.readFile(path.join(projectRoot, "runtime", "video-decode-probe.mjs"), "utf8"),
+    paths: ["windows/scripts/video-decode-probe.mjs", "macos/scripts/video-decode-probe.mjs"],
+  },
   {
     // The injector runs from a packaged platform tree, so stage the same
     // contract beside the renderer assets while keeping tools/selectors.json

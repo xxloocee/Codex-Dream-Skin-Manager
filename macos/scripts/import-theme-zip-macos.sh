@@ -33,7 +33,7 @@ if [ -n "$EXPECTED_SHA256" ]; then
   case "$EXPECTED_SHA256" in *[!0-9a-f]*|'') fail "Expected package SHA-256 is invalid." ;; esac
   [ "${#EXPECTED_SHA256}" -eq 64 ] || fail "Expected package SHA-256 is invalid."
   case "$EXPECTED_BYTES" in ''|*[!0-9]*) fail "Expected package byte count is invalid." ;; esac
-  [ "$EXPECTED_BYTES" -gt 0 ] && [ "$EXPECTED_BYTES" -le 33554432 ] \
+  [ "$EXPECTED_BYTES" -gt 0 ] && [ "$EXPECTED_BYTES" -le 167772160 ] \
     || fail "Expected package byte count is outside the import limit."
 fi
 archive_name="$(/usr/bin/basename "$ARCHIVE")"

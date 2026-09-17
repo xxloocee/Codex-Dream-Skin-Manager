@@ -135,11 +135,12 @@ process.stdout.write(value.contentFingerprint);
   || fail "Theme pack failed validation: $THEME_ID"
 THEME_BYTES="$(/usr/bin/stat -f '%z' "$stage/$THEME_IMAGE")"
 case "$THEME_IMAGE" in
-  *.[mM][pP]4) MAX_THEME_BYTES=31457280; MAX_THEME_LABEL="30 MiB" ;;
-  *) MAX_THEME_BYTES=10485760; MAX_THEME_LABEL="10 MiB" ;;
+  *.[mM][pP]4) MAX_THEME_BYTES=134217728; MAX_THEME_LABEL="128 MiB" ;;
+  *) MAX_THEME_BYTES=134217728; MAX_THEME_LABEL="128 MiB" ;;
 esac
 [ "$THEME_BYTES" -gt 0 ] && [ "$THEME_BYTES" -le "$MAX_THEME_BYTES" ] \
   || fail "Theme media must be non-empty and no larger than $MAX_THEME_LABEL."
+"$NODE" "$SCRIPT_DIR/validate-video-file.mjs" "$stage/$THEME_IMAGE" "$STATE_PATH" >/dev/null
 SAFE_CSS_NAME=""
 [ ! -f "$stage/theme.css" ] || SAFE_CSS_NAME="theme.css"
 /bin/chmod 600 "$stage/"*

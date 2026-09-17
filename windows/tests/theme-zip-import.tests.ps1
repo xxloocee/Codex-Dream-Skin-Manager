@@ -1321,7 +1321,7 @@ try {
     [System.IO.FileMode]::CreateNew,
     [System.IO.FileAccess]::Write
   )
-  try { $largeImageStream.SetLength(65MB) } finally { $largeImageStream.Dispose() }
+  try { $largeImageStream.SetLength(193MB) } finally { $largeImageStream.Dispose() }
   $largeArchive = Join-Path $temporaryRoot 'large.zip'
   New-TestZipFromDirectory -Source $largeSource -Archive $largeArchive
   Assert-TestImportRejected -Archive $largeArchive -Label 'expanded-size abuse'

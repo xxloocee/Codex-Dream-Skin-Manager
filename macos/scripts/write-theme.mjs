@@ -133,7 +133,7 @@ const canonicalOutputDir = await fs.realpath(outputDir);
 const imagePath = await fs.realpath(path.join(canonicalOutputDir, image));
 assertContainedPath(canonicalOutputDir, imagePath, "image");
 const imageStat = await fs.stat(imagePath);
-const maxImageBytes = /\.mp4$/i.test(image) ? 30 * 1024 * 1024 : 10 * 1024 * 1024;
+const maxImageBytes = 128 * 1024 * 1024;
 if (!imageStat.isFile() || imageStat.size < 1 || imageStat.size > maxImageBytes) {
   throw new Error(`The prepared theme media must be non-empty and no larger than ${maxImageBytes / 1024 / 1024} MiB.`);
 }

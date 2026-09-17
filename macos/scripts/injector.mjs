@@ -1,3 +1,4 @@
+import { probeVideoDecode } from "./video-decode-probe.mjs";
 import fs from "node:fs/promises";
 import { constants as fsConstants, watch as watchFs } from "node:fs";
 import { execFile } from "node:child_process";
@@ -44,17 +45,17 @@ const stableTestidLiteral = (testid) => {
   }
   return JSON.stringify(`[data-testid="${testid}"]`);
 };
-const SKIN_VERSION = "1.6.1";
+const SKIN_VERSION = "1.7.0";
 // .github/workflows/ci.yml's version-consistency check greps this file for a
 // literal `const SKIN_VERSION = "...";` line, so the export stays a separate
 // statement rather than an inline `export const`.
 export { SKIN_VERSION };
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const CDP_ID_PATTERN = /^[A-Za-z0-9._-]{1,200}$/;
-const MAX_ART_BYTES = 10 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
+const MAX_ART_BYTES = 128 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 128 * 1024 * 1024;
 const MAX_SAFE_CSS_BYTES = 256 * 1024;
-const MAX_MEDIA_CACHE_BYTES = 128 * 1024 * 1024;
+const MAX_MEDIA_CACHE_BYTES = 256 * 1024 * 1024;
 const MAX_MEDIA_CACHE_FILES = 16;
 const STALE_MEDIA_TEMP_MS = 60 * 60 * 1000;
 const MEDIA_CACHE_PARENT = process.platform === "win32"
@@ -636,12 +637,12 @@ async function verifyMediaSnapshot(snapshotPath, expectedBytes) {
     handle = await fs.open(snapshotPath, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
     const before = await handle.stat();
     if (!before.isFile() || before.size !== expectedBytes.length) {
-      throw new Error("Validated MP4 snapshot has an unexpected file type or size");
+      throw new Error("Validated media snapshot has an unexpected file type or size");
     }
     const actualBytes = await handle.readFile();
     const after = await handle.stat();
     if (!sameFileStat(before, after) || !actualBytes.equals(expectedBytes)) {
-      throw new Error("Validated MP4 snapshot content does not match the checked media");
+      throw new Error("Validated media snapshot content does not match the checked media");
     }
   } finally {
     await handle?.close();
@@ -715,7 +716,7 @@ async function pruneMediaCache(mediaCacheRoot, retainedPath) {
   for (const entry of entries) {
     if (!entry.isFile()) continue;
     const entryPath = path.join(mediaCacheRoot, entry.name);
-    if (/^[a-f0-9]{64}\.mp4$/.test(entry.name)) {
+    if (/^[a-f0-9]{64}\.(?:mp4|png|apng|jpg|jpeg|webp|gif)$/.test(entry.name)) {
       const stat = await fs.lstat(entryPath);
       if (stat.isFile()) snapshots.push({ path: entryPath, size: stat.size, mtimeMs: stat.mtimeMs });
       continue;
@@ -746,10 +747,13 @@ async function pruneMediaCache(mediaCacheRoot, retainedPath) {
   }
 }
 
-export async function materializeMediaSnapshot(mediaBytes, mediaCacheRoot = MEDIA_CACHE_ROOT) {
+export async function materializeMediaSnapshot(mediaBytes, mediaCacheRoot = MEDIA_CACHE_ROOT, extension = ".mp4") {
+  if (![".mp4", ".png", ".apng", ".jpg", ".jpeg", ".webp", ".gif"].includes(extension)) {
+    throw new Error("Unsupported media snapshot extension");
+  }
   const digest = createHash("sha256").update(mediaBytes).digest("hex");
   await ensureMediaCacheRoot(mediaCacheRoot);
-  const snapshotPath = path.join(mediaCacheRoot, `${digest}.mp4`);
+  const snapshotPath = path.join(mediaCacheRoot, `${digest}${extension}`);
   try {
     await verifyMediaSnapshot(snapshotPath, mediaBytes);
     await fs.chmod(snapshotPath, 0o400);
@@ -958,11 +962,11 @@ export async function loadTheme(themeDir) {
       || openedStat.size < 1
       || openedStat.size > maxArtBytes
     ) {
-      throw new Error(`Theme media must be a stable non-empty file no larger than ${maxArtBytes} bytes`);
+      throw new Error(`Theme media must be a stable non-empty file no larger than ${maxArtBytes / 1024 / 1024} MiB`);
     }
     const art = await imageHandle.readFile();
     if (art.length < 1 || art.length > maxArtBytes) {
-      throw new Error(`Theme media must be a non-empty file no larger than ${maxArtBytes} bytes`);
+      throw new Error(`Theme media must be a non-empty file no larger than ${maxArtBytes / 1024 / 1024} MiB`);
     }
     const safeCss = await loadSafeCss(assetsRoot);
     return {
@@ -1025,9 +1029,7 @@ export async function loadPayload(themeDir, mediaCacheRoot = MEDIA_CACHE_ROOT) {
     : extension === ".webp" ? "image/webp"
       : extension === ".gif" ? "image/gif"
         : extension === ".mp4" ? "video/mp4" : "image/png";
-  const artDataUrl = extension === ".mp4"
-    ? "dreamskin-file:video/mp4"
-    : `data:${mime};base64,${art.toString("base64")}`;
+  const artDataUrl = `dreamskin-file:${mime}`;
   const revision = createHash("sha256")
     .update(SKIN_VERSION)
     .update(combinedCss)
@@ -1047,9 +1049,7 @@ export async function loadPayload(themeDir, mediaCacheRoot = MEDIA_CACHE_ROOT) {
     .replace("__DREAM_SKIN_STYLE_REVISION_JSON__", () => JSON.stringify(styleRevision))
     .replace("__DREAM_SKIN_PAYLOAD_REVISION_JSON__", () => JSON.stringify(revision));
   assertPayloadIntegrity(payload);
-  const mediaFilePath = extension === ".mp4"
-    ? await materializeMediaSnapshot(art, mediaCacheRoot)
-    : null;
+  const mediaFilePath = await materializeMediaSnapshot(art, mediaCacheRoot, extension);
   return {
     imageBytes: art.length,
     mediaFilePath,
@@ -1089,7 +1089,40 @@ async function applyToSession(session, payload) {
   return session.evaluate(payload);
 }
 
-export async function bindVideoFileToSession(session, loadedPayload, timeoutMs = 3000) {
+export async function probeVideoInCodex(snapshotPath, state) {
+  let targets;
+  let anchor = null;
+  try {
+    await execFileAsync("/bin/bash", ["-c",
+      '. "$1"; discover_codex_app; require_macos_runtime quick; verified_cdp_endpoint "$2"',
+      "dream-skin-video-check", path.join(root, "scripts", "common-macos.sh"), String(state.port),
+    ], { timeout: 15000, maxBuffer: 65536 });
+    targets = await listAppTargets(state.port);
+  } catch {
+    anchor?.close();
+    throw new Error("无法验证视频解码能力：请先启动 Codex 并连接皮肤运行时，再重试导入或应用。");
+  }
+  try {
+    for (const target of targets) {
+      let session;
+      try {
+        session = await connectTarget(target, state.port);
+        const probe = await probeSession(session);
+        if (!probe?.codex || probe.excludedPetSurface) continue;
+        await execFileAsync("/bin/bash", ["-c",
+          '. "$1"; discover_codex_app; verified_cdp_endpoint "$2"',
+          "dream-skin-video-check", path.join(root, "scripts", "common-macos.sh"), String(state.port),
+        ], { timeout: 5000, maxBuffer: 65536 });
+        const result = await probeVideoDecode(session, snapshotPath);
+        if (anchor?.closed) throw new Error("Codex 连接已变化，请重试视频校验。");
+        return result;
+      } finally { session?.close(); }
+    }
+    throw new Error("未找到可校验的 Codex 主窗口，请打开 Codex 主界面后重试。");
+  } finally { anchor?.close(); }
+}
+
+export async function bindMediaFileToSession(session, loadedPayload, timeoutMs = 10000) {
   if (!loadedPayload?.mediaFilePath) return true;
   const deadline = Date.now() + timeoutMs;
   const revision = JSON.stringify(loadedPayload.revision);
@@ -1097,14 +1130,14 @@ export async function bindVideoFileToSession(session, loadedPayload, timeoutMs =
     const result = await session.send("Runtime.evaluate", {
       expression: `(() => {
         const state = window.__CODEX_DREAM_SKIN_STATE__;
-        if (state?.revision !== ${revision} || state.mediaType !== "video") return null;
-        return document.getElementById("codex-dream-skin-video-file");
+        if (state?.revision !== ${revision}) return null;
+        return document.getElementById("codex-dream-skin-media-file");
       })()`,
       returnByValue: false,
     });
     if (result.exceptionDetails) {
       const detail = result.exceptionDetails.exception?.description ?? result.exceptionDetails.text;
-      throw new Error(`Video file bridge lookup failed: ${detail}`);
+      throw new Error(`Media file bridge lookup failed: ${detail}`);
     }
     const objectId = result.result?.objectId;
     if (!objectId) {
@@ -1121,32 +1154,34 @@ export async function bindVideoFileToSession(session, loadedPayload, timeoutMs =
     }
     const bound = await session.evaluate(`(() => {
       const state = window.__CODEX_DREAM_SKIN_STATE__;
-      return state?.revision === ${revision} && Boolean(state.bindVideoFile?.());
+      return state?.revision === ${revision} && Boolean(state.bindMediaFile?.());
     })()`);
-    if (!bound) throw new Error("Renderer rejected the validated MP4 file bridge");
+    if (!bound) throw new Error("Renderer rejected the validated media file bridge");
     while (Date.now() < deadline) {
       const status = await session.evaluate(`(() => {
         const state = window.__CODEX_DREAM_SKIN_STATE__;
         if (state?.revision !== ${revision}) return { stale: true };
+        if (state.mediaType === "image") return { error: state.imageError, ready: state.imageReady };
         const video = state.videoLayer;
         return {
           error: state.videoError || null,
           ready: Boolean(video && video.readyState >= 1 && video.videoWidth > 0 && video.videoHeight > 0),
         };
       })()`);
-      if (status?.stale) throw new Error("Renderer changed while binding the MP4 file bridge");
-      if (status?.error) throw new Error(`MP4 playback failed: ${status.error}`);
+      if (status?.stale) throw new Error("Renderer changed while binding the media file bridge");
+      if (status?.error) throw new Error(`Media loading failed: ${status.error}`);
       if (status?.ready) return true;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     break;
   }
-  throw new Error("Timed out waiting for the renderer MP4 file bridge to load");
+  throw new Error("Timed out waiting for the renderer media file bridge to load");
 }
 
-async function applyLoadedToSession(session, loadedPayload) {
+export async function applyLoadedToSession(session, loadedPayload) {
+  if (loadedPayload.theme?.artMetadata?.video) await probeVideoDecode(session, loadedPayload.mediaFilePath);
   await applyToSession(session, loadedPayload.payload);
-  await bindVideoFileToSession(session, loadedPayload);
+  await bindMediaFileToSession(session, loadedPayload);
 }
 
 function nextOperationToken() {
@@ -1756,6 +1791,7 @@ export function discoveryLogIntervalMs(delayMs, config = DISCOVERY_BACKOFF) {
 }
 
 export function earlyPayloadFor(payload, revision) {
+  if (payload.includes("dreamskin-file:video/mp4")) return "void 0;";
   return `(() => {
     const generationKey = "__CODEX_DREAM_SKIN_EARLY_GENERATION__";
     const appliedKey = "__CODEX_DREAM_SKIN_EARLY_APPLIED__";
@@ -2309,9 +2345,9 @@ async function runWatch(options) {
             setTimeout(() => {
               if (session.closed || controlOnly || mutationEpoch !== fallbackEpoch
                 || (!record.needsLoadFallback && !current.mediaFilePath)) return;
-              const operation = record.needsLoadFallback
+              const operation = (record.needsLoadFallback || current.theme?.artMetadata?.video)
                 ? applyLoadedToSession(session, current)
-                : bindVideoFileToSession(session, current);
+                : bindMediaFileToSession(session, current);
               operation.catch((error) => {
                 console.error(`[dream-skin] fallback reinject failed: ${error.message}`);
               });
@@ -2375,7 +2411,7 @@ async function runWatch(options) {
           const earlyApplied = await session.evaluate(
             `window.__CODEX_DREAM_SKIN_EARLY_APPLIED__ === ${JSON.stringify(current.revision)}`,
           );
-          if (!earlyApplied) {
+          if (!earlyApplied || current.theme?.artMetadata?.video) {
             if (controlOnly || mutationEpoch !== connectionEpoch) {
               await invalidateEarly(record);
               continue;
@@ -2383,9 +2419,8 @@ async function runWatch(options) {
             await session.evaluate(
               `window.__CODEX_DREAM_SKIN_EARLY_GENERATION__ = ${JSON.stringify(`fallback:${current.revision}`)}`,
             );
-            await applyToSession(session, current.payload);
-          }
-          await bindVideoFileToSession(session, current);
+            await applyLoadedToSession(session, current);
+          } else await bindMediaFileToSession(session, current);
           if (controlOnly || mutationEpoch !== connectionEpoch) {
             await invalidateEarly(record);
             continue;

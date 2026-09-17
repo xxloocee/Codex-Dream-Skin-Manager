@@ -783,38 +783,75 @@ export async function runRendererRuntimeTest(assetRoot) {
   assert.equal(video.nodes.has("codex-dream-skin-video"), false);
   assert.equal(video.listeners.has("document:visibilitychange"), false);
 
+  const fileImage = makeFixture({ nativeAppearance: "dark" });
+  const decodedImages = [];
+  fileImage.window.Image = class {
+    constructor() { decodedImages.push(this); }
+    naturalWidth = 100;
+    naturalHeight = 100;
+  };
+  vm.runInNewContext(
+    fileImage.payloadFor({}, undefined, "dreamskin-file:image/png"), fileImage.context,
+  );
+  const imageState = fileImage.window.__CODEX_DREAM_SKIN_STATE__;
+  const imageInput = fileImage.nodes.get("codex-dream-skin-media-file");
+  assert.ok(imageInput, "Images must expose the private file bridge without creating a video");
+  assert.equal(fileImage.nodes.has("codex-dream-skin-video"), false);
+  assert.equal(decodedImages.length, 0, "Analysis must wait for the image file to be bound");
+  imageInput.files = [{ name: "background.png", size: 128 * 1024 * 1024 + 1, type: "image/png" }];
+  assert.equal(imageState.bindMediaFile(), false);
+  imageInput.files = [{ name: "background.gif", size: 1, type: "image/gif" }];
+  assert.equal(imageState.bindMediaFile(), false, "The file must match the validated media type");
+  imageInput.files = [{ name: "background.png", size: 128 * 1024 * 1024, type: "image/png" }];
+  assert.equal(imageState.bindMediaFile(), true);
+  assert.equal(imageState.imageReady, false);
+  decodedImages[0].onload();
+  assert.equal(imageState.imageReady, true);
+  assert.equal(fileImage.rootStyle.getPropertyValue("--dream-skin-art"), 'url("blob:fixture-1")');
+  assert.equal(imageState.bindMediaFile(), true);
+  decodedImages.at(-1).onerror();
+  assert.match(imageState.imageError, /decode/i);
+  assert.equal(imageState.imageReady, false);
+  assert.deepEqual(fileImage.revoked, ["blob:fixture-1"]);
+  const lateImageLoad = decodedImages.at(-1).onload;
+  assert.equal(imageState.cleanup(), true);
+  lateImageLoad();
+  assert.equal(fileImage.window.__CODEX_DREAM_SKIN_STATE__, undefined);
+  assert.deepEqual(fileImage.revoked, ["blob:fixture-1", "blob:fixture-2"]);
+  assert.equal(fileImage.nodes.has("codex-dream-skin-media-file"), false);
+
   const fileVideo = makeFixture({ nativeAppearance: "dark" });
   vm.runInNewContext(
     fileVideo.payloadFor({}, undefined, "dreamskin-file:video/mp4"), fileVideo.context,
   );
   const fileVideoState = fileVideo.window.__CODEX_DREAM_SKIN_STATE__;
-  const fileInput = fileVideo.nodes.get("codex-dream-skin-video-file");
+  const fileInput = fileVideo.nodes.get("codex-dream-skin-media-file");
   const fileVideoLayer = fileVideo.nodes.get("codex-dream-skin-video");
   assert.ok(fileInput, "File-backed MP4 payloads must expose the private CDP file bridge");
   assert.equal(fileVideoState.artUrl, null);
   assert.equal(fileVideoLayer.paused, true);
   fileInput.files = [{ name: "background.mp4", size: 20 * 1024 * 1024, type: "video/mp4" }];
-  assert.equal(fileVideoState.bindVideoFile(), true);
+  assert.equal(fileVideoState.bindMediaFile(), true);
   assert.equal(fileVideoState.artUrl, "blob:fixture-1");
   assert.equal(fileVideoState.artUrlOwned, true);
   assert.equal(fileVideoLayer.src, "blob:fixture-1");
   assert.equal(fileVideoLayer.paused, false);
   assert.equal(fileVideoState.cleanup(), true);
   assert.deepEqual(fileVideo.revoked, ["blob:fixture-1"]);
-  assert.equal(fileVideo.nodes.has("codex-dream-skin-video-file"), false);
+  assert.equal(fileVideo.nodes.has("codex-dream-skin-media-file"), false);
   const oversizedFileVideo = makeFixture({ nativeAppearance: "dark" });
   vm.runInNewContext(
     oversizedFileVideo.payloadFor({}, undefined, "dreamskin-file:video/mp4"),
     oversizedFileVideo.context,
   );
-  const oversizedInput = oversizedFileVideo.nodes.get("codex-dream-skin-video-file");
+  const oversizedInput = oversizedFileVideo.nodes.get("codex-dream-skin-media-file");
   oversizedInput.files = [{
     name: "background.mp4",
-    size: 30 * 1024 * 1024 + 1,
+    size: 128 * 1024 * 1024 + 1,
     type: "video/mp4",
   }];
-  assert.equal(oversizedFileVideo.window.__CODEX_DREAM_SKIN_STATE__.bindVideoFile(), false,
-    "The renderer file bridge must reject MP4 files above 30 MiB");
+  assert.equal(oversizedFileVideo.window.__CODEX_DREAM_SKIN_STATE__.bindMediaFile(), false,
+    "The renderer file bridge must reject MP4 files above 128 MiB");
   assert.equal(oversizedFileVideo.window.__CODEX_DREAM_SKIN_STATE__.artUrl, null);
   const invalidMediaSource = makeFixture({ nativeAppearance: "dark" });
   assert.throws(

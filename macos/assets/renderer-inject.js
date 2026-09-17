@@ -120,13 +120,17 @@
   const styleRegistry = existingStyleRegistry instanceof Set ? existingStyleRegistry : new Set();
   window[STYLE_REGISTRY_KEY] = styleRegistry;
   const dataMime = /^data:([^;,]+)/.exec(artDataUrl)?.[1] || null;
-  const fileVideoSource = artDataUrl === "dreamskin-file:video/mp4";
-  if (!dataMime && !fileVideoSource) throw new Error("Rejected an invalid Dream Skin media source");
-  const artMime = fileVideoSource ? "video/mp4" : dataMime;
+  const fileMime = /^dreamskin-file:(image\/(?:png|jpeg|webp|gif)|video\/mp4)$/.exec(artDataUrl)?.[1] || null;
+  const fileMediaSource = Boolean(fileMime);
+  if (!dataMime && !fileMediaSource) throw new Error("Rejected an invalid Dream Skin media source");
+  const artMime = fileMime || dataMime;
+  const mediaExtensions = { "image/png": /\.(?:png|apng)$/i, "image/jpeg": /\.jpe?g$/i,
+    "image/webp": /\.webp$/i, "image/gif": /\.gif$/i, "video/mp4": /\.mp4$/i };
+  let imageProbe = null;
   const artMediaType = artMime === "video/mp4" ? "video" : "image";
-  let artUrlOwned = !fileVideoSource;
+  let artUrlOwned = !fileMediaSource;
   let artUrl = (() => {
-    if (fileVideoSource) return null;
+    if (fileMediaSource) return null;
     const comma = artDataUrl.indexOf(",");
     const binary = atob(artDataUrl.slice(comma + 1));
     const bytes = new Uint8Array(binary.length);
@@ -135,7 +139,7 @@
   })();
   const videoLayer = artMediaType === "video" && document?.createElement
     ? document.createElement("video") : null;
-  const videoFileInput = fileVideoSource && document?.createElement
+  const mediaFileInput = fileMediaSource && document?.createElement
     ? document.createElement("input") : null;
   if (videoLayer) {
     videoLayer.id = "codex-dream-skin-video";
@@ -149,13 +153,13 @@
     videoLayer.setAttribute("aria-hidden", "true");
     videoLayer.setAttribute("tabindex", "-1");
   }
-  if (videoFileInput) {
-    videoFileInput.id = "codex-dream-skin-video-file";
-    videoFileInput.type = "file";
-    videoFileInput.accept = "video/mp4,.mp4";
-    videoFileInput.hidden = true;
-    videoFileInput.setAttribute("aria-hidden", "true");
-    videoFileInput.setAttribute("tabindex", "-1");
+  if (mediaFileInput) {
+    mediaFileInput.id = "codex-dream-skin-media-file";
+    mediaFileInput.type = "file";
+    mediaFileInput.accept = artMime === "image/png" ? "image/png,.png,.apng" : artMime;
+    mediaFileInput.hidden = true;
+    mediaFileInput.setAttribute("aria-hidden", "true");
+    mediaFileInput.setAttribute("tabindex", "-1");
   }
 
   const failVideo = (error) => {
@@ -179,12 +183,13 @@
     if (artUrl) videoLayer.src = artUrl;
   }
 
-  const bindVideoFile = () => {
-    const file = videoFileInput?.files?.[0];
-    if (!file || !videoLayer || videoDisposed || videoFailure ||
-        file.size < 1 || file.size > 30 * 1024 * 1024 ||
-        !/\.mp4$/i.test(file.name || "") ||
-        file.type && file.type !== "video/mp4") return false;
+  const bindMediaFile = () => {
+    const file = mediaFileInput?.files?.[0];
+    if (!file || videoDisposed || videoFailure ||
+        window[STATE_KEY]?.installToken !== installToken ||
+        file.size < 1 || file.size > 128 * 1024 * 1024 ||
+        !mediaExtensions[artMime]?.test(file.name || "") ||
+        file.type && file.type !== artMime && !(artMime === "image/png" && file.type === "image/apng")) return false;
     const previousUrl = artUrl;
     const previousOwned = artUrlOwned;
     artUrl = URL.createObjectURL(file);
@@ -194,8 +199,34 @@
       state.artUrl = artUrl;
       state.artUrlOwned = true;
     }
-    videoLayer.src = artUrl;
-    videoLayer.load?.();
+    if (videoLayer) {
+      videoLayer.src = artUrl;
+      videoLayer.load?.();
+    } else {
+      if (imageProbe) { imageProbe.onload = null; imageProbe.onerror = null; imageProbe.src = ""; }
+      state.imageReady = false;
+      state.imageError = null;
+      const boundUrl = artUrl;
+      const probe = imageProbe = new window.Image();
+      const isCurrent = () => !videoDisposed && window[STATE_KEY]?.installToken === installToken && artUrl === boundUrl;
+      probe.onload = () => {
+        if (!isCurrent()) return;
+        if (!(probe.naturalWidth > 0 && probe.naturalHeight > 0)) {
+          probe.onerror();
+          return;
+        }
+        state.imageReady = true;
+        ensure({ root: true });
+        startArtAnalysis();
+      };
+      probe.onerror = () => {
+        if (!isCurrent()) return;
+        state.imageReady = false;
+        state.imageError = "Image decode failed";
+        setStyleProperty(document.documentElement, "--dream-skin-art", "none");
+      };
+      probe.src = artUrl;
+    }
     if (previousUrl && previousOwned) URL.revokeObjectURL(previousUrl);
     syncVideoPlayback();
     return true;
@@ -229,12 +260,12 @@
     }
   };
 
-  const ensureVideoLayer = () => {
-    if (!videoLayer || !document.body) return;
-    if (videoFileInput && videoFileInput.parentElement !== document.body) {
-      document.body.appendChild(videoFileInput);
+  const ensureMediaLayer = () => {
+    if (!document.body) return;
+    if (mediaFileInput && mediaFileInput.parentElement !== document.body) {
+      document.body.appendChild(mediaFileInput);
     }
-    if (videoLayer.parentElement !== document.body) document.body.appendChild(videoLayer);
+    if (videoLayer && videoLayer.parentElement !== document.body) document.body.appendChild(videoLayer);
     syncVideoPlayback();
   };
 
@@ -776,7 +807,7 @@
     const shell = resolvedShell();
     setAttribute(root, "data-dream-skin", "active");
     setAttribute(root, SHELL_ATTR, shell);
-    setStyleProperty(root, "--dream-skin-art", artMediaType === "video" ? "none" : `url("${artUrl}")`);
+    setStyleProperty(root, "--dream-skin-art", artMediaType === "video" || !artUrl || (fileMediaSource && !window[STATE_KEY]?.imageReady) ? "none" : `url("${artUrl}")`);
     applyTheme(root, shell);
     applyArtMetadata(root);
     return shell;
@@ -1005,7 +1036,7 @@
     metrics.ensureCalls += 1;
     if (rootPass) {
       applyRootState(root);
-      ensureVideoLayer();
+      ensureMediaLayer();
     }
     if (partPass) refreshParts();
     if (scopePass) refreshScope();
@@ -1061,11 +1092,12 @@
     if (document.getElementById(STYLE_ID) === styleNode) document.getElementById(STYLE_ID)?.remove();
     if (styleRegistry.size === 0) delete window[STYLE_REGISTRY_KEY];
     videoDisposed = true;
+    if (imageProbe) { imageProbe.onload = null; imageProbe.onerror = null; imageProbe.src = ""; imageProbe = null; }
     state?.videoLayer?.pause?.();
     state?.videoLayer?.removeAttribute?.("src");
     state?.videoLayer?.load?.();
     state?.videoLayer?.remove?.();
-    state?.videoFileInput?.remove?.();
+    state?.mediaFileInput?.remove?.();
     if (state?.artUrl && state.artUrlOwned) URL.revokeObjectURL(state.artUrl);
     delete window[STATE_KEY];
     return true;
@@ -1133,10 +1165,12 @@
     navigationHandler,
     artUrl,
     artUrlOwned,
-    bindVideoFile,
+    bindMediaFile,
     mediaType: artMediaType,
+    imageReady: false,
+    imageError: null,
     videoLayer,
-    videoFileInput,
+    mediaFileInput,
     videoError: videoFailure,
     videoErrorHandler,
     installToken,
@@ -1203,20 +1237,23 @@
   if (navigationHandler && navigationApi) {
     navigationApi.addEventListener("navigate", navigationHandler);
   }
-  const analysisPromise = artAnalysis || artMediaType === "video"
-    ? Promise.resolve(null) : analyzeArt();
-  window[STATE_KEY].analysisTimer = analysisTimer;
-  analysisPromise.then((analysis) => {
-    const state = window[STATE_KEY];
-    if (!analysis || state?.installToken !== installToken || window[DISABLED_KEY]) return;
-    artAnalysis = analysis;
-    state.analysis = analysis;
-    if (typeof THEME.artKey === "string") {
-      analysisCache.set(THEME.artKey, analysis);
-      while (analysisCache.size > 8) analysisCache.delete(analysisCache.keys().next().value);
-    }
-    ensure({ root: true });
-  }).catch(() => {});
+  function startArtAnalysis() {
+    const analysisPromise = artAnalysis || artMediaType === "video"
+      ? Promise.resolve(null) : analyzeArt();
+    window[STATE_KEY].analysisTimer = analysisTimer;
+    analysisPromise.then((analysis) => {
+      const state = window[STATE_KEY];
+      if (!analysis || state?.installToken !== installToken || window[DISABLED_KEY]) return;
+      artAnalysis = analysis;
+      state.analysis = analysis;
+      if (typeof THEME.artKey === "string") {
+        analysisCache.set(THEME.artKey, analysis);
+        while (analysisCache.size > 8) analysisCache.delete(analysisCache.keys().next().value);
+      }
+      ensure({ root: true });
+    }).catch(() => {});
+  }
+  if (!fileMediaSource) startArtAnalysis();
   return {
     installed: true,
     version: VERSION,
