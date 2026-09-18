@@ -48,9 +48,12 @@ previews and must never be imported as wallpapers.
 
 ## Runtime
 
-- The macOS package does not redistribute Node.js. It validates and uses the
-  Node.js executable already signed and bundled inside the user's official
-  Codex desktop application.
+- The macOS package redistributes Node.js 22.22.2, built into a Universal
+  executable from the official darwin-arm64 and darwin-x64 distributions after
+  checking pinned SHA-256 hashes. Its MIT license and third-party notices are
+  included at `runtime/node/LICENSE` inside the engine. This runtime is signed
+  ad hoc by Dream Skin; it is not signed by OpenAI. The official Codex app is
+  validated independently.
 - The Windows Setup.exe redistributes only `node.exe` and `LICENSE` from the
   build-selected official Node.js 22+ win-x64 runtime (CI currently uses
   v22.22.2) after verifying its published SHA-256. Node.js is distributed under

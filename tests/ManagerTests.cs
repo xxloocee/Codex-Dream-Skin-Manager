@@ -980,7 +980,7 @@ namespace CodexDreamSkinManager
 
             Run("Publishes semantic application version", delegate
             {
-                AssertEqual("1.7.5.0", typeof(Program).Assembly.GetName().Version.ToString());
+                AssertEqual("1.7.6.0", typeof(Program).Assembly.GetName().Version.ToString());
             });
 
             Run("Converts focus percentage", delegate

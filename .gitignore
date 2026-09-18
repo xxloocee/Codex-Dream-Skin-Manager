@@ -14,6 +14,7 @@
 /coverage/
 /artifacts/
 /dist/
+/macos/runtime/
 *.trx
 *.coverage
 *.coveragexml

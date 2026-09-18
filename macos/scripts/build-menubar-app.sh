@@ -152,6 +152,7 @@ actual_public_preset_theme_sha256="$(LC_ALL=C /usr/bin/shasum -a 256 \
 /bin/chmod 755 "$ENGINE/scripts/"*.sh
 /bin/chmod 644 "$ENGINE/scripts/"*.mjs
 /bin/chmod 644 "$ENGINE/VERSION"
+/bin/bash "$ROOT/scripts/prepare-node-runtime.sh" "$ENGINE/runtime/node"
 [ ! -e "$ENGINE/presets/preset-arina-hashimoto" ] \
   || { printf 'Rights-restricted preset entered the public app bundle.\n' >&2; exit 1; }
 

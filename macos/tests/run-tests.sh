@@ -2,8 +2,8 @@
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-NODE="${NODE:-/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node}"
-[ -x "$NODE" ] || { printf 'Codex bundled Node.js was not found: %s\n' "$NODE" >&2; exit 1; }
+NODE="${NODE:-$ROOT/runtime/node/bin/node}"
+[ -x "$NODE" ] || { printf 'Test Node.js was not found: %s. Prepare the bundled runtime or set NODE for development.\n' "$NODE" >&2; exit 1; }
 
 while IFS= read -r file; do /bin/bash -n "$file"; done < <(
   /usr/bin/find "$ROOT" -type f \( -name '*.sh' -o -name '*.command' \) \
@@ -17,6 +17,7 @@ while IFS= read -r file; do "$NODE" --check "$file" >/dev/null; done < <(
 # the real failure behind a bogus "unbound variable" (#251).
 "$NODE" "$ROOT/tests/shell-braced-vars-before-cjk.test.mjs"
 "$NODE" "$ROOT/tests/manager-actions-contract.test.mjs"
+"$NODE" "$ROOT/tests/bundled-node-runtime.test.mjs"
 
 ZH_COPY="$(DREAMSKIN_LANG=zh-CN /bin/bash -c '
   . "$1/scripts/localization-macos.sh"
@@ -64,7 +65,7 @@ if /usr/bin/grep -E -q 'Input\.dispatch(KeyEvent|MouseEvent)' "$ROOT/scripts/inj
   exit 1
 fi
 if /usr/bin/grep -F -q 'CODEX_EXPECTED_TEAM_ID' "$ROOT/scripts/common-macos.sh" ||
-    [ "$(/usr/bin/grep -F -c -- '--test-requirement' "$ROOT/scripts/common-macos.sh")" -lt 3 ]; then
+    [ "$(/usr/bin/grep -F -c -- '--test-requirement' "$ROOT/scripts/common-macos.sh")" -lt 2 ]; then
   printf 'macOS runtime identity must use the fixed OpenAI signing requirement.\n' >&2
   exit 1
 fi
@@ -108,7 +109,7 @@ UPDATE_JSON="$({
 })"
 "$NODE" -e '
   const value = JSON.parse(process.argv[1]);
-  if (value.currentVersion !== "v1.7.5" || value.latestVersion !== "v9.8.7") process.exit(1);
+  if (value.currentVersion !== "v1.7.6" || value.latestVersion !== "v9.8.7") process.exit(1);
   if (!value.updateAvailable) process.exit(1);
   if (value.releaseUrl !== "https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases/latest") process.exit(1);
 ' "$UPDATE_JSON"
@@ -1206,7 +1207,7 @@ CRLF_BACKUP="$TMP/config-crlf-backup.json"
 "$NODE" "$ROOT/scripts/theme-config.mjs" restore "$CRLF_CONFIG" "$CRLF_BACKUP" >/dev/null
 /usr/bin/cmp -s "$CRLF_CONFIG" "$TMP/original-crlf.toml"
 
-/usr/bin/env -u HOME /bin/bash -c '. "$1/scripts/common-macos.sh"; [ -n "$HOME" ] && [ "$SKIN_VERSION" = "1.7.5" ]' _ "$ROOT"
+/usr/bin/env -u HOME /bin/bash -c '. "$1/scripts/common-macos.sh"; [ -n "$HOME" ] && [ "$SKIN_VERSION" = "1.7.6" ]' _ "$ROOT"
 if [ "${CODEX_DREAM_SKIN_SKIP_DOCTOR:-0}" = "1" ]; then
   printf 'SKIP: Doctor requires an installed, signed Codex app.\n'
   DOCTOR_RESULT="skipped"

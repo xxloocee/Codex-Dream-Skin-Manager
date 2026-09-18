@@ -37,6 +37,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
   )
   private let requiredEngineRelativePaths = [
     "VERSION",
+    "runtime/node/bin/node",
+    "runtime/node/LICENSE",
     "assets/dream-skin.css",
     "assets/portal-hero.png",
     "assets/renderer-inject.js",
@@ -1533,7 +1535,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             values.isSymbolicLink != true else {
         return true
       }
-      if relativePath.hasSuffix(".sh") && !fileManager.isExecutableFile(atPath: url.path) {
+      if (relativePath.hasSuffix(".sh") || relativePath == "runtime/node/bin/node")
+        && !fileManager.isExecutableFile(atPath: url.path) {
         return true
       }
     }

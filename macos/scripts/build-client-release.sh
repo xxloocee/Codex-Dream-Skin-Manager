@@ -10,7 +10,7 @@ OUTPUT="${1:-$HOME/Desktop/Codex 主题编辑器.zip}"
 TMP="$(/usr/bin/mktemp -d /tmp/codex-dream-client.XXXXXX)"
 CLIENT_ROOT="$TMP/Codex 主题编辑器"
 ENGINE="$CLIENT_ROOT/.codex-dream-skin-studio"
-trap '/bin/rm -rf "$TMP"' EXIT
+trap 'status=$?; /bin/rm -rf "$TMP"; exit "$status"' EXIT
 
 "$ROOT/tests/run-tests.sh"
 /bin/mkdir -p "$ENGINE"
@@ -21,6 +21,9 @@ trap '/bin/rm -rf "$TMP"' EXIT
   --exclude 'runtime/' \
   --exclude 'presets/preset-arina-hashimoto/' \
   "$ROOT/" "$ENGINE/"
+
+# Runtime state is excluded above; always generate the pinned distributable Node.
+/bin/bash "$ROOT/scripts/prepare-node-runtime.sh" "$ENGINE/runtime/node"
 
 # Keep the customer ZIP self-contained: bundle prompt docs and referenced
 # images, then translate repository paths for the hidden standalone engine.

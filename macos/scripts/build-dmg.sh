@@ -78,6 +78,17 @@ MOUNTED_ICON="$MOUNTED_APP/Contents/Resources/${MOUNTED_ICON_NAME%.icns}.icns"
 [ ! -e "$MOUNTED_APP/Contents/Resources/engine/presets/preset-arina-hashimoto" ] \
   || { printf 'Mounted app contains a rights-restricted preset.\n' >&2; exit 1; }
 MOUNTED_ENGINE="$MOUNTED_APP/Contents/Resources/engine"
+[ -x "$MOUNTED_ENGINE/runtime/node/bin/node" ] \
+  && [ -s "$MOUNTED_ENGINE/runtime/node/LICENSE" ] \
+  && [ -s "$MOUNTED_ENGINE/runtime/node/VERSION" ] \
+  || { printf 'Mounted app is missing the bundled Node runtime or license.\n' >&2; exit 1; }
+/usr/bin/lipo -verify_arch arm64 x86_64 "$MOUNTED_ENGINE/runtime/node/bin/node"
+/usr/bin/codesign --verify --strict "$MOUNTED_ENGINE/runtime/node/bin/node"
+"$MOUNTED_ENGINE/runtime/node/bin/node" -e '
+  const fs = require("node:fs");
+  const version = fs.readFileSync(process.argv[1], "utf8").trim();
+  if (process.versions.node !== version || Number(version.split(".")[0]) < 22 || typeof WebSocket !== "function" || typeof fetch !== "function") process.exit(1);
+' "$MOUNTED_ENGINE/runtime/node/VERSION"
 [ -f "$MOUNTED_ENGINE/assets/selectors.json" ] \
   || { printf 'Mounted app is missing the selector contract.\n' >&2; exit 1; }
 for runtime_script in apply-community-theme-macos.sh snapshot-active-theme-macos.sh \
@@ -97,7 +108,7 @@ done
   && [ ! -x "$MOUNTED_ENGINE/scripts/theme-content-fingerprint.mjs" ] \
   || { printf 'Mounted fingerprint helper has unsafe or missing permissions.\n' >&2; exit 1; }
 for excluded in build-client-release.sh build-dmg.sh build-menubar-app.sh build-release.sh \
-  generate-app-icon.sh install-menubar-macos.sh prepare-standalone-docs.sh; do
+  generate-app-icon.sh install-menubar-macos.sh prepare-node-runtime.sh prepare-standalone-docs.sh; do
   [ ! -e "$MOUNTED_APP/Contents/Resources/engine/scripts/$excluded" ] \
     || { printf 'Mounted runtime contains build-only script: %s\n' "$excluded" >&2; exit 1; }
 done

@@ -12,7 +12,7 @@ This project injects through **local loopback CDP**. It does **not** modify the 
 
 - macOS 13 Ventura or newer (the native DMG app declares macOS 13 as its minimum)
 - Official Codex Desktop installed and launched at least once (`~/.codex/config.toml` exists)
-- No global Node.js install required (uses Codex’s signed bundled Node after validation)
+- No global Node.js install required. Dream Skin bundles Node.js 22.22.2 for both Apple Silicon and Intel; it does not depend on Codex's internal Node layout.
 
 ## Release install (recommended)
 
@@ -27,32 +27,37 @@ The Release DMG above is the normal user path. The commands below are for
 contributors, diagnostics, and legacy deployments.
 
 ```bash
-# 1) Optional checks (needs the installed Codex/ChatGPT.app bundled Node)
+# 1) Source checkouts only: prepare Dream Skin's bundled runtime on macOS.
+# Downloads pinned official Node archives; release DMG/ZIP users skip this.
+/bin/bash ./scripts/prepare-node-runtime.sh
+
+# 2) Optional checks (signed-app integration still needs official Codex)
 ./tests/run-tests.sh
 
-# 2) Install to the stable path and create Desktop launchers
+# 3) Install to the stable path and create Desktop launchers (quit Codex first)
 ./scripts/install-dream-skin-macos.sh --no-launch
 
-# 3) Switch to the tested featured preset, or import your own pure background
-~/.codex/codex-dream-skin-studio/scripts/switch-theme-macos.sh --id preset-arina-hashimoto
+# 4) Switch to the public preset, or import your own pure background
+~/.codex/codex-dream-skin-studio/scripts/switch-theme-macos.sh --id preset-gothic-void-crusade
 # ~/.codex/codex-dream-skin-studio/scripts/customize-theme-macos.sh
 
-# 4) Start/re-apply, verify, or restore via Desktop:
+# 5) Start/re-apply, verify, or restore via Desktop:
 #    Codex Dream Skin.command
 #    Codex Dream Skin - Customize.command
 #    Codex Dream Skin - Verify.command
 #    Codex Dream Skin - Restore.command
 
-# 5) Legacy only: install the old SwiftBar menu (do not enable it beside the native app)
+# 6) Legacy only: install the old SwiftBar menu (do not enable it beside the native app)
 ./Install\ Menu\ Bar.command
 # Look for 🎨 Skin in the top-right menu bar
 ```
 
-Install location after step 2:
+Install location after step 3:
 
 | Item | Path |
 | --- | --- |
 | Engine | `~/.codex/codex-dream-skin-studio` |
+| Bundled Node / license | `~/.codex/codex-dream-skin-studio/runtime/node/` |
 | State / logs / user images | `~/Library/Application Support/CodexDreamSkinStudio` |
 | Theme backup | under Application Support (`theme-backup.json`) |
 
@@ -73,8 +78,8 @@ CSS/images.
 
 ## How it works (security boundary)
 
-1. Discover `com.openai.codex` and validate signature / Team ID / arch / bundled Node.
-2. Start Codex via user `launchd` with CDP bound to `127.0.0.1` only.
+1. Discover `com.openai.codex` and validate its signature / Team ID separately from Dream Skin's packaged Node. Validate Node's signature, architecture, version (22+), and WebSocket/fetch capabilities; never fall back to a caller-supplied Node or Codex's private runtime.
+2. Start Codex via LaunchServices (`open`, with a direct executable fallback) with CDP bound to `127.0.0.1` only.
 3. Accept the debug port only when it belongs to Codex (or a legitimate child).
 4. Inject only into expected `app://` renderer targets.
 5. Resolve the selected theme and media to real paths, then enforce 128 MiB for

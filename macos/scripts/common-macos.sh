@@ -30,7 +30,7 @@ CODEX_APP_JOB_LABEL="com.openai.codex-dream-skin-studio.app"
 INJECTOR_JOB_LABEL="com.openai.codex-dream-skin-studio.injector"
 EXPECTED_CODEX_TEAM_ID="2DC432GLL2"
 EXPECTED_CODEX_REQUIREMENT="anchor apple generic and certificate leaf[subject.OU] = \"$EXPECTED_CODEX_TEAM_ID\""
-SKIN_VERSION="1.7.5"
+SKIN_VERSION="1.7.6"
 DREAM_SKIN_VALIDATED_RUNTIME_PID=""
 DREAM_SKIN_VALIDATED_RUNTIME_BUNDLE=""
 DREAM_SKIN_VALIDATED_RUNTIME_EXE=""
@@ -287,32 +287,38 @@ require_signed_node_runtime() {
   [ -n "${CODEX_BUNDLE:-}" ] && [ -n "${CODEX_EXE:-}" ] \
     || fail "Discover the ChatGPT app before validating its runtime."
 
-  RUNTIME_NODE="$CODEX_BUNDLE/Contents/Resources/cua_node/bin/node"
-  [ -x "$RUNTIME_NODE" ] || fail "The signed Node.js runtime bundled with ChatGPT was not found: $RUNTIME_NODE"
-  /usr/bin/codesign --verify --strict \
-    --test-requirement "=$EXPECTED_CODEX_REQUIREMENT" "$RUNTIME_NODE" >/dev/null 2>&1 \
-    || fail "The Node.js runtime bundled with ChatGPT failed code-signature validation."
-
+  # The official app and our packaged interpreter have separate identities.
+  # Never execute a caller-supplied NODE or depend on Codex's private layout.
+  verify_macos_app_signature quick
   CODEX_TEAM_ID="$(codesign_team_id "$CODEX_BUNDLE")"
-  NODE_TEAM_ID="$(codesign_team_id "$RUNTIME_NODE")"
   [ "$CODEX_TEAM_ID" = "$EXPECTED_CODEX_TEAM_ID" ] \
     || fail "Unexpected ChatGPT signing team: ${CODEX_TEAM_ID:-missing}."
-  [ "$NODE_TEAM_ID" = "$EXPECTED_CODEX_TEAM_ID" ] \
-    || fail "Unexpected bundled Node.js signing team: ${NODE_TEAM_ID:-missing}."
+
+  RUNTIME_NODE="$PROJECT_ROOT/runtime/node/bin/node"
+  [ -f "$RUNTIME_NODE" ] && [ -x "$RUNTIME_NODE" ] && [ ! -L "$RUNTIME_NODE" ] \
+    || fail "Dream Skin bundled Node.js is missing. Reinstall Dream Skin; source users must run scripts/prepare-node-runtime.sh."
+  [ -s "$PROJECT_ROOT/runtime/node/LICENSE" ] \
+    || fail "Dream Skin bundled Node.js license is missing. Reinstall Dream Skin."
+  /usr/bin/codesign --verify --strict "$RUNTIME_NODE" >/dev/null 2>&1 \
+    || fail "Dream Skin bundled Node.js failed code-signature validation. Reinstall Dream Skin."
 
   local machine_arch
   local node_major
   machine_arch="$(/usr/bin/uname -m)"
-  /usr/bin/file "$RUNTIME_NODE" | /usr/bin/grep -q "$machine_arch" \
-    || fail "The ChatGPT Node.js runtime does not match this Mac architecture ($machine_arch)."
-  NODE_VERSION="$($RUNTIME_NODE --version)"
+  # `lipo` is a developer-tool shim on clean Macs; runtime checks must not
+  # prompt users to install Xcode Command Line Tools.
+  /usr/bin/file -b "$RUNTIME_NODE" | /usr/bin/grep -q "$machine_arch" \
+    || fail "Dream Skin bundled Node.js does not match this Mac architecture ($machine_arch)."
+  NODE_VERSION="$("$RUNTIME_NODE" --version)" || fail "Could not execute Dream Skin bundled Node.js."
   node_major="${NODE_VERSION#v}"
   node_major="${node_major%%.*}"
   case "$node_major" in ''|*[!0-9]*) fail "Could not parse bundled Node.js version: $NODE_VERSION" ;; esac
-  [ "$node_major" -ge 20 ] || fail "ChatGPT bundled Node.js $NODE_VERSION is too old; version 20 or newer is required."
+  [ "$node_major" -ge 22 ] || fail "Dream Skin bundled Node.js $NODE_VERSION is too old; version 22 or newer is required."
+  "$RUNTIME_NODE" -e 'if (typeof WebSocket !== "function" || typeof fetch !== "function") process.exit(1)' \
+    >/dev/null 2>&1 || fail "Dream Skin bundled Node.js lacks WebSocket/fetch support. Reinstall Dream Skin."
 
   NODE="$RUNTIME_NODE"
-  export NODE RUNTIME_NODE NODE_VERSION CODEX_TEAM_ID NODE_TEAM_ID
+  export NODE RUNTIME_NODE NODE_VERSION CODEX_TEAM_ID
   remember_validated_runtime_identity
 }
 
@@ -763,7 +769,7 @@ launch_injector_daemon() {
   fail "The injector did not start. See $INJECTOR_ERROR_LOG and $INJECTOR_LOG"
 }
 
-# Resolve Node only through the discovered and signed official ChatGPT bundle.
+# Resolve only our packaged Node after validating the official Codex identity.
 ensure_node_runtime() {
   if [ "$DREAM_SKIN_VALIDATED_RUNTIME_PID" = "$$" ] \
     && [ -n "$DREAM_SKIN_VALIDATED_RUNTIME_NODE" ] \

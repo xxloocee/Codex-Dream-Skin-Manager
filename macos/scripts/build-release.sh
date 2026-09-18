@@ -9,7 +9,7 @@ VERSION="$(/usr/bin/tr -d '[:space:]' < "$ROOT/VERSION")"
 RELEASE_DIR="$ROOT/release"
 ARCHIVE="$RELEASE_DIR/codex-dream-skin-studio-v$VERSION.zip"
 TMP="$(/usr/bin/mktemp -d /tmp/codex-dream-skin-release.XXXXXX)"
-trap '/bin/rm -rf "$TMP"' EXIT
+trap 'status=$?; /bin/rm -rf "$TMP"; exit "$status"' EXIT
 
 if [ "${1:-}" != "--skip-tests" ]; then "$ROOT/tests/run-tests.sh"; fi
 
@@ -18,8 +18,11 @@ if [ "${1:-}" != "--skip-tests" ]; then "$ROOT/tests/run-tests.sh"; fi
   --exclude '.git/' \
   --exclude '.DS_Store' \
   --exclude 'release/' \
+  --exclude 'runtime/' \
   --exclude 'presets/preset-arina-hashimoto/' \
   "$ROOT/" "$TMP/codex-dream-skin-studio/"
+
+/bin/bash "$ROOT/scripts/prepare-node-runtime.sh" "$TMP/codex-dream-skin-studio/runtime/node"
 
 # The macOS tree is also published as a standalone ZIP. Bundle prompt guides
 # and their referenced images, then translate repository paths for this root.

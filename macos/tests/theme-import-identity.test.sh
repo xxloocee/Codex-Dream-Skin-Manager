@@ -2,7 +2,7 @@
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-NODE="${NODE:-/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node}"
+NODE="${NODE:-$ROOT/runtime/node/bin/node}"
 TMP="$(/usr/bin/mktemp -d /tmp/dreamskin-import-identity.XXXXXX)"
 trap '/bin/rm -rf "$TMP"' EXIT
 

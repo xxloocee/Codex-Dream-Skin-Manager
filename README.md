@@ -2,20 +2,20 @@
 
 基于 [Fei-Away/Codex-Dream-Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 开发的跨平台主题管理项目：Windows 保留本项目的 WPF 可视化管理器，macOS 复用上游菜单栏客户端，并共享同一套运行时、主题契约和图片 framing 能力。
 
-当前版本：`1.7.5`。运行时支持 Windows 和 macOS；WPF 管理器仍是 Windows 专用界面，macOS 提供原生菜单栏界面及一个共享状态/framing 契约的 `manager-actions-macos.sh` 动作适配层。
+当前版本：`1.7.6`。运行时支持 Windows 和 macOS；WPF 管理器仍是 Windows 专用界面，macOS 提供原生菜单栏界面及一个共享状态/framing 契约的 `manager-actions-macos.sh` 动作适配层。
 
 ## 下载
 
 正式版本从 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载：
 
-- `CodexDreamSkinManager-v1.7.5-windows-x64-setup.exe`：Windows 10/11 x64 推荐安装版。
-- `CodexDreamSkinManager-v1.7.5-windows-x64-portable.zip`：Windows 10/11 x64 便携版。
-- `CodexDreamSkinManager-v1.7.5-macos-universal.dmg`：macOS 13+ 通用安装包，同时支持 Apple Silicon 与 Intel。
+- `CodexDreamSkinManager-v1.7.6-windows-x64-setup.exe`：Windows 10/11 x64 推荐安装版。
+- `CodexDreamSkinManager-v1.7.6-windows-x64-portable.zip`：Windows 10/11 x64 便携版。
+- `CodexDreamSkinManager-v1.7.6-macos-universal.dmg`：macOS 13+ 通用安装包，同时支持 Apple Silicon 与 Intel。
 - `SHA256SUMS.txt`：上述安装包的 SHA-256 校验清单。
 
 Windows 安装版默认安装到当前用户目录，不请求管理员权限，并创建开始菜单快捷方式；
 桌面快捷方式可在安装时选择。Windows 发布包内置 Node.js，用户无需另行安装运行环境。
-便携版必须完整解压，不能只复制 EXE。macOS 使用方法见 [`macos/README.md`](macos/README.md)。
+便携版必须完整解压，不能只复制 EXE。macOS 发布包同样内置 Node.js，使用方法见 [`macos/README.md`](macos/README.md)。
 
 
 ## 项目来源与致谢
@@ -25,6 +25,8 @@ Windows 安装版默认安装到当前用户目录，不请求管理员权限，
 本软件的操作界面由群友“花落情已逝”基于上述上游项目开发。感谢 [Fei-Away](https://github.com/Fei-Away) 及 Codex Dream Skin 的所有贡献者提供底层换肤能力，也感谢“花落情已逝”完成本项目的可视化操作体验。
 
 ## 功能
+
+以下可视化管理功能主要描述 Windows 管理器。macOS 使用原生菜单栏界面，公开安装包内置 Gothic Void Crusade 主题，支持换背景、导入 ZIP 主题和暂停/恢复；不包含 Windows 的 36 套主题库或相同的 `.cdskin` 管理界面。
 
 - 浏览 36 套目录内置主题和已保存主题，内置主题会跟随 Codex 的浅色/深色外观，并支持名称、标签、分类、来源与排序筛选。
 - 单击主题只更新预览；“应用选中主题”才会切换活动主题。
@@ -45,7 +47,7 @@ Windows 安装版默认安装到当前用户目录，不请求管理员权限，
 - Windows 10 或 Windows 11（WPF 管理器）。
 - macOS 13 Ventura 或更高版本（上游原生菜单栏客户端）。
 - 对应平台的 Codex 客户端。
-- Windows 发布包内置 Node.js；macOS 脚本使用官方 Codex 客户端自带的已签名 Node.js，无需另装全局 Node.js。
+- Windows 和 macOS 发布包均内置 Node.js，无需用户另行安装，也不依赖 Codex 私有的 Node.js 路径。macOS 随包携带 Node.js 22.22.2 Universal（Apple Silicon / Intel），并独立验证官方 Codex 的签名。
 - 从源码构建时需要 Node.js 22 或更高版本，且安装目录中应包含 Node.js `LICENSE`。
 - Windows 构建默认使用仓库内已同步的 `windows/` 运行时；传入 `-SkillRoot` 时可针对其他上游快照做兼容性验证。
 - 使用 Windows 自带的 .NET Framework 编译器，不需要安装 .NET SDK。
@@ -95,7 +97,7 @@ $iscc = .\tools\prepare-inno-setup.ps1
 .\tools\package-installer.ps1 -IsccPath $iscc
 ```
 
-安装包会生成到 `dist\CodexDreamSkinManager-v1.7.5-windows-x64-setup.exe`。Inno Setup 只用于构建，
+安装包会生成到 `dist\CodexDreamSkinManager-v1.7.6-windows-x64-setup.exe`。Inno Setup 只用于构建，
 不会成为用户电脑上的运行依赖。
 
 仅执行测试：

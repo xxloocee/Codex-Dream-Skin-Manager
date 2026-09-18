@@ -28,7 +28,6 @@ deploy_project() {
     --exclude '.git/' \
     --exclude '.DS_Store' \
     --exclude 'release/' \
-    --exclude 'runtime/' \
     "$PROJECT_ROOT/" "$temporary/"
   /bin/chmod 700 "$temporary"/*.command "$temporary"/scripts/*.sh 2>/dev/null || true
   /bin/rm -rf "$previous"
@@ -142,7 +141,7 @@ if [ "$CREATE_LAUNCHERS" = "true" ]; then
   write_launcher "$HOME/Desktop/Codex Dream Skin - Restore.command" "exec $restore_script --restore-base-theme --restart-codex"
 fi
 
-printf 'Codex Dream Skin Studio %s installed at %s for Codex %s using its signed Node.js %s.\n' \
+printf 'Codex Dream Skin Studio %s installed at %s for Codex %s using Dream Skin bundled Node.js %s.\n' \
   "$SKIN_VERSION" "$PROJECT_ROOT" "$CODEX_VERSION" "$NODE_VERSION"
 printf 'Use the Desktop launchers to customize, start, verify, or restore the official appearance.\n'
 printf 'Bundled presets are ready in your theme library — pick one from the menu bar (已保存的主题) or switch-theme.\n'

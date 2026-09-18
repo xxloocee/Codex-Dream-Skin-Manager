@@ -21,7 +21,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 `
   -SkillRoot ".\windows"
 ```
 
-macOS 运行时测试需要在 macOS 上执行；若机器未安装官方 ChatGPT，可跳过需签名客户端的集成段：
+macOS 从源码安装引擎或执行默认本地打包前，运行 `bash macos/scripts/prepare-node-runtime.sh` 准备测试及源码引擎使用的 Universal Node。打包阶段还会为产物单独准备内置 Node；GitHub Tag 发布流程显式提供测试 Node 并跳过需要已安装 Codex 的集成段。准备脚本需 macOS 的 `lipo` / `codesign`，并联网下载固定版本、校验哈希。macOS 运行时测试需要在 macOS 上执行；若机器未安装官方 Codex，可跳过需签名客户端的集成段：
 
 ```bash
 cd macos
