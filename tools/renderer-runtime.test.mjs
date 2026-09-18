@@ -478,7 +478,7 @@ export async function runRendererRuntimeTest(assetRoot) {
   );
   assert.match(
     css,
-    /__DREAM_SELECTOR_SHELL_MAIN__ > __DREAM_SELECTOR_HEADER_TINT__[\s\S]{0,260}background:\s*transparent\s*!important;[\s\S]{0,160}backdrop-filter:\s*none\s*!important;/,
+    /(?:__DREAM_SELECTOR_SHELL_MAIN__|main:is\(\.main-surface, \[data-app-shell-main-surface\], \[class\*="_MainContentSurface_"\]\)) > (?:__DREAM_SELECTOR_HEADER_TINT__|header:is\(\.app-header-tint, \[data-app-shell-header-edge-scroll\], \[class\*="_Header_"\]\))\s*\{[^}]*background:\s*transparent\s*!important;[^}]*backdrop-filter:\s*none\s*!important;/,
     "The task-page header must not add an opaque layer over the artwork.",
   );
   assert.match(
