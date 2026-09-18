@@ -36,7 +36,7 @@ done
   "$TMP/node-v$NODE_VERSION-darwin-arm64/bin/node" \
   "$TMP/node-v$NODE_VERSION-darwin-x64/bin/node" \
   -output "$TMP/runtime/bin/node"
-/usr/bin/lipo -verify_arch arm64 x86_64 "$TMP/runtime/bin/node"
+/usr/bin/lipo "$TMP/runtime/bin/node" -verify_arch arm64 x86_64
 /bin/chmod 755 "$TMP/runtime/bin/node"
 /bin/cp "$TMP/node-v$NODE_VERSION-darwin-arm64/LICENSE" "$TMP/runtime/LICENSE"
 /usr/bin/printf '%s\n' "$NODE_VERSION" > "$TMP/runtime/VERSION"

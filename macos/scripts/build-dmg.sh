@@ -82,7 +82,7 @@ MOUNTED_ENGINE="$MOUNTED_APP/Contents/Resources/engine"
   && [ -s "$MOUNTED_ENGINE/runtime/node/LICENSE" ] \
   && [ -s "$MOUNTED_ENGINE/runtime/node/VERSION" ] \
   || { printf 'Mounted app is missing the bundled Node runtime or license.\n' >&2; exit 1; }
-/usr/bin/lipo -verify_arch arm64 x86_64 "$MOUNTED_ENGINE/runtime/node/bin/node"
+/usr/bin/lipo "$MOUNTED_ENGINE/runtime/node/bin/node" -verify_arch arm64 x86_64
 /usr/bin/codesign --verify --strict "$MOUNTED_ENGINE/runtime/node/bin/node"
 "$MOUNTED_ENGINE/runtime/node/bin/node" -e '
   const fs = require("node:fs");
