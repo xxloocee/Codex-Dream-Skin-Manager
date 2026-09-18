@@ -2,15 +2,15 @@
 
 基于 [Fei-Away/Codex-Dream-Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 开发的跨平台主题管理项目：Windows 保留本项目的 WPF 可视化管理器，macOS 复用上游菜单栏客户端，并共享同一套运行时、主题契约和图片 framing 能力。
 
-当前版本：`1.7.0`。运行时支持 Windows 和 macOS；WPF 管理器仍是 Windows 专用界面，macOS 提供原生菜单栏界面及一个共享状态/framing 契约的 `manager-actions-macos.sh` 动作适配层。
+当前版本：`1.7.5`。运行时支持 Windows 和 macOS；WPF 管理器仍是 Windows 专用界面，macOS 提供原生菜单栏界面及一个共享状态/framing 契约的 `manager-actions-macos.sh` 动作适配层。
 
 ## 下载
 
 正式版本从 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载：
 
-- `CodexDreamSkinManager-v1.7.0-windows-x64-setup.exe`：Windows 10/11 x64 推荐安装版。
-- `CodexDreamSkinManager-v1.7.0-windows-x64-portable.zip`：Windows 10/11 x64 便携版。
-- `CodexDreamSkinManager-v1.7.0-macos-universal.dmg`：macOS 13+ 通用安装包，同时支持 Apple Silicon 与 Intel。
+- `CodexDreamSkinManager-v1.7.5-windows-x64-setup.exe`：Windows 10/11 x64 推荐安装版。
+- `CodexDreamSkinManager-v1.7.5-windows-x64-portable.zip`：Windows 10/11 x64 便携版。
+- `CodexDreamSkinManager-v1.7.5-macos-universal.dmg`：macOS 13+ 通用安装包，同时支持 Apple Silicon 与 Intel。
 - `SHA256SUMS.txt`：上述安装包的 SHA-256 校验清单。
 
 Windows 安装版默认安装到当前用户目录，不请求管理员权限，并创建开始菜单快捷方式；
@@ -29,11 +29,12 @@ Windows 安装版默认安装到当前用户目录，不请求管理员权限，
 - 浏览 36 套目录内置主题和已保存主题，内置主题会跟随 Codex 的浅色/深色外观，并支持名称、标签、分类、来源与排序筛选。
 - 单击主题只更新预览；“应用选中主题”才会切换活动主题。
 - 主题按动态、人物、动漫、风景、城市、萌宠、科技、艺术 8 类筛选，同一主题可属于多个分类。自定义换肤支持标签多选，未选择时归入艺术；MP4、GIF、APNG 文件会自动出现在动态分类中。
-- “我的”已保存主题可从主题库删除；当前活动主题需先切换后才能删除。
+- 可删除未使用的内置主题或“我的”已保存主题；当前活动主题和默认恢复主题 `paper-light` 受到保护。内置主题背景媒体进入 Windows 回收站；“我的”主题及其本地图片会永久删除，无法撤销。
 - 批量导入最多 50 张图片，按图片内容和视觉参数去重。
 - 导入、导出 `.cdskin` 主题包，并保留分类、标签和视觉参数。
 - 用滑块调整自定义图片的水平位置、垂直位置和 `100%` 至 `200%` 缩放，可切换锁定或自由移动并实时预览。
-- 调整安全区、任务页模式、外观和强调色；旧主题的主体焦点数据继续兼容。
+- 调整安全区、任务页模式、外观、强调色和消息气泡不透明度；气泡参数同时作用于用户消息和助手回复，旧主题的主体焦点数据继续兼容。
+- “主题设置”可直接编辑内置主题和“我的”主题的显示与取景参数；内置主题设置保存在当前用户目录，切换主题后仍保留。编辑当前活动主题后实时刷新，无需重启 Codex。
 - 暂停或继续皮肤显示。
 - “重置皮肤”恢复内置目录第一套主题并清除暂停状态，不停止注入器。
 - “紧急恢复原始外观”独立调用恢复脚本，在管理脚本异常时仍可使用。
@@ -60,7 +61,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 `
 
 构建脚本会：
 
-1. 编译并执行 59 项 C# 测试。
+1. 编译并执行 67 项 C# 测试。
 2. 复制已同步的上游 Windows 运行时。
 3. 覆盖本项目维护的 `manager-actions.ps1`、`presets` 和可再分发默认图片。
 4. 校验共享运行时中的图片位置、缩放和移动模式契约，并执行渲染行为测试。
@@ -94,7 +95,7 @@ $iscc = .\tools\prepare-inno-setup.ps1
 .\tools\package-installer.ps1 -IsccPath $iscc
 ```
 
-安装包会生成到 `dist\CodexDreamSkinManager-v1.7.0-windows-x64-setup.exe`。Inno Setup 只用于构建，
+安装包会生成到 `dist\CodexDreamSkinManager-v1.7.5-windows-x64-setup.exe`。Inno Setup 只用于构建，
 不会成为用户电脑上的运行依赖。
 
 仅执行测试：
@@ -110,8 +111,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 `
 | 操作 | 结果 |
 |---|---|
 | 保存主题 | 写入主题库，不切换活动主题，不改变暂停状态 |
-| 保存并应用 | 保存主题、切换活动主题并重启 Codex |
-| 删除主题 | 永久删除选中的“我的”主题及本地图片；活动主题不可删除 |
+| 保存并应用 | 保存主题、切换活动主题并立即应用；已运行的 Codex 无需重启 |
+| 删除主题 | 内置主题背景媒体进入 Windows 回收站；“我的”主题及本地图片永久删除，无法撤销；活动主题和默认恢复主题不可删除 |
 | 重置皮肤 | 恢复第一套内置主题并清除暂停，不停止注入器 |
 | 紧急恢复原始外观 | 退出换肤并调用独立恢复流程 |
 
@@ -119,7 +120,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 `
 
 `锁定区域内` 会限制移动范围，保证图片始终覆盖显示区域；`不锁定区域` 允许图片完全移出对应边缘，露出的部分用从图片平均色柔化得到的背景色填充。
 
-`.cdskin` 的 `art` 对象可包含 `positionX`、`positionY`、`zoom` 和 `positionMode`。前两项范围为 `-1` 至 `1`，缩放范围为 `1` 至 `2`，移动模式为 `locked` 或 `free`；旧主题缺少这些字段时按 `0 / 0 / 1 / locked` 处理，原有 `focusX`、`focusY` 和安全区逻辑不变。
+`.cdskin` 的 `art` 对象可包含 `positionX`、`positionY`、`zoom`、`positionMode` 和 `bubbleOpacity`。前两项范围为 `-1` 至 `1`，缩放范围为 `1` 至 `2`，移动模式为 `locked` 或 `free`，气泡不透明度范围为 `0` 至 `1`；旧主题缺少这些字段时按 `0 / 0 / 1 / locked / 0` 处理，原有 `focusX`、`focusY` 和安全区逻辑不变。
 
 ## 项目结构
 

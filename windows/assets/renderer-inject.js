@@ -564,6 +564,8 @@
     const focusY = typeof ART.focusY === "number" ? ART.focusY : profile?.focusY ?? 0.5;
     const taskMode = ART.taskMode && ART.taskMode !== "auto"
       ? ART.taskMode : profile?.taskMode || "ambient";
+    const bubbleOpacity = typeof ART.bubbleOpacity === "number"
+      ? clamp(ART.bubbleOpacity, 0, 1) : 0;
     const wide = artMediaType === "video" || profile?.wide ||
       profile?.aspect === "wide" || profile?.aspect === "ultrawide";
     const aspect = profile?.aspect || "unknown";
@@ -606,6 +608,7 @@
     setStyleProperty(root, "--dream-art-zoom", String(Number(zoom.toFixed(4))));
     setStyleProperty(root, "--dream-art-framing-position", framingPosition);
     setStyleProperty(root, "--dream-art-background-size", backgroundSize);
+    setStyleProperty(root, "--ds-bubble-opacity", String(Number(bubbleOpacity.toFixed(4))));
     setStyleProperty(root, "--ds-theme-image-focus-x", String(Number(focusX.toFixed(4))));
     setStyleProperty(root, "--ds-theme-image-focus-y", String(Number(focusY.toFixed(4))));
   };

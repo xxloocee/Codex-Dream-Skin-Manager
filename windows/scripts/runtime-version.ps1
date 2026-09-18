@@ -1,3 +1,17 @@
+function Get-DreamSkinRuntimeFileHash {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open,
+    [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    return (($sha.ComputeHash($stream) | ForEach-Object { $_.ToString('x2') }) -join '')
+  } finally {
+    $sha.Dispose()
+    $stream.Dispose()
+  }
+}
+
 function Get-DreamSkinRuntimeFingerprint {
   param([Parameter(Mandatory = $true)][string]$SkillRoot)
   try {
@@ -23,7 +37,7 @@ function Get-DreamSkinRuntimeFingerprint {
     $componentHashes = @()
     foreach ($runtimeFile in $runtimeFiles) {
       if (-not (Test-Path -LiteralPath $runtimeFile -PathType Leaf)) { return '' }
-      $componentHashes += (Get-FileHash -LiteralPath $runtimeFile -Algorithm SHA256).Hash.ToLowerInvariant()
+      $componentHashes += Get-DreamSkinRuntimeFileHash -Path $runtimeFile
     }
     if ($componentHashes.Count -lt 3) { return '' }
     $sha = [System.Security.Cryptography.SHA256]::Create()

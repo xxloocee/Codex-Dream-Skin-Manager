@@ -123,6 +123,29 @@ namespace CodexDreamSkinManager
         private Button applyThemeButton;
         private Button saveThemeButton;
         private Button saveApplyButton;
+        private TabControl mainTabs;
+        private Button editSavedThemeButton;
+        private ComboBox savedThemeSelector;
+        private TextBlock savedThemeStatus;
+        private ComboBox savedAppearanceCombo;
+        private ComboBox savedSafeAreaCombo;
+        private ComboBox savedTaskModeCombo;
+        private Slider savedBubbleOpacitySlider;
+        private Slider savedFocusXSlider;
+        private Slider savedFocusYSlider;
+        private Slider savedPositionXSlider;
+        private Slider savedPositionYSlider;
+        private Slider savedZoomSlider;
+        private TextBlock savedFocusXValue;
+        private TextBlock savedFocusYValue;
+        private TextBlock savedPositionXValue;
+        private TextBlock savedPositionYValue;
+        private TextBlock savedZoomValue;
+        private TextBlock savedBubbleOpacityValue;
+        private ListBox savedPositionModeSegment;
+        private CheckBox savedFramingEnabled;
+        private TextBox savedAccentBox;
+        private Button saveSavedThemeButton;
         private TextBox imagePathBox;
         private TextBox themeNameBox;
         private TextBox accentBox;
@@ -136,6 +159,8 @@ namespace CodexDreamSkinManager
         private ComboBox appearanceCombo;
         private ComboBox safeAreaCombo;
         private ComboBox taskModeCombo;
+        private Slider bubbleOpacitySlider;
+        private TextBlock bubbleOpacityValue;
         private Button browseImageButton;
         private DreamSkinStatus currentStatus = new DreamSkinStatus();
         private readonly SemaphoreSlim statusRefreshLock = new SemaphoreSlim(1, 1);
@@ -145,6 +170,7 @@ namespace CodexDreamSkinManager
         private int imageValidationGeneration;
         private int statusRefreshCount;
         private bool suppressThemeSelection;
+        private bool suppressSavedThemeSelection;
         private bool hasValidCustomImage;
 
         public MainWindow(DreamSkinService service)
@@ -198,14 +224,17 @@ namespace CodexDreamSkinManager
             AutomationProperties.SetName(checkUpdateButton, "CheckUpdateButton");
             checkUpdateButton.Click += async delegate { await CheckForUpdateAsync(); };
             statePanel.Children.Add(checkUpdateButton);
-            TabControl tabs = new TabControl { Margin = new Thickness(0, 0, 0, 12), Background = Brushes.Transparent, BorderBrush = AppBorderBrush, Tag = statePanel };
-            tabs.Style = ManagerControlStyles.Get("Tabs");
+            mainTabs = new TabControl { Margin = new Thickness(0, 0, 0, 12), Background = Brushes.Transparent, BorderBrush = AppBorderBrush, Tag = statePanel };
+            mainTabs.Style = ManagerControlStyles.Get("Tabs");
             TabItem dashboardTab = new TabItem { Header = "控制台", Content = BuildDashboard() };
             TabItem customTab = new TabItem { Header = "自定义换肤", Content = BuildCustomSkin() };
+            TabItem savedThemeTab = new TabItem { Header = "主题设置", Content = BuildSavedThemeEditor() };
             AutomationProperties.SetName(customTab, "CustomSkinTab");
-            tabs.Items.Add(dashboardTab);
-            tabs.Items.Add(customTab);
-            root.Children.Add(tabs);
+            AutomationProperties.SetName(savedThemeTab, "SavedThemeEditorTab");
+            mainTabs.Items.Add(dashboardTab);
+            mainTabs.Items.Add(customTab);
+            mainTabs.Items.Add(savedThemeTab);
+            root.Children.Add(mainTabs);
 
             messageText = new TextBlock { Text = "选择主题可预览；执行启用或恢复前会请求确认。", Foreground = MutedBrush, TextWrapping = TextWrapping.Wrap };
             Grid footer = new Grid();
@@ -414,6 +443,14 @@ namespace CodexDreamSkinManager
             applyThemeButton.Click += async delegate { await ApplySelectedThemeAsync(false); };
             controlStack.Children.Add(applyThemeButton);
 
+            editSavedThemeButton = SecondaryButton("编辑主题参数");
+            editSavedThemeButton.Margin = new Thickness(0, 0, 0, 8);
+            editSavedThemeButton.Visibility = Visibility.Collapsed;
+            editSavedThemeButton.ToolTip = "在主程序内修改所选主题的显示参数";
+            AutomationProperties.SetName(editSavedThemeButton, "EditSavedThemeButton");
+            editSavedThemeButton.Click += delegate { OpenSavedThemeEditor(themeList.SelectedItem as ThemeOption); };
+            controlStack.Children.Add(editSavedThemeButton);
+
             enableButton = PrimaryButton("启用皮肤");
             AutomationProperties.SetName(enableButton, "EnableButton");
             enableButton.Click += async delegate { await EnableAsync(); };
@@ -573,6 +610,11 @@ namespace CodexDreamSkinManager
             fields.Children.Add(FieldLabel("任务页模式"));
             taskModeCombo = CreateCombo(new[] { "自动", "氛围", "横幅", "完整", "关闭" }, 0);
             fields.Children.Add(taskModeCombo);
+            bubbleOpacityValue = new TextBlock { Text = "0%", Foreground = MutedBrush, HorizontalAlignment = HorizontalAlignment.Right };
+            fields.Children.Add(SliderLabel("消息气泡不透明度（用户与助手）", bubbleOpacityValue));
+            bubbleOpacitySlider = CreateSlider(0, 100, 0, 1, "BubbleOpacitySlider");
+            bubbleOpacitySlider.ValueChanged += FramingChanged;
+            fields.Children.Add(bubbleOpacitySlider);
 
             fields.Children.Add(FieldLabel("主题强调色"));
             Grid colorRow = new Grid();
@@ -599,11 +641,152 @@ namespace CodexDreamSkinManager
             saveApplyButton.Click += async delegate { await SaveCustomAsync(true); };
             Grid.SetColumn(saveApplyButton, 2);
             saveRow.Children.Add(saveApplyButton);
-            fields.Children.Add(saveRow);
-
-            panel.Child = fields;
+            // Keep the action row fixed at the bottom. The parameter list can
+            // scroll independently, so adding new controls never pushes the
+            // save actions outside the reachable area on a small window.
+            Grid editorLayout = new Grid { MaxHeight = 680 };
+            editorLayout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            editorLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            ScrollViewer fieldsScroll = new ScrollViewer { Content = fields,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+            editorLayout.Children.Add(fieldsScroll);
+            Grid.SetRow(saveRow, 1);
+            editorLayout.Children.Add(saveRow);
+            panel.Child = editorLayout;
             Grid.SetColumn(panel, 2);
             grid.Children.Add(panel);
+            scroll.Content = grid;
+            return scroll;
+        }
+
+        private UIElement BuildSavedThemeEditor()
+        {
+            ScrollViewer scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            scroll.Resources[typeof(ScrollBar)] = ManagerControlStyles.Get("VerticalScroll");
+            Grid grid = new Grid { Margin = new Thickness(4, 14, 4, 4), MaxWidth = 1260,
+                HorizontalAlignment = HorizontalAlignment.Stretch };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(300) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(18) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            Border selectorPanel = PanelBorder();
+            selectorPanel.VerticalAlignment = VerticalAlignment.Top;
+            StackPanel selectorFields = new StackPanel();
+            selectorFields.Children.Add(SectionLabel("选择主题"));
+            selectorFields.Children.Add(new TextBlock {
+                Text = "选择内置主题或“我的”主题，调整显示和取景参数。",
+                Foreground = MutedBrush, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 14)
+            });
+            selectorFields.Children.Add(FieldLabel("主题"));
+            savedThemeSelector = CreateCombo(new string[0], -1);
+            savedThemeSelector.MaxDropDownHeight = 240;
+            savedThemeSelector.Resources[typeof(ScrollBar)] = ManagerControlStyles.Get("VerticalScroll");
+            savedThemeSelector.SelectionChanged += SavedThemeSelectionChanged;
+            AutomationProperties.SetName(savedThemeSelector, "SavedThemeSelector");
+            selectorFields.Children.Add(savedThemeSelector);
+            savedThemeStatus = new TextBlock { Text = "正在读取主题库...", Foreground = MutedBrush,
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 14, 0, 0) };
+            selectorFields.Children.Add(savedThemeStatus);
+            selectorPanel.Child = selectorFields;
+            grid.Children.Add(selectorPanel);
+
+            Border editorPanel = PanelBorder();
+            editorPanel.VerticalAlignment = VerticalAlignment.Top;
+            StackPanel fields = new StackPanel();
+            fields.Children.Add(SectionLabel("显示与取景参数"));
+            fields.Children.Add(new TextBlock {
+                Text = "保存后，当前正在使用的主题会立即刷新；无需关闭或重启 Codex。",
+                Foreground = MutedBrush, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 10)
+            });
+            fields.Children.Add(FieldLabel("外观模式"));
+            savedAppearanceCombo = CreateCombo(new[] { "自动", "浅色", "深色" }, 0);
+            fields.Children.Add(savedAppearanceCombo);
+
+            savedFocusXValue = new TextBlock { Text = "50%", Foreground = MutedBrush, HorizontalAlignment = HorizontalAlignment.Right };
+            fields.Children.Add(SliderLabel("焦点水平位置", savedFocusXValue));
+            savedFocusXSlider = CreateSlider(0, 100, 50, 1, "SavedFocusXSlider");
+            savedFocusXSlider.ValueChanged += SavedThemeFramingChanged;
+            fields.Children.Add(savedFocusXSlider);
+            savedFocusYValue = new TextBlock { Text = "50%", Foreground = MutedBrush, HorizontalAlignment = HorizontalAlignment.Right };
+            fields.Children.Add(SliderLabel("焦点垂直位置", savedFocusYValue));
+            savedFocusYSlider = CreateSlider(0, 100, 50, 1, "SavedFocusYSlider");
+            savedFocusYSlider.ValueChanged += SavedThemeFramingChanged;
+            fields.Children.Add(savedFocusYSlider);
+
+            fields.Children.Add(FieldLabel("文字安全区"));
+            savedSafeAreaCombo = CreateCombo(new[] { "自动", "左侧", "右侧", "居中", "关闭" }, 0);
+            fields.Children.Add(savedSafeAreaCombo);
+            fields.Children.Add(FieldLabel("任务页模式"));
+            savedTaskModeCombo = CreateCombo(new[] { "自动", "氛围", "横幅", "完整", "关闭" }, 0);
+            fields.Children.Add(savedTaskModeCombo);
+            savedBubbleOpacityValue = new TextBlock { Text = "0%", Foreground = MutedBrush, HorizontalAlignment = HorizontalAlignment.Right };
+            fields.Children.Add(SliderLabel("消息气泡不透明度（用户与助手）", savedBubbleOpacityValue));
+            savedBubbleOpacitySlider = CreateSlider(0, 100, 0, 1, "SavedBubbleOpacitySlider");
+            savedBubbleOpacitySlider.ValueChanged += SavedThemeFramingChanged;
+            fields.Children.Add(savedBubbleOpacitySlider);
+
+            fields.Children.Add(FieldLabel("主题强调色"));
+            Grid colorRow = new Grid();
+            colorRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            colorRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            savedAccentBox = InputBox("留空即移除，例如 #FFB6C1");
+            colorRow.Children.Add(savedAccentBox);
+            Button colorButton = SecondaryButton("选择颜色");
+            colorButton.Margin = new Thickness(8, 0, 0, 0);
+            colorButton.Click += delegate { PickColor(savedAccentBox); };
+            Grid.SetColumn(colorButton, 1);
+            colorRow.Children.Add(colorButton);
+            fields.Children.Add(colorRow);
+
+            savedFramingEnabled = new CheckBox { Content = "启用自定义取景", Foreground = TextBrush,
+                Margin = new Thickness(0, 16, 0, 0) };
+            savedFramingEnabled.Checked += delegate { UpdateSavedFramingEnabledState(); };
+            savedFramingEnabled.Unchecked += delegate { UpdateSavedFramingEnabledState(); };
+            fields.Children.Add(savedFramingEnabled);
+            savedPositionXValue = new TextBlock { Text = "0%", Foreground = MutedBrush, HorizontalAlignment = HorizontalAlignment.Right };
+            fields.Children.Add(SliderLabel("水平位置", savedPositionXValue));
+            savedPositionXSlider = CreateSlider(-100, 100, 0, 10, "SavedPositionXSlider");
+            savedPositionXSlider.ValueChanged += SavedThemeFramingChanged;
+            fields.Children.Add(savedPositionXSlider);
+            savedPositionYValue = new TextBlock { Text = "0%", Foreground = MutedBrush, HorizontalAlignment = HorizontalAlignment.Right };
+            fields.Children.Add(SliderLabel("垂直位置", savedPositionYValue));
+            savedPositionYSlider = CreateSlider(-100, 100, 0, 10, "SavedPositionYSlider");
+            savedPositionYSlider.ValueChanged += SavedThemeFramingChanged;
+            fields.Children.Add(savedPositionYSlider);
+            savedZoomValue = new TextBlock { Text = "100%", Foreground = MutedBrush, HorizontalAlignment = HorizontalAlignment.Right };
+            fields.Children.Add(SliderLabel("缩放", savedZoomValue));
+            savedZoomSlider = CreateSlider(100, 200, 100, 10, "SavedZoomSlider");
+            savedZoomSlider.ValueChanged += SavedThemeFramingChanged;
+            fields.Children.Add(savedZoomSlider);
+            savedPositionModeSegment = new ListBox { Height = 38, Background = BackgroundBrush,
+                BorderBrush = AppBorderBrush, BorderThickness = new Thickness(1), Padding = new Thickness(2),
+                SelectionMode = SelectionMode.Single, HorizontalAlignment = HorizontalAlignment.Left };
+            ScrollViewer.SetHorizontalScrollBarVisibility(savedPositionModeSegment, ScrollBarVisibility.Disabled);
+            ScrollViewer.SetVerticalScrollBarVisibility(savedPositionModeSegment, ScrollBarVisibility.Disabled);
+            savedPositionModeSegment.ItemsPanel = HorizontalStackItemsPanel();
+            savedPositionModeSegment.ItemContainerStyle = SegmentedItemStyle(76, new Thickness(12, 6, 12, 6));
+            savedPositionModeSegment.Items.Add("锁定区域内");
+            savedPositionModeSegment.Items.Add("不锁定区域");
+            savedPositionModeSegment.SelectedIndex = 0;
+            fields.Children.Add(savedPositionModeSegment);
+
+            Grid actionRow = new Grid { Margin = new Thickness(0, 18, 0, 0) };
+            actionRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            actionRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
+            actionRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            Button reloadButton = SecondaryButton("恢复已存参数");
+            reloadButton.Click += delegate { LoadSelectedSavedTheme(); };
+            actionRow.Children.Add(reloadButton);
+            saveSavedThemeButton = PrimaryButton("保存修改");
+            saveSavedThemeButton.Click += async delegate { await SaveSavedThemeAsync(); };
+            Grid.SetColumn(saveSavedThemeButton, 2);
+            actionRow.Children.Add(saveSavedThemeButton);
+            fields.Children.Add(actionRow);
+            editorPanel.Child = fields;
+            Grid.SetColumn(editorPanel, 2);
+            grid.Children.Add(editorPanel);
             scroll.Content = grid;
             return scroll;
         }
@@ -740,6 +923,135 @@ namespace CodexDreamSkinManager
                 allThemes.Add(theme);
             }
             ApplyThemeFilters();
+            PopulateSavedThemeEditor();
+        }
+
+        private void PopulateSavedThemeEditor()
+        {
+            if (savedThemeSelector == null) return;
+            ThemeOption selected = savedThemeSelector.SelectedItem as ThemeOption;
+            string selectedId = selected == null ? currentStatus.ActiveThemeId : selected.Id;
+            suppressSavedThemeSelection = true;
+            try
+            {
+                savedThemeSelector.Items.Clear();
+                foreach (ThemeOption theme in allThemes)
+                    if (IsEditableTheme(theme)) savedThemeSelector.Items.Add(theme);
+                for (int i = 0; i < savedThemeSelector.Items.Count; i++)
+                {
+                    ThemeOption item = savedThemeSelector.Items[i] as ThemeOption;
+                    if (item != null && string.Equals(item.Id, selectedId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        savedThemeSelector.SelectedIndex = i;
+                        break;
+                    }
+                }
+                if (savedThemeSelector.SelectedIndex < 0 && savedThemeSelector.Items.Count > 0)
+                    savedThemeSelector.SelectedIndex = 0;
+            }
+            finally { suppressSavedThemeSelection = false; }
+            LoadSelectedSavedTheme();
+            UpdateActionState();
+        }
+
+        private void SavedThemeSelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (suppressSavedThemeSelection) return;
+            LoadSelectedSavedTheme();
+            UpdateActionState();
+        }
+
+        private void OpenSavedThemeEditor(ThemeOption theme)
+        {
+            if (!IsEditableTheme(theme))
+            {
+                SetMessage("请选择内置主题或“我的”主题后再编辑参数。", true);
+                return;
+            }
+            if (savedThemeSelector != null)
+            {
+                for (int i = 0; i < savedThemeSelector.Items.Count; i++)
+                {
+                    ThemeOption item = savedThemeSelector.Items[i] as ThemeOption;
+                    if (item != null && string.Equals(item.Id, theme.Id, StringComparison.OrdinalIgnoreCase))
+                    {
+                        savedThemeSelector.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+            if (mainTabs != null) mainTabs.SelectedIndex = 2;
+        }
+
+        private void LoadSelectedSavedTheme()
+        {
+            ThemeOption theme = savedThemeSelector == null ? null : savedThemeSelector.SelectedItem as ThemeOption;
+            bool available = IsEditableTheme(theme);
+            if (savedThemeStatus != null)
+            {
+                savedThemeStatus.Text = available
+                    ? (string.Equals(theme.Id, currentStatus.ActiveThemeId, StringComparison.OrdinalIgnoreCase)
+                        ? "当前正在使用此主题；保存后会立即刷新。" : "可修改此主题的显示与取景参数。")
+                    : "没有可编辑的主题。";
+            }
+            if (!available)
+            {
+                SetSavedEditorControlsEnabled(false);
+                return;
+            }
+            SetSavedEditorControlsEnabled(true);
+            savedAppearanceCombo.SelectedIndex = AppearanceIndex(theme.Appearance);
+            savedFocusXSlider.Value = ClampPercent(theme.FocusX * 100, 0, 100);
+            savedFocusYSlider.Value = ClampPercent(theme.FocusY * 100, 0, 100);
+            savedSafeAreaCombo.SelectedIndex = SafeAreaIndex(theme.SafeArea);
+            savedTaskModeCombo.SelectedIndex = TaskModeIndex(theme.TaskMode);
+            savedBubbleOpacitySlider.Value = ClampPercent(theme.BubbleOpacity * 100, 0, 100);
+            savedAccentBox.Text = theme.Accent ?? "";
+            savedFramingEnabled.IsChecked = theme.FramingEnabled;
+            savedPositionXSlider.Value = ClampPercent(theme.PositionX * 100, -100, 100);
+            savedPositionYSlider.Value = ClampPercent(theme.PositionY * 100, -100, 100);
+            savedZoomSlider.Value = ClampPercent(theme.Zoom * 100, 100, 200);
+            savedPositionModeSegment.SelectedIndex = string.Equals(theme.PositionMode, "free", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            SavedThemeFramingChanged(null, null);
+            UpdateSavedFramingEnabledState();
+        }
+
+        private void SavedThemeFramingChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (savedFocusXValue == null) return;
+            savedFocusXValue.Text = Math.Round(savedFocusXSlider.Value) + "%";
+            savedFocusYValue.Text = Math.Round(savedFocusYSlider.Value) + "%";
+            savedPositionXValue.Text = FormatSignedPercent(savedPositionXSlider.Value);
+            savedPositionYValue.Text = FormatSignedPercent(savedPositionYSlider.Value);
+            savedZoomValue.Text = Math.Round(savedZoomSlider.Value) + "%";
+            savedBubbleOpacityValue.Text = Math.Round(savedBubbleOpacitySlider.Value) + "%";
+        }
+
+        private void UpdateSavedFramingEnabledState()
+        {
+            bool enabled = savedFramingEnabled != null && savedFramingEnabled.IsChecked == true &&
+                savedThemeSelector != null && IsEditableTheme(savedThemeSelector.SelectedItem as ThemeOption);
+            if (savedPositionXSlider != null) savedPositionXSlider.IsEnabled = enabled;
+            if (savedPositionYSlider != null) savedPositionYSlider.IsEnabled = enabled;
+            if (savedZoomSlider != null) savedZoomSlider.IsEnabled = enabled;
+            if (savedPositionModeSegment != null) savedPositionModeSegment.IsEnabled = enabled;
+        }
+
+        private void SetSavedEditorControlsEnabled(bool enabled)
+        {
+            if (savedAppearanceCombo != null) savedAppearanceCombo.IsEnabled = enabled;
+            if (savedFocusXSlider != null) savedFocusXSlider.IsEnabled = enabled;
+            if (savedFocusYSlider != null) savedFocusYSlider.IsEnabled = enabled;
+            if (savedSafeAreaCombo != null) savedSafeAreaCombo.IsEnabled = enabled;
+            if (savedTaskModeCombo != null) savedTaskModeCombo.IsEnabled = enabled;
+            if (savedBubbleOpacitySlider != null) savedBubbleOpacitySlider.IsEnabled = enabled;
+            if (savedAccentBox != null) savedAccentBox.IsEnabled = enabled;
+            if (savedFramingEnabled != null) savedFramingEnabled.IsEnabled = enabled;
+            if (savedPositionXSlider != null) savedPositionXSlider.IsEnabled = enabled;
+            if (savedPositionYSlider != null) savedPositionYSlider.IsEnabled = enabled;
+            if (savedZoomSlider != null) savedZoomSlider.IsEnabled = enabled;
+            if (savedPositionModeSegment != null) savedPositionModeSegment.IsEnabled = enabled;
+            if (saveSavedThemeButton != null) saveSavedThemeButton.IsEnabled = enabled;
         }
 
         private void ApplyThemeFilters()
@@ -861,19 +1173,22 @@ namespace CodexDreamSkinManager
         private async Task DeleteSelectedThemeAsync()
         {
             ThemeOption theme = themeList == null ? null : themeList.SelectedItem as ThemeOption;
-            if (!IsSavedTheme(theme)) { SetMessage("只能删除“我的”已保存主题。", true); return; }
+            if (!IsDeletableTheme(theme)) { SetMessage("请选择内置主题或“我的”已保存主题后再删除。", true); return; }
             if (string.Equals(theme.Id, currentStatus.ActiveThemeId, StringComparison.OrdinalIgnoreCase))
             {
                 SetMessage("当前正在使用该主题，请先应用其他主题后再删除。", true);
                 return;
             }
-            string message = "将永久删除“" + theme.Name + "”及其本地图片。此操作无法撤销。是否继续？";
+            string message = theme.IsPreset
+                ? "将从内置主题库移除“" + theme.Name + "”，其背景文件将移入回收站。默认恢复主题不能删除。是否继续？"
+                : "将删除“" + theme.Name + "”及其本地图片。此操作无法撤销。是否继续？";
             if (MessageBox.Show(this, message, "确认删除主题", MessageBoxButton.YesNo,
                 MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
             ThemeDeletionResult result = null;
-            await RunOperationAsync(async delegate { result = await service.DeleteThemeAsync(theme); }, "主题已删除。");
+            await RunOperationAsync(async delegate { result = await service.DeleteThemeAsync(theme); },
+                theme.IsPreset ? "内置主题已移入回收站。" : "主题已删除。");
             if (result != null && result.CleanupPending)
-                SetMessage("主题已从主题库移除，但部分本地文件暂未清理。", true);
+                SetMessage("主题已从主题库移除，但背景文件暂未能移入回收站。", true);
         }
 
         internal static bool IsSavedTheme(ThemeOption theme)
@@ -881,6 +1196,20 @@ namespace CodexDreamSkinManager
             return theme != null && !theme.IsPreset &&
                 string.Equals(theme.Source, "saved", StringComparison.OrdinalIgnoreCase) &&
                 !string.IsNullOrWhiteSpace(theme.ThemeDirectory);
+        }
+
+        internal static bool IsDeletableTheme(ThemeOption theme)
+        {
+            return IsSavedTheme(theme) || (theme != null && theme.IsPreset &&
+                string.Equals(theme.Source, "preset", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(theme.Id));
+        }
+
+        internal static bool IsEditableTheme(ThemeOption theme)
+        {
+            return IsSavedTheme(theme) || (theme != null && theme.IsPreset &&
+                string.Equals(theme.Source, "preset", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(theme.Id));
         }
 
         private async Task EnableAsync()
@@ -951,7 +1280,38 @@ namespace CodexDreamSkinManager
             options.PositionMode = positionModeSegment != null && positionModeSegment.SelectedIndex == 1 ? "free" : "locked";
             options.SafeArea = MapSafeArea(safeAreaCombo.SelectedIndex);
             options.TaskMode = MapTaskMode(taskModeCombo.SelectedIndex);
+            options.BubbleOpacity = bubbleOpacitySlider == null ? 0 : bubbleOpacitySlider.Value / 100.0;
             options.Accent = accentBox.Text.Trim();
+            return options;
+        }
+
+        private async Task SaveSavedThemeAsync()
+        {
+            ThemeOption theme = savedThemeSelector == null ? null : savedThemeSelector.SelectedItem as ThemeOption;
+            if (!IsEditableTheme(theme)) { SetMessage("请选择内置主题或“我的”主题后再保存。", true); return; }
+            SavedThemeEditOptions options = ReadSavedThemeOptions();
+            try { options.Validate(); }
+            catch (Exception ex) { SetMessage(ex.Message, true); return; }
+            bool activeTheme = string.Equals(theme.Id, currentStatus.ActiveThemeId, StringComparison.OrdinalIgnoreCase);
+            await RunOperationAsync(async delegate { await service.UpdateThemeAsync(theme, options); },
+                activeTheme ? "主题参数已保存，当前界面已刷新。" : "主题参数已保存。");
+        }
+
+        private SavedThemeEditOptions ReadSavedThemeOptions()
+        {
+            SavedThemeEditOptions options = new SavedThemeEditOptions();
+            options.Appearance = MapAppearance(savedAppearanceCombo.SelectedIndex);
+            options.FocusX = savedFocusXSlider.Value / 100.0;
+            options.FocusY = savedFocusYSlider.Value / 100.0;
+            options.PositionX = savedPositionXSlider.Value / 100.0;
+            options.PositionY = savedPositionYSlider.Value / 100.0;
+            options.Zoom = savedZoomSlider.Value / 100.0;
+            options.PositionMode = savedPositionModeSegment.SelectedIndex == 1 ? "free" : "locked";
+            options.FramingEnabled = savedFramingEnabled.IsChecked == true;
+            options.SafeArea = MapSafeArea(savedSafeAreaCombo.SelectedIndex);
+            options.TaskMode = MapTaskMode(savedTaskModeCombo.SelectedIndex);
+            options.BubbleOpacity = savedBubbleOpacitySlider.Value / 100.0;
+            options.Accent = savedAccentBox.Text.Trim();
             return options;
         }
 
@@ -1134,7 +1494,8 @@ namespace CodexDreamSkinManager
                 FocusX = data.FocusX, FocusY = data.FocusY, SafeArea = data.SafeArea,
                 PositionX = data.PositionX, PositionY = data.PositionY, Zoom = data.Zoom,
                 PositionMode = data.PositionMode, FramingEnabled = data.FramingEnabled,
-                TaskMode = data.TaskMode, Accent = data.Accent, Category = data.Category,
+                TaskMode = data.TaskMode, BubbleOpacity = data.BubbleOpacity,
+                Accent = data.Accent, Category = data.Category,
                 Tags = new List<string>(data.Tags ?? new List<string>()),
                 SafeCssPath = data.SafeCssPath, LicensePath = data.LicensePath
             };
@@ -1208,7 +1569,7 @@ namespace CodexDreamSkinManager
                     FocusX = theme.FocusX, FocusY = theme.FocusY, SafeArea = theme.SafeArea,
                     PositionX = theme.PositionX, PositionY = theme.PositionY, Zoom = theme.Zoom,
                     PositionMode = theme.PositionMode, FramingEnabled = theme.FramingEnabled,
-                    TaskMode = theme.TaskMode, Accent = theme.Accent
+                    TaskMode = theme.TaskMode, BubbleOpacity = theme.BubbleOpacity, Accent = theme.Accent
                 };
                 if (!string.IsNullOrWhiteSpace(theme.ThemeDirectory)) {
                     string css = Path.Combine(theme.ThemeDirectory, "theme.css");
@@ -1231,20 +1592,27 @@ namespace CodexDreamSkinManager
 
         private void PickColor(object sender, RoutedEventArgs e)
         {
+            PickColor(accentBox);
+        }
+
+        private void PickColor(TextBox target)
+        {
+            if (target == null) return;
             using (System.Windows.Forms.ColorDialog dialog = new System.Windows.Forms.ColorDialog())
             {
                 dialog.FullOpen = true;
                 if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-                    accentBox.Text = "#" + dialog.Color.R.ToString("X2") + dialog.Color.G.ToString("X2") + dialog.Color.B.ToString("X2");
+                    target.Text = "#" + dialog.Color.R.ToString("X2") + dialog.Color.G.ToString("X2") + dialog.Color.B.ToString("X2");
             }
         }
 
         private void FramingChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (positionXValue == null || positionYValue == null || zoomValue == null) return;
+            if (positionXValue == null || positionYValue == null || zoomValue == null || bubbleOpacityValue == null) return;
             positionXValue.Text = FormatSignedPercent(positionXSlider.Value);
             positionYValue.Text = FormatSignedPercent(positionYSlider.Value);
             zoomValue.Text = Math.Round(zoomSlider.Value) + "%";
+            bubbleOpacityValue.Text = Math.Round(bubbleOpacitySlider.Value) + "%";
             UpdateCustomPreview();
         }
 
@@ -1288,21 +1656,37 @@ namespace CodexDreamSkinManager
             if (browseImageButton != null) browseImageButton.IsEnabled = !busy && service != null && service.CanManage;
             if (importPackageButton != null) importPackageButton.IsEnabled = !busy && service != null && service.CanManage;
             if (exportThemeButton != null) exportThemeButton.IsEnabled = selected && !busy;
+            if (editSavedThemeButton != null)
+            {
+                bool savedTheme = IsEditableTheme(selectedTheme);
+                bool supportsUpdate = currentStatus.SupportedActions.Contains("UpdateTheme");
+                editSavedThemeButton.Visibility = savedTheme ? Visibility.Visible : Visibility.Collapsed;
+                editSavedThemeButton.IsEnabled = savedTheme && supportsUpdate && !busy && service != null && service.CanManage;
+                editSavedThemeButton.ToolTip = !supportsUpdate ? "当前管理脚本不支持编辑主题参数" : "在主程序内修改所选主题参数";
+            }
             if (deleteThemeButton != null)
             {
-                bool savedTheme = IsSavedTheme(selectedTheme);
-                bool activeTheme = savedTheme && !string.IsNullOrWhiteSpace(currentStatus.ActiveThemeId) &&
+                bool deletableTheme = IsDeletableTheme(selectedTheme);
+                bool activeTheme = deletableTheme && !string.IsNullOrWhiteSpace(currentStatus.ActiveThemeId) &&
                     string.Equals(selectedTheme.Id, currentStatus.ActiveThemeId, StringComparison.OrdinalIgnoreCase);
-                bool supportsDelete = currentStatus.SupportedActions.Contains("DeleteTheme");
-                deleteThemeButton.Visibility = savedTheme ? Visibility.Visible : Visibility.Collapsed;
-                deleteThemeButton.IsEnabled = savedTheme && !activeTheme && supportsDelete && !busy &&
+                bool supportsDelete = selectedTheme != null && currentStatus.SupportedActions.Contains(
+                    selectedTheme.IsPreset ? "DeletePreset" : "DeleteTheme");
+                deleteThemeButton.Content = selectedTheme != null && selectedTheme.IsPreset ? "删除内置主题" : "删除主题";
+                deleteThemeButton.Visibility = deletableTheme ? Visibility.Visible : Visibility.Collapsed;
+                deleteThemeButton.IsEnabled = deletableTheme && !activeTheme && supportsDelete && !busy &&
                     service != null && service.CanManage;
                 deleteThemeButton.ToolTip = activeTheme
                     ? "当前正在使用该主题，请先应用其他主题后再删除"
-                    : !supportsDelete ? "当前管理脚本不支持删除主题" : null;
+                    : !supportsDelete ? "当前管理脚本不支持删除该主题" : null;
             }
             if (saveThemeButton != null) saveThemeButton.IsEnabled = state.CanSaveTheme && service != null && service.CanManage;
             if (saveApplyButton != null) saveApplyButton.IsEnabled = state.CanSaveApply && service != null && service.CanManage;
+            if (saveSavedThemeButton != null)
+            {
+                ThemeOption savedTheme = savedThemeSelector == null ? null : savedThemeSelector.SelectedItem as ThemeOption;
+                bool supportsUpdate = currentStatus.SupportedActions.Contains("UpdateTheme");
+                saveSavedThemeButton.IsEnabled = IsEditableTheme(savedTheme) && supportsUpdate && !busy && service != null && service.CanManage;
+            }
         }
 
         private bool ConfirmRestart(string operation)
@@ -1844,10 +2228,28 @@ namespace CodexDreamSkinManager
         }
 
         private static string MapAppearance(int index) { return index == 1 ? "light" : index == 2 ? "dark" : "auto"; }
+        private static int AppearanceIndex(string value) { return string.Equals(value, "light", StringComparison.OrdinalIgnoreCase) ? 1 : string.Equals(value, "dark", StringComparison.OrdinalIgnoreCase) ? 2 : 0; }
         private static string MapCategory(int index) { return index <= 0 || index > ThemeCategories.Ids.Length ? "all" : ThemeCategories.Ids[index - 1]; }
         private static string MapSource(int index) { return index == 1 ? "preset" : index == 2 ? "saved" : "all"; }
         private static string MapSafeArea(int index) { string[] values = { "auto", "left", "right", "center", "none" }; return values[Math.Max(0, Math.Min(index, values.Length - 1))]; }
         private static string MapTaskMode(int index) { string[] values = { "auto", "ambient", "banner", "full", "off" }; return values[Math.Max(0, Math.Min(index, values.Length - 1))]; }
+        private static int SafeAreaIndex(string value)
+        {
+            string[] values = { "auto", "left", "right", "center", "none" };
+            int index = Array.IndexOf(values, (value ?? "auto").ToLowerInvariant());
+            return index < 0 ? 0 : index;
+        }
+        private static int TaskModeIndex(string value)
+        {
+            string[] values = { "auto", "ambient", "banner", "full", "off" };
+            int index = Array.IndexOf(values, (value ?? "auto").ToLowerInvariant());
+            return index < 0 ? 0 : index;
+        }
+        private static double ClampPercent(double value, double minimum, double maximum)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value)) return minimum;
+            return Math.Max(minimum, Math.Min(maximum, value));
+        }
 
         private static SolidColorBrush BrushFrom(string value)
         {

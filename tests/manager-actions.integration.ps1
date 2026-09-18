@@ -175,6 +175,51 @@ try {
   Assert-Equal 'Codex Dream Skin' $appliedGothic.promoTitle 'Directory preset metadata was not preserved on apply.'
   Assert-Equal '#c8a55a' $appliedGothic.colors.accent 'Directory preset palette metadata was not preserved on apply.'
   Write-Host 'PASS: packaged preset metadata is applied without staging a saved theme'
+  # Use a separate user state to exercise both built-in storage formats without
+  # changing the fixtures used by the existing apply/reset tests.
+  $presetStateRoot = Join-Path $testRoot 'preset-edit-state'
+  $presetCommon = @('-SkillRoot', $SkillRoot, '-StateRoot', $presetStateRoot)
+  $presetInitial = Invoke-Manager -Arguments (@('-Action', 'Status') + $presetCommon)
+  $catalogHashBeforeEdit = (Get-FileHash -LiteralPath (Join-Path $SkillRoot 'presets\catalog.json')).Hash
+  $gothicMetadataPath = Join-Path $SkillRoot 'presets\preset-gothic-void-crusade\theme.json'
+  $gothicHashBeforeEdit = (Get-FileHash -LiteralPath $gothicMetadataPath).Hash
+  foreach ($editablePreset in @($catalogTheme[0], $gothicRow[0])) {
+    $beforeEdit = Invoke-Manager -Arguments (@('-Action', 'Status') + $presetCommon)
+    $null = Invoke-Manager -Arguments (@('-Action', 'UpdateTheme', '-ThemeId', $editablePreset.id,
+      '-Appearance', 'dark', '-FocusX', '0.3', '-FocusY', '0.6', '-SafeArea', 'right', '-TaskMode', 'full',
+      '-BubbleOpacity', '0.42', '-FramingEnabled', 'true', '-PositionX', '0.2', '-Zoom', '1.4', '-Accent', '#123456') + $presetCommon)
+    $editedStatus = Invoke-Manager -Arguments (@('-Action', 'Status') + $presetCommon)
+    Assert-Equal $beforeEdit.activeThemeId $editedStatus.activeThemeId 'Editing an inactive preset switched themes.'
+    $editedRow = @($editedStatus.themes | Where-Object { $_.id -eq $editablePreset.id })[0]
+    Assert-Equal 'preset' $editedRow.source 'Edited preset became a saved user theme.'
+    Assert-Equal '0.42' $editedRow.bubbleOpacity 'Status lost preset bubble opacity.'
+    Assert-Equal '1.4' $editedRow.zoom 'Status lost preset framing.'
+    Assert-Equal 'dark' $editedRow.appearance 'Status lost preset appearance.'
+    $null = Invoke-Manager -Arguments (@('-Action', 'ApplyTheme', '-ImagePath', $editablePreset.imagePath) + $presetCommon)
+    $null = Invoke-Manager -Arguments (@('-Action', 'Pause') + $presetCommon)
+    $updatedPreset = Invoke-Manager -Arguments (@('-Action', 'UpdateTheme', '-ThemeId', $editablePreset.id,
+      '-Appearance', 'light', '-TaskMode', 'full', '-BubbleOpacity', '0.7') + $presetCommon)
+    Assert-Equal $true $updatedPreset.activeUpdated 'Editing the active preset did not update its active copy.'
+    foreach ($refresh in 1..2) {
+      $refreshedPreset = Invoke-Manager -Arguments (@('-Action', 'Status') + $presetCommon)
+      $activePreset = Get-Content -LiteralPath (Join-Path $presetStateRoot 'active-theme\theme.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+      Assert-Equal '0.7' $activePreset.art.bubbleOpacity 'Status initialization erased preset settings.'
+      Assert-Equal 'light' $activePreset.appearance 'Preset appearance migration erased the user setting.'
+      Assert-True (-not $activePreset.art.PSObject.Properties['positionX']) 'Disabling preset framing retained custom positions.'
+      Assert-Equal $true $refreshedPreset.isPaused 'Editing a preset changed pause state.'
+    }
+    $otherPreset = if ($editablePreset.id -eq $catalogTheme[0].id) { $gothicRow[0] } else { $catalogTheme[0] }
+    $null = Invoke-Manager -Arguments (@('-Action', 'ApplyTheme', '-ImagePath', $otherPreset.imagePath) + $presetCommon)
+    $null = Invoke-Manager -Arguments (@('-Action', 'ApplyTheme', '-ImagePath', $editablePreset.imagePath) + $presetCommon)
+    $reappliedPreset = Get-Content -LiteralPath (Join-Path $presetStateRoot 'active-theme\theme.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-Equal '0.7' $reappliedPreset.art.bubbleOpacity 'Switching back to a preset lost its settings.'
+  }
+  Assert-Equal $catalogHashBeforeEdit (Get-FileHash -LiteralPath (Join-Path $SkillRoot 'presets\catalog.json')).Hash 'Editing modified the bundled catalog.'
+  Assert-Equal $gothicHashBeforeEdit (Get-FileHash -LiteralPath $gothicMetadataPath).Hash 'Editing modified the bundled directory preset.'
+  $invalidPresetRejected = $false
+  try { $null = Invoke-Manager -Arguments (@('-Action', 'UpdateTheme', '-ThemeId', 'preset-../outside') + $presetCommon) } catch { $invalidPresetRejected = $true }
+  Assert-True $invalidPresetRejected 'Preset editing accepted an unmanaged identity.'
+  Write-Host 'PASS: catalog and directory preset edits persist across refresh and reapply without changing bundled files'
   $customTagsImage = Join-Path $testRoot 'custom-tags.jpg'
   Copy-Item -LiteralPath $catalogImages[0].FullName -Destination $customTagsImage -Force
   # Keep the image valid but make its content unique so ApplyTheme does not
@@ -227,7 +272,7 @@ try {
       '-Name', '集成测试主题', '-Appearance', 'dark', '-FocusX', '0.72', '-FocusY', '0.45',
       '-PositionX', '0.35', '-PositionY', '-0.2', '-Zoom', '1.6',
       '-PositionMode', 'free', '-FramingEnabled', 'true',
-      '-SafeArea', 'right', '-TaskMode', 'banner', '-Accent', '#12AB34',
+      '-SafeArea', 'right', '-TaskMode', 'banner', '-BubbleOpacity', '0.42', '-Accent', '#12AB34',
       '-TagsJson', '[\"动态\",\"人物\",\"城市\"]', '-KeepCurrent'
     ) + $common)
 
@@ -262,14 +307,33 @@ try {
   Assert-Equal $true $saved[0].framingEnabled 'Status did not mark explicit custom framing.'
   Assert-Equal 'right' $theme.art.safeArea 'Safe area was not saved.'
   Assert-Equal 'banner' $theme.art.taskMode 'Task mode was not saved.'
+  Assert-Equal '0.42' $theme.art.bubbleOpacity 'Bubble opacity was not saved.'
+  Assert-Equal '0.42' $saved[0].bubbleOpacity 'Status did not return bubble opacity.'
   Assert-Equal '#12AB34' $theme.palette.accent 'Accent was not saved.'
   Write-Host 'PASS: save-only preserves active theme and paused state'
 
-  Assert-Equal '1.5' $after.managerApiVersion 'Manager API version is missing.'
+  # Valid imported themes may have only a subset of the optional art fields.
+  $originalThemeJson = [System.IO.File]::ReadAllText($themePath, [System.Text.Encoding]::UTF8)
+  $theme.art = [pscustomobject]@{ taskMode = 'full' }
+  [System.IO.File]::WriteAllText($themePath, ($theme | ConvertTo-Json -Depth 8), [System.Text.Encoding]::UTF8)
+  $null = Invoke-Manager -Arguments (@('-Action', 'UpdateTheme', '-ThemeDirectory', $saved[0].themeDirectory,
+    '-FocusX', '0.3', '-FocusY', '0.6', '-SafeArea', 'right', '-TaskMode', 'full', '-BubbleOpacity', '0.5') + $common)
+  $editedLegacy = [System.IO.File]::ReadAllText($themePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+  Assert-Equal '0.3' $editedLegacy.art.focusX 'Editing a sparse art object failed to add focusX.'
+  Assert-Equal '0.6' $editedLegacy.art.focusY 'Editing a sparse art object failed to add focusY.'
+  Assert-Equal 'right' $editedLegacy.art.safeArea 'Editing a sparse art object failed to add safeArea.'
+  Assert-Equal '0.5' $editedLegacy.art.bubbleOpacity 'Editing a sparse art object lost bubble opacity.'
+  Assert-Equal $theme.id $editedLegacy.id 'Editing changed the theme identity.'
+  [System.IO.File]::WriteAllText($themePath, $originalThemeJson, [System.Text.Encoding]::UTF8)
+  Write-Host 'PASS: saved theme editing supports missing optional art fields'
+
+  Assert-Equal '1.7' $after.managerApiVersion 'Manager API version is missing.'
   Assert-Equal '1' $after.themeSchemaVersion 'Theme schema version is missing.'
   Assert-True (@($after.supportedActions) -contains 'ValidateImage') 'Supported actions do not include ValidateImage.'
   Assert-True (@($after.supportedActions) -contains 'ResetTheme') 'Supported actions do not include ResetTheme.'
   Assert-True (@($after.supportedActions) -contains 'DeleteTheme') 'Supported actions do not include DeleteTheme.'
+  Assert-True (@($after.supportedActions) -contains 'UpdateTheme') 'Supported actions do not include UpdateTheme.'
+  Assert-True (@($after.supportedActions) -contains 'DeletePreset') 'Supported actions do not include DeletePreset.'
   Assert-True (-not (@($after.supportedActions) -contains 'EmergencyRestore')) 'Supported actions advertise an unavailable EmergencyRestore action.'
   Assert-True -Value ($after.statusKind -in @('stopped','running','paused','stale','mismatch','uninspectable','degraded')) -Message 'Status kind is not structured.'
   Write-Host 'PASS: status exposes versions and capabilities'
@@ -534,7 +598,7 @@ try {
   New-Item -ItemType Directory -Force -Path $requestRoot | Out-Null
   $requestPath = Join-Path $requestRoot 'batch-one.json'
   $batchRequest = [ordered]@{ schemaVersion = 1; items = @(
-    [ordered]@{ imagePath = $sourceImage.FullName; name = '批量主题一'; category = 'nature'; tags = @('森林','收藏'); appearance = 'auto'; focusX = 0.13; focusY = 0.5; positionX = 0.25; positionY = -0.2; zoom = 1.3; positionMode = 'free'; framingEnabled = $true; safeArea = 'auto'; taskMode = 'auto'; accent = '' }
+    [ordered]@{ imagePath = $sourceImage.FullName; name = '批量主题一'; category = 'nature'; tags = @('森林','收藏'); appearance = 'auto'; focusX = 0.13; focusY = 0.5; positionX = 0.25; positionY = -0.2; zoom = 1.3; positionMode = 'free'; framingEnabled = $true; safeArea = 'auto'; taskMode = 'auto'; bubbleOpacity = 0.27; accent = '' }
   ) }
   [System.IO.File]::WriteAllText($requestPath, (($batchRequest | ConvertTo-Json -Depth 8) + "`r`n"), [System.Text.Encoding]::UTF8)
   $batchResult = Invoke-Manager -Arguments (@('-Action', 'ImportBatch', '-RequestPath', $requestPath) + $common)
@@ -551,12 +615,14 @@ try {
   Assert-Equal '-0.2' $savedBatchTheme.art.positionY 'Batch import did not preserve vertical image position.'
   Assert-Equal '1.3' $savedBatchTheme.art.zoom 'Batch import did not preserve image zoom.'
   Assert-Equal 'free' $savedBatchTheme.art.positionMode 'Batch import did not preserve image movement mode.'
-  Assert-Equal '2' $savedBatchTheme.managerFingerprintVersion 'Batch import did not version its visual fingerprint.'
+  Assert-Equal '0.27' $savedBatchTheme.art.bubbleOpacity 'Batch import did not preserve bubble opacity.'
+  Assert-Equal '3' $savedBatchTheme.managerFingerprintVersion 'Batch import did not version its visual fingerprint.'
   $batchStatusTheme = @($batchAfter.themes | Where-Object { $_.name -eq '批量主题一' })
   Assert-Equal 1 $batchStatusTheme.Count 'Imported batch theme was not returned by status.'
   Assert-Equal 'nature' $batchStatusTheme[0].category 'Status did not return the saved category.'
   Assert-True (@($batchStatusTheme[0].tags) -contains '收藏') 'Status did not return the saved tags.'
   Assert-Equal 'free' $batchStatusTheme[0].positionMode 'Status did not return the batch movement mode.'
+  Assert-Equal '0.27' $batchStatusTheme[0].bubbleOpacity 'Status did not return batch bubble opacity.'
   Assert-Equal $true $batchStatusTheme[0].framingEnabled 'Status did not mark batch custom framing.'
 
   $savedBatchTheme.managerFingerprintVersion = 1
@@ -583,6 +649,24 @@ try {
   [System.IO.File]::WriteAllText($modeVariantPath, (($batchRequest | ConvertTo-Json -Depth 8) + "`r`n"), [System.Text.Encoding]::UTF8)
   $modeVariantResult = Invoke-Manager -Arguments (@('-Action', 'ImportBatch', '-RequestPath', $modeVariantPath) + $common)
   Assert-Equal 1 $modeVariantResult.imported 'The same image with a different movement mode was incorrectly skipped.'
+
+  $opacityPath = Join-Path $requestRoot 'batch-opacity.json'
+  $batchRequest.items[0].bubbleOpacity = 0.65
+  [System.IO.File]::WriteAllText($opacityPath, ($batchRequest | ConvertTo-Json -Depth 8), [System.Text.Encoding]::UTF8)
+  $opacityResult = Invoke-Manager -Arguments (@('-Action', 'ImportBatch', '-RequestPath', $opacityPath) + $common)
+  Assert-Equal 1 $opacityResult.imported 'Different bubble opacity was incorrectly deduplicated.'
+  $null = Invoke-Manager -Arguments (@('-Action', 'UpdateTheme', '-ThemeDirectory', $opacityResult.results[0].themeDirectory,
+    '-FocusX', '0.13', '-FocusY', '0.5', '-PositionX', '0.25', '-PositionY', '-0.2', '-Zoom', '1.3',
+    '-PositionMode', 'locked', '-FramingEnabled', 'true', '-BubbleOpacity', '0.75') + $common)
+  $editedRequestPath = Join-Path $requestRoot 'batch-edited.json'
+  $batchRequest.items[0].bubbleOpacity = 0.75
+  [System.IO.File]::WriteAllText($editedRequestPath, ($batchRequest | ConvertTo-Json -Depth 8), [System.Text.Encoding]::UTF8)
+  $editedDuplicate = Invoke-Manager -Arguments (@('-Action', 'ImportBatch', '-RequestPath', $editedRequestPath) + $common)
+  Assert-Equal 1 $editedDuplicate.skipped 'Edited theme did not deduplicate against its new parameters.'
+  $oldParameters = Invoke-Manager -Arguments (@('-Action', 'ImportBatch', '-RequestPath', $opacityPath) + $common)
+  Assert-Equal 1 $oldParameters.imported 'Editing left a stale fingerprint for the old parameters.'
+  $batchRequest.items[0].bubbleOpacity = 0.27
+  Write-Host 'PASS: opacity and saved theme edits participate in deduplication'
 
   $legacyVariantPath = Join-Path $requestRoot 'batch-legacy-variant.json'
   $batchRequest.items[0].name = '旧主题构图保真'

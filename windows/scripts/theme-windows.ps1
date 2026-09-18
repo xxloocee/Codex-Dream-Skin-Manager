@@ -453,7 +453,7 @@ function Normalize-DreamSkinThemeContract {
   }
   if (-not $Theme.PSObject.Properties['art'] -or -not $Theme.PSObject.Properties['art'].Value) {
     $Theme | Add-Member -NotePropertyName art -NotePropertyValue `
-      ([pscustomobject]@{ focusX = $null; focusY = $null; safeArea = 'auto'; taskMode = 'auto' }) -Force
+      ([pscustomobject]@{ focusX = $null; focusY = $null; bubbleOpacity = 0.0; safeArea = 'auto'; taskMode = 'auto' }) -Force
   }
   return $Theme
 }
@@ -480,6 +480,43 @@ function Get-DreamSkinActiveThemeAppearance {
     if ($appearance -in @('light', 'dark')) { return $appearance }
   } catch {}
   return 'auto'
+}
+
+function Get-DreamSkinPresetSettingsPath {
+  param([string]$ThemeId, [string]$StateRoot)
+  if ($ThemeId -cnotmatch '^preset-[A-Za-z0-9_-]{1,72}$') { throw 'Invalid preset settings identity.' }
+  $path = Join-Path (Join-Path $StateRoot 'preset-settings') ($ThemeId + '.json')
+  Assert-DreamSkinNoReparseComponents -Path $path
+  return $path
+}
+
+function Read-DreamSkinPresetSettings {
+  param([string]$ThemeId, [string]$StateRoot)
+  if ($ThemeId -cnotmatch '^preset-[A-Za-z0-9_-]{1,72}$') { return $null }
+  $path = Get-DreamSkinPresetSettingsPath -ThemeId $ThemeId -StateRoot $StateRoot
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+  if ((Get-Item -LiteralPath $path).Length -gt 16384) { throw 'Preset settings file is too large.' }
+  $settings = (Read-DreamSkinUtf8File -Path $path) | ConvertFrom-Json -ErrorAction Stop
+  if ($settings.schemaVersion -ne 1 -or $settings.appearance -notin @('auto','light','dark') -or
+      $null -eq $settings.art -or $settings.art -isnot [pscustomobject]) { throw 'Invalid preset settings.' }
+  return $settings
+}
+
+function Merge-DreamSkinPresetSettings {
+  param([object]$Theme, [object]$Settings)
+  if ($null -eq $Settings) { return $Theme }
+  $Theme = Normalize-DreamSkinThemeContract -Theme $Theme
+  $Theme.appearance = $Settings.appearance
+  foreach ($key in @('focusX','focusY','safeArea','taskMode','bubbleOpacity','positionX','positionY','zoom','positionMode','framingEnabled')) {
+    if ($Theme.art.PSObject.Properties[$key]) { $Theme.art.PSObject.Properties.Remove($key) }
+    if ($Settings.art.PSObject.Properties[$key]) {
+      $Theme.art | Add-Member -NotePropertyName $key -NotePropertyValue $Settings.art.$key
+    }
+  }
+  if (-not $Theme.palette) { $Theme | Add-Member -NotePropertyName palette -NotePropertyValue ([pscustomobject]@{}) -Force }
+  if ($Theme.palette.PSObject.Properties['accent']) { $Theme.palette.PSObject.Properties.Remove('accent') }
+  if ($Settings.accent) { $Theme.palette | Add-Member -NotePropertyName accent -NotePropertyValue $Settings.accent }
+  return $Theme
 }
 
 function Initialize-DreamSkinThemeStore {
@@ -574,7 +611,8 @@ function Initialize-DreamSkinThemeStore {
     if ($activeId -ceq $bundledPresetId) { $refreshSource = $assetRoot }
     elseif ($activeId -ceq 'preset-gothic-void-crusade' -and
       (Test-Path -LiteralPath $gothicSourceTheme -PathType Leaf)) { $refreshSource = $gothicSource }
-    if ($null -ne $refreshSource) {
+    $presetSettings = Read-DreamSkinPresetSettings -ThemeId $activeId -StateRoot $StateRoot
+    if ($null -ne $refreshSource -and $null -eq $presetSettings) {
       $sourcePack = Read-DreamSkinTheme -ThemeDirectory $refreshSource
       $sourceJson = Read-DreamSkinUtf8File -Path $sourcePack.ThemePath
       $activeJson = Read-DreamSkinUtf8File -Path $activeTheme
@@ -586,6 +624,14 @@ function Initialize-DreamSkinThemeStore {
         Assert-DreamSkinNoReparseComponents -Path $refreshedImage
         Assert-DreamSkinImageFile -Path $refreshedImage
         Copy-Item -LiteralPath $sourcePack.ThemePath -Destination $activeTheme -Force
+      }
+    }
+    if ($null -ne $presetSettings) {
+      $active = Read-DreamSkinTheme -ThemeDirectory $paths.Active -SkipImageMetadata
+      $before = $active.Theme | ConvertTo-Json -Depth 12
+      $merged = Merge-DreamSkinPresetSettings -Theme $active.Theme -Settings $presetSettings
+      if (($merged | ConvertTo-Json -Depth 12) -cne $before) {
+        Write-DreamSkinTheme -ThemeDirectory $paths.Active -Theme $merged
       }
     }
   }
@@ -605,6 +651,7 @@ function Set-DreamSkinActiveTheme {
     [AllowNull()][object]$Theme,
     [string]$Name,
     [AllowNull()][string]$SafeCssPath,
+    [switch]$SkipImageArchive,
     [string]$StateRoot = (Join-Path $env:LOCALAPPDATA 'CodexDreamSkin')
   )
   $paths = Get-DreamSkinThemePaths -StateRoot $StateRoot
@@ -612,7 +659,9 @@ function Set-DreamSkinActiveTheme {
   Ensure-DreamSkinManagedDirectory -Path $paths.Active -Root $paths.Root
   Ensure-DreamSkinManagedDirectory -Path $paths.Images -Root $paths.Root
   $source = [System.IO.Path]::GetFullPath($ImagePath)
-  Assert-DreamSkinImageFile -Path $source
+  # The copied temporary file is the trust boundary. Avoid parsing the same
+  # source media twice before validating that immutable snapshot.
+  Assert-DreamSkinImageFile -Path $source -SkipImageMetadata
   $extension = [System.IO.Path]::GetExtension($source).ToLowerInvariant()
   $oldImage = $null
   try { $oldImage = (Read-DreamSkinTheme -ThemeDirectory $paths.Active).ImagePath } catch {}
@@ -622,7 +671,7 @@ function Set-DreamSkinActiveTheme {
       id = 'custom'
       name = '自定义主题'
       appearance = 'auto'
-      art = [pscustomobject]@{ focusX = $null; focusY = $null; safeArea = 'auto'; taskMode = 'auto' }
+      art = [pscustomobject]@{ focusX = $null; focusY = $null; bubbleOpacity = 0.0; safeArea = 'auto'; taskMode = 'auto' }
     }
   }
   $imageName = New-DreamSkinThemeImageName -Extension $extension
@@ -646,7 +695,7 @@ function Set-DreamSkinActiveTheme {
     Assert-DreamSkinVideoDecodable -Path $temporary -StateRoot $StateRoot
     Move-Item -LiteralPath $temporary -Destination $target -Force
     Assert-DreamSkinNoReparseComponents -Path $target
-    Assert-DreamSkinImageFile -Path $target
+    Assert-DreamSkinImageFile -Path $target -SkipImageMetadata
     $Theme | Add-Member -NotePropertyName image -NotePropertyValue $imageName -Force
     if ($Name) { $Theme | Add-Member -NotePropertyName name -NotePropertyValue $Name -Force }
     $Theme = Normalize-DreamSkinThemeContract -Theme $Theme
@@ -669,12 +718,14 @@ function Set-DreamSkinActiveTheme {
     (Test-DreamSkinThemePathWithin -Path $oldImage -Root $paths.Active)) {
     Remove-Item -LiteralPath $oldImage -Force -ErrorAction SilentlyContinue
   }
-  $imageArchive = Join-Path $paths.Images $imageName
-  Assert-DreamSkinNoReparseComponents -Path $imageArchive
-  Copy-Item -LiteralPath $target -Destination $imageArchive -Force
-  Assert-DreamSkinNoReparseComponents -Path $imageArchive
-  Assert-DreamSkinImageFile -Path $imageArchive
-  return Read-DreamSkinTheme -ThemeDirectory $paths.Active
+  if (-not $SkipImageArchive) {
+    $imageArchive = Join-Path $paths.Images $imageName
+    Assert-DreamSkinNoReparseComponents -Path $imageArchive
+    Copy-Item -LiteralPath $target -Destination $imageArchive -Force
+    Assert-DreamSkinNoReparseComponents -Path $imageArchive
+    Assert-DreamSkinImageFile -Path $imageArchive
+  }
+  return Read-DreamSkinTheme -ThemeDirectory $paths.Active -SkipImageMetadata
 }
 
 function Set-DreamSkinActiveThemeImage {
@@ -2211,13 +2262,13 @@ function Use-DreamSkinSavedTheme {
   if (-not (Test-DreamSkinThemePathWithin -Path $directory -Root $paths.Saved)) {
     throw 'Saved theme must remain inside the Dream Skin themes folder.'
   }
-  $saved = Read-DreamSkinTheme -ThemeDirectory $directory
+  $saved = Read-DreamSkinTheme -ThemeDirectory $directory -SkipImageMetadata
   $theme = $saved.Theme | ConvertTo-Json -Depth 8 | ConvertFrom-Json
   $safeCssPath = Join-Path $directory 'theme.css'
   if (-not (Test-Path -LiteralPath $safeCssPath -PathType Leaf)) { $safeCssPath = $null }
   if ($safeCssPath) { Assert-DreamSkinSafeCssFile -Path $safeCssPath }
   return Set-DreamSkinActiveTheme -ImagePath $saved.ImagePath -Theme $theme `
-    -SafeCssPath $safeCssPath -StateRoot $StateRoot
+    -SafeCssPath $safeCssPath -SkipImageArchive -StateRoot $StateRoot
 }
 
 function Set-DreamSkinPaused {

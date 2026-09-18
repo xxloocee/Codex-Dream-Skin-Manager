@@ -478,8 +478,13 @@ export async function runRendererRuntimeTest(assetRoot) {
   );
   assert.match(
     css,
-    /:is\(\[class~="group\/application-menu-top-bar"\], \[class\*="_ApplicationMenuTopBar_"\]\)[\s\S]{0,140}background:\s*rgb\(var\(--ds-panel-rgb\) \/ \.38\)/,
-    "The current Windows application menu bar must use the themed acrylic surface.",
+    /__DREAM_SELECTOR_SHELL_MAIN__ > __DREAM_SELECTOR_HEADER_TINT__[\s\S]{0,260}background:\s*transparent\s*!important;[\s\S]{0,160}backdrop-filter:\s*none\s*!important;/,
+    "The task-page header must not add an opaque layer over the artwork.",
+  );
+  assert.match(
+    css,
+    /:is\(\[class~="group\/application-menu-top-bar"\], \[class\*="_ApplicationMenuTopBar_"\]\)[\s\S]{0,180}background:\s*transparent\s*!important;[\s\S]{0,160}backdrop-filter:\s*none\s*!important;/,
+    "The Windows application menu bar must share the transparent artwork surface.",
   );
   assert.match(css, /--ds-task-full-veil/);
   assert.match(css, /data-dream-task-mode="full"/);
@@ -521,18 +526,23 @@ export async function runRendererRuntimeTest(assetRoot) {
   );
   assert.match(
     css,
-    /\[data-response-annotation-conversation\]\[data-response-annotation-target\][\s\S]{0,900}backdrop-filter:\s*blur\(20px\)/,
-    "Streaming reasoning needs a readable single themed surface.",
+    /\[data-response-annotation-conversation\]\[data-response-annotation-target\][\s\S]{0,520}background:\s*rgb\(var\(--ds-panel-rgb\) \/ var\(--ds-bubble-opacity, 0\)\)\s*!important;[\s\S]{0,200}backdrop-filter:\s*none\s*!important;/,
+    "Assistant message bubbles must use the saved bubble opacity without frosted blur.",
   );
   assert.match(
     css,
-    /\[data-local-conversation-final-assistant\][\s\S]{0,160}\[data-response-annotation-conversation\]\[data-response-annotation-target\][\s\S]{0,260}background:\s*transparent\s*!important/,
-    "Final assistant messages must not retain a nested reasoning surface.",
+    /\[data-local-conversation-final-assistant\][\s\S]{0,160}\[data-response-annotation-conversation\]\[data-response-annotation-target\][\s\S]{0,300}background:\s*rgb\(var\(--ds-panel-rgb\) \/ var\(--ds-bubble-opacity, 0\)\)\s*!important/,
+    "Final assistant messages must retain the selected bubble opacity.",
   );
   assert.match(
     css,
-    /\[data-local-conversation-item-target-ids\][\s\S]{0,900}backdrop-filter:\s*blur\(18px\)/,
-    "Expanded command details need a readable themed surface.",
+    /\[data-user-message-bubble="true"\][\s\S]{0,380}background:\s*rgb\(var\(--ds-panel-rgb\) \/ var\(--ds-bubble-opacity, 0\)\)\s*!important/,
+    "User message bubbles must use the same saved opacity as assistant messages.",
+  );
+  assert.match(
+    css,
+    /\[data-local-conversation-item-target-ids\][\s\S]{0,700}background:\s*transparent\s*!important;[\s\S]{0,180}backdrop-filter:\s*none\s*!important;/,
+    "Expanded command details must not create an opaque card between transparent messages.",
   );
   assert.match(
     css,
@@ -567,7 +577,7 @@ export async function runRendererRuntimeTest(assetRoot) {
   assert.doesNotMatch(unscoped, /\.group\\\/project-selector/);
 
   const home = makeFixture({ nativeAppearance: "dark" });
-  vm.runInNewContext(home.payloadFor({ art: { safeArea: "left", taskMode: "banner" } }), home.context);
+  vm.runInNewContext(home.payloadFor({ art: { safeArea: "left", taskMode: "banner", bubbleOpacity: 0.42 } }), home.context);
   const state = home.window.__CODEX_DREAM_SKIN_STATE__;
   assert.equal(home.attrs.get("data-dream-skin"), "active");
   assert.equal(home.attrs.get("data-dream-shell"), "dark");
@@ -581,6 +591,7 @@ export async function runRendererRuntimeTest(assetRoot) {
   assert.equal(home.rootStyle.values.get("--ds-theme-surface-radius"), "12px");
   assert.equal(home.rootStyle.values.get("--ds-theme-surface-opacity"), "1");
   assert.equal(home.rootStyle.values.get("--ds-theme-surface-blur"), "0px");
+  assert.equal(home.rootStyle.values.get("--ds-bubble-opacity"), "0.42");
   const publicDefaults = {
     "--ds-theme-font-family": "system",
     "--ds-theme-font-scale": "1",
