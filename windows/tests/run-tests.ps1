@@ -1461,7 +1461,7 @@ try {
     throw 'Start does not preserve an existing pause marker when startup rolls back.'
   }
   if (-not $startSource.Contains('$verifyDeadline') -or
-    -not $startSource.Contains('Start-Sleep -Seconds 3')) {
+    -not $startSource.Contains('Start-Sleep -Seconds 1')) {
     throw 'Start lost the verification retry window; a single early-boot miss must not tear the startup down.'
   }
   if (-not $startSource.Contains('Invoke-DreamSkinCodexWindowActivation -Codex $codex') -or

@@ -24,9 +24,9 @@ const mp4 = Buffer.from((await fs.readFile(path.join(
 ), "utf8")).trim(), "base64");
 
 assert.deepEqual(readImageMetadata(featured, ".jpg"), {
-  width: 2560,
-  height: 1440,
-  ratio: 2560 / 1440,
+  width: 2048,
+  height: 1152,
+  ratio: 2048 / 1152,
   wide: true,
   aspect: "wide",
   taskMode: "ambient",
