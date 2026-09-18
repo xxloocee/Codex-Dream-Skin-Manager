@@ -496,7 +496,7 @@ namespace CodexDreamSkinManager
                 {
                     string image = CreateJpeg(root, "art.jpg");
                     string package = Path.Combine(root, "valid.cdskin");
-                    CreateCdskin(package, "{\"formatVersion\":1,\"id\":\"sample\",\"name\":\"示例主题\",\"image\":\"art.jpg\",\"category\":\"custom\",\"tags\":[\"测试\"],\"appearance\":\"dark\",\"art\":{\"focusX\":0.7,\"focusY\":0.4,\"positionX\":0.35,\"positionY\":-0.25,\"zoom\":1.6,\"positionMode\":\"free\",\"safeArea\":\"left\",\"taskMode\":\"full\"},\"palette\":{\"accent\":\"#112233\"}}", image, null);
+                    CreateCdskin(package, "{\"formatVersion\":1,\"id\":\"sample\",\"name\":\"示例主题\",\"image\":\"art.jpg\",\"category\":\"custom\",\"tags\":[\"测试\"],\"appearance\":\"dark\",\"art\":{\"focusX\":0.7,\"focusY\":0.4,\"positionX\":0.35,\"positionY\":-0.25,\"zoom\":1.6,\"positionMode\":\"free\",\"safeArea\":\"left\",\"taskMode\":\"full\",\"bubbleOpacity\":0.42},\"palette\":{\"accent\":\"#112233\"}}", image, null);
                     Type serviceType = typeof(MainWindow).Assembly.GetType("CodexDreamSkinManager.ThemePackageService", true);
                     MethodInfo read = serviceType.GetMethod("ReadPackage", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
                     object data = read.Invoke(null, new object[] { package, Path.Combine(root, "extract") });
@@ -509,6 +509,7 @@ namespace CodexDreamSkinManager
                     AssertClose(1.6, Convert.ToDouble(ReadMemberObject(data, "Zoom")));
                     AssertEqual("free", ReadMember(data, "PositionMode"));
                     AssertEqual("full", ReadMember(data, "TaskMode"));
+                    AssertClose(0.42, Convert.ToDouble(ReadMemberObject(data, "BubbleOpacity")));
                     AssertTrue(Convert.ToBoolean(ReadMemberObject(data, "FramingEnabled")));
                     AssertTrue(Contains(ReadMemberObject(data, "Tags") as IEnumerable, "测试"));
                     AssertTrue(File.Exists(ReadMember(data, "ImagePath")));
@@ -516,6 +517,7 @@ namespace CodexDreamSkinManager
                     AssertEqual("custom", ReadMember(item, "Category"));
                     AssertEqual("free", ReadMember(item, "PositionMode"));
                     AssertTrue(Convert.ToBoolean(ReadMemberObject(item, "FramingEnabled")));
+                    AssertClose(0.42, Convert.ToDouble(ReadMemberObject(item, "BubbleOpacity")));
                     AssertTrue(Contains(ReadMemberObject(item, "Tags") as IEnumerable, "测试"));
                     string exported = Path.Combine(root, "roundtrip.cdskin");
                     serviceType.GetMethod("WritePackage", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
@@ -525,6 +527,7 @@ namespace CodexDreamSkinManager
                     AssertEqual("#112233", ReadMember(roundtrip, "Accent"));
                     AssertClose(0.35, Convert.ToDouble(ReadMemberObject(roundtrip, "PositionX")));
                     AssertEqual("free", ReadMember(roundtrip, "PositionMode"));
+                    AssertClose(0.42, Convert.ToDouble(ReadMemberObject(roundtrip, "BubbleOpacity")));
 
                     string legacy = Path.Combine(root, "legacy.cdskin");
                     CreateCdskin(legacy, "{\"formatVersion\":1,\"id\":\"legacy\",\"name\":\"旧主题\",\"image\":\"art.jpg\",\"category\":\"custom\",\"appearance\":\"auto\",\"art\":{\"focusX\":0.7,\"focusY\":0.4,\"safeArea\":\"auto\",\"taskMode\":\"auto\"},\"palette\":{}}", image, null);
@@ -977,7 +980,7 @@ namespace CodexDreamSkinManager
 
             Run("Publishes semantic application version", delegate
             {
-                AssertEqual("1.7.0.0", typeof(Program).Assembly.GetName().Version.ToString());
+                AssertEqual("1.7.5.0", typeof(Program).Assembly.GetName().Version.ToString());
             });
 
             Run("Converts focus percentage", delegate
@@ -1011,6 +1014,25 @@ namespace CodexDreamSkinManager
                 AssertEqual("#B65CFF", CustomThemeOptions.ValidateAccent("#B65CFF"));
             });
 
+            Run("Validates saved theme edit options", delegate
+            {
+                SavedThemeEditOptions options = new SavedThemeEditOptions();
+                options.Appearance = "dark";
+                options.FramingEnabled = true;
+                options.PositionMode = "free";
+                options.SafeArea = "none";
+                options.TaskMode = "full";
+                options.BubbleOpacity = 0.42;
+                options.Accent = "#ffed69";
+                options.Validate();
+                AssertEqual("#FFED69", options.Accent);
+                options.TaskMode = "unknown";
+                AssertThrows(delegate { options.Validate(); });
+                options.TaskMode = "full";
+                options.BubbleOpacity = 1.01;
+                AssertThrows(delegate { options.Validate(); });
+            });
+
             Run("Builds required WPF controls", delegate
             {
                 MainWindow window = new MainWindow(null);
@@ -1018,8 +1040,10 @@ namespace CodexDreamSkinManager
                     "ThemeList", "ThemeGridScroll", "ThemeSearch", "ThemeCategory",
                     "ThemeSource", "ThemeSort", "AddImagesButton", "ImportPackageButton",
                     "ExportThemeButton", "DeleteThemeButton", "PreviewImage", "EnableButton", "PauseButton",
-                    "ResetButton", "RestoreButton", "CustomSkinTab", "HorizontalPositionSlider",
-                    "VerticalPositionSlider", "ZoomSlider", "PositionMode", "ResetFramingButton"
+                    "ResetButton", "RestoreButton", "CustomSkinTab", "SavedThemeEditorTab", "EditSavedThemeButton",
+                    "SavedThemeSelector", "SavedFocusXSlider", "SavedFocusYSlider", "SavedPositionXSlider",
+                    "SavedPositionYSlider", "SavedZoomSlider", "SavedBubbleOpacitySlider", "BubbleOpacitySlider", "HorizontalPositionSlider", "VerticalPositionSlider",
+                    "ZoomSlider", "PositionMode", "ResetFramingButton"
                 };
                 foreach (string name in names)
                     AssertTrue(FindAutomationName(window, name));
@@ -1027,7 +1051,7 @@ namespace CodexDreamSkinManager
                 try
                 {
                     TabControl tabs = FindVisualChild<TabControl>(window);
-                    for (int index = 0; index < 2; index++)
+                    for (int index = 0; index < 3; index++)
                     {
                         tabs.SelectedIndex = index;
                         window.UpdateLayout();
@@ -1093,7 +1117,7 @@ namespace CodexDreamSkinManager
                 finally { Directory.Delete(root, true); }
             });
 
-            Run("Shows delete only for saved themes", delegate
+            Run("Shows delete for saved and preset themes", delegate
             {
                 string root = CreateLayout();
                 try
@@ -1106,12 +1130,14 @@ namespace CodexDreamSkinManager
                     if (delete == null) throw new Exception("DeleteThemeButton was not found.");
                     if (status == null) throw new Exception("Current status was not found.");
                     status.SupportedActions.Add("DeleteTheme");
+                    status.SupportedActions.Add("DeletePreset");
                     ThemeOption preset = new ThemeOption { Id = "preset-a", Name = "内置", IsPreset = true, Source = "preset" };
                     ThemeOption saved = new ThemeOption { Id = "saved-a", Name = "我的主题", Source = "saved", ThemeDirectory = Path.Combine(root, "saved-a") };
                     themes.Items.Add(preset);
                     themes.Items.Add(saved);
                     themes.SelectedItem = preset;
-                    if (delete.Visibility != Visibility.Collapsed) throw new Exception("Delete button was shown for a preset theme.");
+                    if (delete.Visibility != Visibility.Visible) throw new Exception("Delete button was hidden for a preset theme.");
+                    if (!delete.IsEnabled) throw new Exception("Delete button was disabled for an inactive preset theme.");
                     themes.SelectedItem = saved;
                     if (delete.Visibility != Visibility.Visible) throw new Exception("Delete button was hidden for a saved theme.");
                     if (!delete.IsEnabled) throw new Exception("Delete button was disabled for an inactive saved theme.");
@@ -1133,9 +1159,17 @@ namespace CodexDreamSkinManager
                     DreamSkinService service = new DreamSkinService(root);
                     AssertThrows(delegate { service.DeleteThemeAsync(null); });
                     AssertThrows(delegate { service.DeleteThemeAsync(new ThemeOption { IsPreset = true, Source = "preset" }); });
+                    AssertThrows(delegate { service.DeleteThemeAsync(new ThemeOption { IsPreset = false, Source = "preset" }); });
                     AssertThrows(delegate { service.DeleteThemeAsync(new ThemeOption { Source = "saved" }); });
                 }
                 finally { Directory.Delete(root, true); }
+            });
+
+            Run("Classifies preset and saved themes for deletion", delegate
+            {
+                AssertTrue(MainWindow.IsDeletableTheme(new ThemeOption { Id = "preset-a", IsPreset = true, Source = "preset" }));
+                AssertTrue(MainWindow.IsDeletableTheme(new ThemeOption { Id = "saved-a", Source = "saved", ThemeDirectory = "C:\\themes\\saved-a" }));
+                AssertTrue(!MainWindow.IsDeletableTheme(new ThemeOption { Id = "broken", IsPreset = true, Source = "saved" }));
             });
 
             Run("Resets custom framing sliders", delegate

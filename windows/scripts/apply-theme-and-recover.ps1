@@ -17,6 +17,7 @@ param(
   [ValidateSet('true','false')][string]$FramingEnabled = 'false',
   [ValidateSet('auto','left','right','center','none')][string]$SafeArea = 'auto',
   [ValidateSet('auto','ambient','banner','full','off')][string]$TaskMode = 'auto',
+  [ValidateRange(0.0, 1.0)][double]$BubbleOpacity = 0.0,
   [ValidatePattern('^$|^#[0-9A-Fa-f]{6}$')][string]$Accent = ''
 )
 
@@ -137,7 +138,8 @@ try {
         '-PositionX', "$PositionX", '-PositionY', "$PositionY", '-Zoom', "$Zoom",
         '-PositionMode', $PositionMode,
         '-FramingEnabled', "$FramingEnabled",
-        '-TaskMode', $TaskMode
+        '-TaskMode', $TaskMode,
+        '-BubbleOpacity', "$BubbleOpacity"
       )
       if (-not [string]::IsNullOrWhiteSpace($TagsJson)) {
         $applyArguments += @('-TagsJson', $TagsJson)

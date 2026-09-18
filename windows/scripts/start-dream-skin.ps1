@@ -265,7 +265,7 @@ try {
         }
         throw "Codex did not expose a verified loopback CDP endpoint on port $Port within 45 seconds."
       }
-      Start-Sleep -Milliseconds 400
+      Start-Sleep -Milliseconds 200
       $cdpIdentity = Get-DreamSkinVerifiedCdpIdentity -Port $Port -Codex $codex
     }
   } catch {
@@ -456,7 +456,7 @@ try {
       (ConvertTo-DreamSkinProcessArgument -Value $themePaths.PauseFile))
     $daemon = Start-Process -FilePath $node.Path -ArgumentList $injectorArgs -WindowStyle Hidden -PassThru `
       -RedirectStandardOutput $StdoutPath -RedirectStandardError $StderrPath
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Milliseconds 250
     if ($daemon.HasExited) { throw "The injector exited during startup. See $StderrPath" }
 
     $injectorStartedAt = Get-DreamSkinProcessStartedAt -ProcessId $daemon.Id
@@ -528,7 +528,7 @@ try {
       }
       if ($daemon.HasExited) { throw "The injector exited during startup. See $StderrPath" }
       if ((Get-Date) -ge $verifyDeadline) { throw "Dream Skin verification failed. See $VerifyPath" }
-      Start-Sleep -Seconds 3
+      Start-Sleep -Seconds 1
     }
     if ($null -ne $appearanceTransaction) {
       Complete-DreamSkinAppearanceTransaction `

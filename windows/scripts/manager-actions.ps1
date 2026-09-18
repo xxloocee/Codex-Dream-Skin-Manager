@@ -1,7 +1,7 @@
 ﻿[CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet('Status','ApplyTheme','DeleteTheme','ImportTheme','ImportBatch','Pause','Resume','ResetTheme','ValidateImage')]
+  [ValidateSet('Status','ApplyTheme','UpdateTheme','DeleteTheme','DeletePreset','ImportTheme','ImportBatch','Pause','Resume','ResetTheme','ValidateImage')]
   [string]$Action,
   [Parameter(Mandatory = $true)][string]$SkillRoot,
   [string]$StateRoot = (Join-Path $env:LOCALAPPDATA 'CodexDreamSkin'),
@@ -23,6 +23,7 @@ param(
   [ValidateSet('true','false')][string]$FramingEnabled = 'false',
   [ValidateSet('auto','left','right','center','none')][string]$SafeArea = 'auto',
   [ValidateSet('auto','ambient','banner','full','off')][string]$TaskMode = 'auto',
+  [ValidateRange(0.0, 1.0)][double]$BubbleOpacity = 0.0,
   [ValidatePattern('^$|^#[0-9A-Fa-f]{6}$')][string]$Accent = '',
   [switch]$KeepCurrent,
   [ValidateRange(1, 30)][int]$LockTimeoutSeconds = 30
@@ -91,6 +92,7 @@ function ConvertTo-ManagerTheme {
     [bool]$ThemeFramingEnabled = $false,
     [string]$ThemeSafeArea = 'auto',
     [string]$ThemeTaskMode = 'auto',
+    [double]$ThemeBubbleOpacity = 0.0,
     [string]$ThemeAccent = ''
   )
   return [ordered]@{
@@ -114,6 +116,7 @@ function ConvertTo-ManagerTheme {
     framingEnabled = $ThemeFramingEnabled
     safeArea = $ThemeSafeArea
     taskMode = $ThemeTaskMode
+    bubbleOpacity = $ThemeBubbleOpacity
     accent = $ThemeAccent
   }
 }
@@ -141,6 +144,7 @@ function ConvertTo-ManagerPresetOption {
     -ThemeFramingEnabled ([bool]$Preset.framingEnabled) `
     -ThemeSafeArea $(if ($Preset.safeArea) { "$($Preset.safeArea)" } else { 'auto' }) `
     -ThemeTaskMode $(if ($Preset.taskMode) { "$($Preset.taskMode)" } else { 'auto' }) `
+    -ThemeBubbleOpacity $(if ($null -ne $Preset.bubbleOpacity) { [double]$Preset.bubbleOpacity } else { 0.0 }) `
     -ThemeAccent $(if ($Preset.accent) { "$($Preset.accent)" } else { '' })
 }
 
@@ -470,6 +474,7 @@ function New-ManagerCustomTheme {
       focusY = $FocusY
       safeArea = $SafeArea
       taskMode = $TaskMode
+      bubbleOpacity = $BubbleOpacity
     }
     palette = [pscustomobject]@{}
   }
@@ -485,6 +490,143 @@ function New-ManagerCustomTheme {
   return $theme
 }
 
+function Update-ManagerSavedTheme {
+  param([Parameter(Mandatory = $true)][string]$SavedThemeDirectory)
+
+  Ensure-DreamSkinManagedDirectory -Path $paths.Root -Root $paths.Root
+  Ensure-DreamSkinManagedDirectory -Path $paths.Saved -Root $paths.Root
+  $directory = [System.IO.Path]::GetFullPath($SavedThemeDirectory).TrimEnd(
+    [System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+  $savedRoot = [System.IO.Path]::GetFullPath($paths.Saved).TrimEnd(
+    [System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+  $parent = [System.IO.Directory]::GetParent($directory)
+  if ($null -eq $parent -or -not [string]::Equals($parent.FullName.TrimEnd(
+      [System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar),
+      $savedRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+    -not (Test-DreamSkinThemePathWithin -Path $directory -Root $paths.Saved)) {
+    throw '只能编辑“我的”主题库中的完整主题。'
+  }
+
+  # Editing metadata must retain the saved image, Safe CSS, ID, name, category,
+  # tags, and unknown future fields. Image validation happens again on apply.
+  $saved = Read-DreamSkinTheme -ThemeDirectory $directory -SkipImageMetadata
+  $theme = $saved.Theme | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+  $theme.appearance = $Appearance
+  $theme.art.focusX = $FocusX
+  $theme.art.focusY = $FocusY
+  $theme.art.safeArea = $SafeArea
+  $theme.art.taskMode = $TaskMode
+  $theme.art | Add-Member -NotePropertyName bubbleOpacity -NotePropertyValue $BubbleOpacity -Force
+  foreach ($property in @('positionX', 'positionY', 'zoom', 'positionMode')) {
+    if ($theme.art.PSObject.Properties[$property]) { $theme.art.PSObject.Properties.Remove($property) }
+  }
+  if ($UseCustomFraming) {
+    $theme.art | Add-Member -NotePropertyName positionX -NotePropertyValue $PositionX
+    $theme.art | Add-Member -NotePropertyName positionY -NotePropertyValue $PositionY
+    $theme.art | Add-Member -NotePropertyName zoom -NotePropertyValue $Zoom
+    $theme.art | Add-Member -NotePropertyName positionMode -NotePropertyValue $PositionMode
+  }
+  if (-not $theme.PSObject.Properties['palette'] -or $null -eq $theme.palette) {
+    $theme | Add-Member -NotePropertyName palette -NotePropertyValue ([pscustomobject]@{}) -Force
+  }
+  if ($theme.palette.PSObject.Properties['accent']) { $theme.palette.PSObject.Properties.Remove('accent') }
+  if ($Accent) { $theme.palette | Add-Member -NotePropertyName accent -NotePropertyValue $Accent.ToUpperInvariant() }
+  Write-DreamSkinTheme -ThemeDirectory $directory -Theme $theme
+
+  $activeUpdated = $false
+  if (Test-Path -LiteralPath $paths.Active -PathType Container) {
+    try {
+      $active = Read-DreamSkinTheme -ThemeDirectory $paths.Active -SkipImageMetadata
+      if ([string]::Equals("$($active.Theme.id)", "$($theme.id)", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $activeTheme = $theme | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+        $activeTheme.image = "$($active.Theme.image)"
+        Write-DreamSkinTheme -ThemeDirectory $paths.Active -Theme $activeTheme
+        $activeUpdated = $true
+      }
+    } catch {
+      # A stale active theme must not prevent editing an otherwise valid saved theme.
+    }
+  }
+  return [pscustomobject]@{ Theme = $theme; ActiveUpdated = $activeUpdated }
+}
+
+function Remove-ManagerPresetToRecycleBin {
+  param([Parameter(Mandatory = $true)][string]$PresetThemeId)
+
+  $presetRoot = [System.IO.Path]::GetFullPath((Join-Path $SkillRoot 'presets')).TrimEnd('\')
+  $catalogPath = Join-Path $presetRoot 'catalog.json'
+  if (-not (Test-Path -LiteralPath $presetRoot -PathType Container)) { throw '内置主题目录不存在。' }
+  Assert-DreamSkinNoReparseComponents -Path $presetRoot
+  if ($PresetThemeId -notmatch '^preset-([a-z0-9][a-z0-9-]{0,63})$') { throw '内置主题 ID 无效。' }
+  $presetId = $Matches[1]
+  if ($presetId -eq 'paper-light') { throw '默认恢复主题不能删除。' }
+
+  $active = $null
+  if (Test-Path -LiteralPath $paths.Active -PathType Container) {
+    $active = Read-DreamSkinTheme -ThemeDirectory $paths.Active -SkipImageMetadata
+  }
+  if ($active -and [string]::Equals("$($active.Theme.id)", $PresetThemeId,
+      [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw '当前正在使用该主题，请先应用其他主题后再删除。'
+  }
+
+  $catalogTheme = $null
+  $catalog = $null
+  if (Test-Path -LiteralPath $catalogPath -PathType Leaf) {
+    $null = Read-ManagerPresetCatalog -PresetRoot $presetRoot
+    $catalog = (Read-DreamSkinUtf8File -Path $catalogPath) | ConvertFrom-Json -ErrorAction Stop
+    $catalogTheme = @($catalog.themes | Where-Object { "$($_.id)" -ceq $presetId })
+    if ($catalogTheme.Count -gt 1) { throw '内置主题目录存在重复 ID。' }
+    if ($catalogTheme.Count -eq 1) { $catalogTheme = $catalogTheme[0] } else { $catalogTheme = $null }
+  }
+
+  if ($null -ne $catalogTheme) {
+    $imageName = "$($catalogTheme.image)"
+    $imagePath = [System.IO.Path]::GetFullPath((Join-Path $presetRoot $imageName))
+    if ([System.IO.Path]::GetFileName($imageName) -cne $imageName -or
+        -not (Test-DreamSkinThemePathWithin -Path $imagePath -Root $presetRoot) -or
+        -not (Test-Path -LiteralPath $imagePath -PathType Leaf)) {
+      throw '内置主题背景文件无效。'
+    }
+    Assert-DreamSkinNoReparseComponents -Path $imagePath
+    $remaining = @($catalog.themes | Where-Object { "$($_.id)" -cne $presetId })
+    if ($remaining.Count -lt 1) { throw '必须至少保留一个内置主题。' }
+    $stagingPath = Join-Path $presetRoot ('.manager-preset-delete-' + [guid]::NewGuid().ToString('N') + [System.IO.Path]::GetExtension($imagePath))
+    [System.IO.File]::Move($imagePath, $stagingPath)
+    try {
+      $catalog.themes = @($remaining)
+      Write-DreamSkinUtf8FileAtomically -Path $catalogPath -Content (($catalog | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+    } catch {
+      [System.IO.File]::Move($stagingPath, $imagePath)
+      throw
+    }
+    $cleanupPending = $false
+    try {
+      Add-Type -AssemblyName Microsoft.VisualBasic -ErrorAction Stop
+      [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($stagingPath,
+        [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
+        [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin)
+    } catch {
+      $cleanupPending = $true
+      try { if (Test-Path -LiteralPath $stagingPath) { [System.IO.File]::Move($stagingPath, $imagePath) } } catch {}
+    }
+    return [pscustomobject]@{ id = $PresetThemeId; name = "$($catalogTheme.name)"; deleted = $true; cleanupPending = $cleanupPending }
+  }
+
+  $directoryTheme = @((Get-ManagerDirectoryPresetEntries -PresetRoot $presetRoot) |
+    Where-Object { "$($_.id)" -ceq $PresetThemeId })
+  if ($directoryTheme.Count -ne 1) { throw '未找到需要删除的内置主题。' }
+  $directory = [System.IO.Directory]::GetParent([System.IO.Path]::GetFullPath("$($directoryTheme[0].imagePath)"))
+  if ($null -eq $directory -or -not [string]::Equals($directory.Parent.FullName.TrimEnd('\'), $presetRoot,
+      [System.StringComparison]::OrdinalIgnoreCase)) { throw '内置主题目录无效。' }
+  Assert-ManagerDeleteTreeSafe -ThemeDirectory $directory.FullName
+  Add-Type -AssemblyName Microsoft.VisualBasic -ErrorAction Stop
+  [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($directory.FullName,
+    [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
+    [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin)
+  return [pscustomobject]@{ id = $PresetThemeId; name = "$($directoryTheme[0].name)"; deleted = $true; cleanupPending = $false }
+}
+
 function Save-ManagerThemeDirectly {
   param(
     [Parameter(Mandatory = $true)][string]$SourceImage,
@@ -498,7 +640,7 @@ function Save-ManagerThemeDirectly {
     throw '主题名称必须包含 1 到 80 个可见字符。'
   }
   $source = [System.IO.Path]::GetFullPath($SourceImage)
-  Assert-DreamSkinImageFile -Path $source
+  Assert-DreamSkinImageFile -Path $source -SkipImageMetadata
   Ensure-DreamSkinManagedDirectory -Path $paths.Root -Root $paths.Root
   Ensure-DreamSkinManagedDirectory -Path $paths.Saved -Root $paths.Root
 
@@ -541,7 +683,7 @@ function Save-ManagerThemeDirectly {
     Assert-DreamSkinVideoDecodable -Path $targetImage -StateRoot $StateRoot
     Move-Item -LiteralPath $temporary -Destination $destination
     Assert-DreamSkinNoReparseComponents -Path $destination
-    return Read-DreamSkinTheme -ThemeDirectory $destination
+    return Read-DreamSkinTheme -ThemeDirectory $destination -SkipImageMetadata
   } finally {
     Remove-Item -LiteralPath $temporary -Recurse -Force -ErrorAction SilentlyContinue
   }
@@ -624,6 +766,7 @@ function ConvertTo-ManagerBatchTheme {
   $appearanceValue = if ($Item.appearance) { "$($Item.appearance)" } else { 'auto' }
   $safeAreaValue = if ($Item.safeArea) { "$($Item.safeArea)" } else { 'auto' }
   $taskModeValue = if ($Item.taskMode) { "$($Item.taskMode)" } else { 'auto' }
+  $bubbleOpacityValue = if ($null -ne $Item.bubbleOpacity) { [double]$Item.bubbleOpacity } else { 0.0 }
   $categoryValue = if ($Item.category) { "$($Item.category)" } else { 'custom' }
   $tagsValue = @($Item.tags | ForEach-Object { "$_".Trim() })
   if ($appearanceValue -notin @('auto','light','dark') -or $safeAreaValue -notin @('auto','left','right','center','none') -or
@@ -653,6 +796,8 @@ function ConvertTo-ManagerBatchTheme {
     throw '图片位置必须是 -1 到 1、缩放必须是 1 到 2 之间的有限数字。'
   }
   if ($positionModeValue -notin @('locked','free')) { throw '图片移动模式无效。' }
+  if ([double]::IsNaN($bubbleOpacityValue) -or [double]::IsInfinity($bubbleOpacityValue) -or
+    $bubbleOpacityValue -lt 0 -or $bubbleOpacityValue -gt 1) { throw '消息气泡不透明度必须是 0 到 1 之间的有限数字。' }
   $accentValue = "$($Item.accent)"
   if ($accentValue -and $accentValue -notmatch '^#[0-9A-Fa-f]{6}$') { throw '强调色必须是 #RRGGBB。' }
   $theme = [pscustomobject][ordered]@{
@@ -660,7 +805,7 @@ function ConvertTo-ManagerBatchTheme {
     tags = @($tagsValue); appearance = $appearanceValue
     art = [pscustomobject][ordered]@{
       focusX = $focusXValue; focusY = $focusYValue
-      safeArea = $safeAreaValue; taskMode = $taskModeValue
+      safeArea = $safeAreaValue; taskMode = $taskModeValue; bubbleOpacity = $bubbleOpacityValue
     }
     palette = [pscustomobject]@{}
   }
@@ -1021,6 +1166,7 @@ switch ($Action) {
         -ThemeFramingEnabled $(Test-ManagerThemeFraming -Theme $loaded.Theme) `
         -ThemeSafeArea $(if ($loaded.Theme.art.safeArea) { "$($loaded.Theme.art.safeArea)" } else { 'auto' }) `
         -ThemeTaskMode $(if ($loaded.Theme.art.taskMode) { "$($loaded.Theme.art.taskMode)" } else { 'auto' }) `
+        -ThemeBubbleOpacity $(if ($null -ne $loaded.Theme.art.bubbleOpacity) { [double]$loaded.Theme.art.bubbleOpacity } else { 0.0 }) `
         -ThemeAccent $(if ($loaded.Theme.palette.accent) { "$($loaded.Theme.palette.accent)" } else { '' })
     }
     $nodeVersion = ''
@@ -1050,13 +1196,13 @@ switch ($Action) {
       activeZoom = if ($active -and $null -ne $active.Theme.art.zoom) { [double]$active.Theme.art.zoom } else { 1.0 }
       activePositionMode = if ($active -and $active.Theme.art.positionMode) { "$($active.Theme.art.positionMode)" } else { 'locked' }
       activeFramingEnabled = if ($active) { Test-ManagerThemeFraming -Theme $active.Theme } else { $false }
-      managerApiVersion = '1.5'
+      managerApiVersion = '1.7'
       themeSchemaVersion = 1
       stateSchemaVersion = $stateSchema
       injectorVersion = '1'
       nodeVersion = $nodeVersion
       codexVersion = $codexVersion
-      supportedActions = @('Status','ApplyTheme','DeleteTheme','ImportTheme','ImportBatch','Pause','Resume','ResetTheme','ValidateImage')
+      supportedActions = @('Status','ApplyTheme','UpdateTheme','DeleteTheme','DeletePreset','ImportTheme','ImportBatch','Pause','Resume','ResetTheme','ValidateImage')
       catalogMessage = $catalogMessage
       themes = @($themes)
     } | ConvertTo-Json -Depth 8
@@ -1096,6 +1242,22 @@ switch ($Action) {
         tags = @($result.Theme.tags)
         rendererApplied = [bool]$rendererApplied
       } | ConvertTo-Json -Depth 8
+    }
+  }
+  'UpdateTheme' {
+    Invoke-ManagerWriteLock {
+      if ([string]::IsNullOrWhiteSpace($ThemeDirectory)) { throw '请选择需要编辑的已存主题。' }
+      $result = Update-ManagerSavedTheme -SavedThemeDirectory $ThemeDirectory
+      $rendererApplied = $false
+      if ($result.ActiveUpdated -and -not (Test-DreamSkinPaused -StateRoot $StateRoot)) {
+        $rendererApplied = Invoke-ManagerLiveApplyIfRunning
+      }
+      [ordered]@{
+        id = "$($result.Theme.id)"
+        name = "$($result.Theme.name)"
+        activeUpdated = [bool]$result.ActiveUpdated
+        rendererApplied = [bool]$rendererApplied
+      } | ConvertTo-Json -Depth 4
     }
   }
   'DeleteTheme' {
@@ -1148,6 +1310,12 @@ switch ($Action) {
       }
       [ordered]@{ id = "$($loaded.Theme.id)"; name = "$($loaded.Theme.name)"; deleted = $true; cleanupPending = $cleanupPending } |
         ConvertTo-Json -Depth 4
+    }
+  }
+  'DeletePreset' {
+    Invoke-ManagerWriteLock {
+      if ([string]::IsNullOrWhiteSpace($ThemeId)) { throw '请选择需要删除的内置主题。' }
+      Remove-ManagerPresetToRecycleBin -PresetThemeId $ThemeId | ConvertTo-Json -Depth 4
     }
   }
   'ImportTheme' {

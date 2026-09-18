@@ -570,9 +570,10 @@ html[data-dream-skin="active"][data-dream-shell="light"] [role="main"]:has([data
 
 html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]) > header:is(.app-header-tint, [data-app-shell-header-edge-scroll], [class*="_Header_"]) {
   /* Preserve Codex's native fixed header geometry and side-panel controls. */
-  background: rgb(var(--ds-panel-rgb) / .90) !important;
-  border-bottom: 1px solid var(--ds-line) !important;
-  backdrop-filter: blur(14px) saturate(108%) !important;
+  background: transparent !important;
+  border-bottom: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
 }
 
 /* Decorative chrome lives on the native shell; no injected positioning host is needed. */
@@ -634,16 +635,15 @@ html[data-dream-skin="active"][data-dream-shell="light"]
   text-shadow: none;
 }
 
-/* Windows keeps this native bar outside main; macOS simply has no match. */
-html[data-dream-skin="active"][data-dream-shell="dark"]
+/* Windows keeps this native bar outside main; macOS simply has no match.
+   It must use the same continuous background as the task header. */
+html[data-dream-skin="active"]
   :is([class~="group/application-menu-top-bar"], [class*="_ApplicationMenuTopBar_"]) {
   color: var(--ds-text) !important;
-  background: rgb(var(--ds-panel-rgb) / .38) !important;
-  border-bottom: 1px solid var(--ds-line) !important;
-  box-shadow:
-    0 1px 14px rgb(var(--ds-bg-rgb) / .28),
-    inset 0 1px rgb(var(--ds-text-rgb) / .12) !important;
-  backdrop-filter: blur(24px) saturate(130%) brightness(108%) !important;
+  background: transparent !important;
+  border-bottom: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
 }
 
 html[data-dream-skin="active"][data-dream-shell="dark"]
@@ -1332,23 +1332,21 @@ html[data-dream-skin="active"] [data-markdown-text-style]
   overflow-y: hidden !important;
 }
 
-/* Streaming reasoning is not yet inside the final assistant message. Give it
-   one readable surface, then remove the nested decoration after finalization. */
+/* Codex uses the same response-annotation container for streaming and final
+   assistant replies. It used to receive a frosted card here, which left some
+   replies visibly opaque after the final-message selector changed upstream.
+   Keep the full conversation on the image instead. */
 html[data-dream-skin="active"] .thread-scroll-container
   [data-response-annotation-conversation][data-response-annotation-target] {
   box-sizing: border-box;
   margin-block: 4px 10px !important;
   padding: 14px 16px !important;
-  border: 1px solid rgb(var(--ds-muted-rgb) / .18) !important;
+  border: 1px solid transparent !important;
   border-radius: 18px !important;
-  background:
-    linear-gradient(135deg, rgb(var(--ds-text-rgb) / .08), transparent 42%),
-    rgb(var(--ds-panel-rgb) / .46) !important;
+  background: rgb(var(--ds-panel-rgb) / var(--ds-bubble-opacity, 0)) !important;
   color: var(--ds-text) !important;
-  box-shadow:
-    0 10px 28px rgb(var(--ds-bg-rgb) / .18),
-    inset 0 1px rgb(var(--ds-text-rgb) / .14) !important;
-  backdrop-filter: blur(20px) saturate(125%) brightness(104%) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
 }
 
 html[data-dream-skin="active"] .thread-scroll-container
@@ -1356,26 +1354,37 @@ html[data-dream-skin="active"] .thread-scroll-container
   [data-response-annotation-conversation][data-response-annotation-target] {
   margin: 0 !important;
   border-color: transparent !important;
-  background: transparent !important;
+  background: rgb(var(--ds-panel-rgb) / var(--ds-bubble-opacity, 0)) !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
 }
 
-/* Expanded command details are tool-result nodes rather than messages. */
+/* The current user bubble carries a stable attribute rather than the legacy
+   conversation anchor. Support both DOM generations on the same surface. */
+html[data-dream-skin="active"] :is(
+  [data-user-message-bubble="true"],
+  [data-local-conversation-user-anchor][data-ds-part="message"],
+  [data-local-conversation-user-anchor] [data-ds-part="message"]
+) {
+  background: rgb(var(--ds-panel-rgb) / var(--ds-bubble-opacity, 0)) !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Expanded command details are tool-result nodes rather than messages. They
+   should not introduce an opaque card between otherwise transparent messages. */
 html[data-dream-skin="active"] .thread-scroll-container
   [data-local-conversation-item-target-ids] {
   box-sizing: border-box;
   padding: 10px 12px !important;
-  border: 1px solid rgb(var(--ds-muted-rgb) / .16) !important;
+  border: 1px solid transparent !important;
   border-radius: 14px !important;
-  background:
-    linear-gradient(135deg, rgb(var(--ds-text-rgb) / .06), transparent 46%),
-    rgb(var(--ds-panel-rgb) / .52) !important;
+  background: transparent !important;
   color: rgb(var(--ds-text-rgb) / .94) !important;
-  box-shadow:
-    0 8px 22px rgb(var(--ds-bg-rgb) / .16),
-    inset 0 1px rgb(var(--ds-text-rgb) / .12) !important;
-  backdrop-filter: blur(18px) saturate(120%) brightness(102%) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
 }
 
 html[data-dream-skin="active"] .thread-scroll-container

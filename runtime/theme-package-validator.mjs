@@ -318,13 +318,16 @@ function validateOfficialTheme(value) {
     assertExactKeys(
       art,
       [],
-      ["focusX", "focusY", "safeArea", "taskMode", "positionX", "positionY", "zoom", "positionMode", "framingEnabled"],
+      ["focusX", "focusY", "bubbleOpacity", "safeArea", "taskMode", "positionX", "positionY", "zoom", "positionMode", "framingEnabled"],
       "theme.json.art",
     );
     for (const key of ["focusX", "focusY"]) {
       if (art[key] !== undefined && (typeof art[key] !== "number" || !Number.isFinite(art[key]) || art[key] < 0 || art[key] > 1)) {
         fail(`theme.json.art.${key} must be between 0 and 1`);
       }
+    }
+    if (art.bubbleOpacity !== undefined && (typeof art.bubbleOpacity !== "number" || !Number.isFinite(art.bubbleOpacity) || art.bubbleOpacity < 0 || art.bubbleOpacity > 1)) {
+      fail("theme.json.art.bubbleOpacity must be between 0 and 1");
     }
     for (const key of ["positionX", "positionY"]) {
       if (art[key] !== undefined && (typeof art[key] !== "number" || !Number.isFinite(art[key]) || art[key] < -1 || art[key] > 1)) {

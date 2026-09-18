@@ -453,7 +453,7 @@ function Normalize-DreamSkinThemeContract {
   }
   if (-not $Theme.PSObject.Properties['art'] -or -not $Theme.PSObject.Properties['art'].Value) {
     $Theme | Add-Member -NotePropertyName art -NotePropertyValue `
-      ([pscustomobject]@{ focusX = $null; focusY = $null; safeArea = 'auto'; taskMode = 'auto' }) -Force
+      ([pscustomobject]@{ focusX = $null; focusY = $null; bubbleOpacity = 0.0; safeArea = 'auto'; taskMode = 'auto' }) -Force
   }
   return $Theme
 }
@@ -605,6 +605,7 @@ function Set-DreamSkinActiveTheme {
     [AllowNull()][object]$Theme,
     [string]$Name,
     [AllowNull()][string]$SafeCssPath,
+    [switch]$SkipImageArchive,
     [string]$StateRoot = (Join-Path $env:LOCALAPPDATA 'CodexDreamSkin')
   )
   $paths = Get-DreamSkinThemePaths -StateRoot $StateRoot
@@ -612,7 +613,9 @@ function Set-DreamSkinActiveTheme {
   Ensure-DreamSkinManagedDirectory -Path $paths.Active -Root $paths.Root
   Ensure-DreamSkinManagedDirectory -Path $paths.Images -Root $paths.Root
   $source = [System.IO.Path]::GetFullPath($ImagePath)
-  Assert-DreamSkinImageFile -Path $source
+  # The copied temporary file is the trust boundary. Avoid parsing the same
+  # source media twice before validating that immutable snapshot.
+  Assert-DreamSkinImageFile -Path $source -SkipImageMetadata
   $extension = [System.IO.Path]::GetExtension($source).ToLowerInvariant()
   $oldImage = $null
   try { $oldImage = (Read-DreamSkinTheme -ThemeDirectory $paths.Active).ImagePath } catch {}
@@ -622,7 +625,7 @@ function Set-DreamSkinActiveTheme {
       id = 'custom'
       name = '自定义主题'
       appearance = 'auto'
-      art = [pscustomobject]@{ focusX = $null; focusY = $null; safeArea = 'auto'; taskMode = 'auto' }
+      art = [pscustomobject]@{ focusX = $null; focusY = $null; bubbleOpacity = 0.0; safeArea = 'auto'; taskMode = 'auto' }
     }
   }
   $imageName = New-DreamSkinThemeImageName -Extension $extension
@@ -646,7 +649,7 @@ function Set-DreamSkinActiveTheme {
     Assert-DreamSkinVideoDecodable -Path $temporary -StateRoot $StateRoot
     Move-Item -LiteralPath $temporary -Destination $target -Force
     Assert-DreamSkinNoReparseComponents -Path $target
-    Assert-DreamSkinImageFile -Path $target
+    Assert-DreamSkinImageFile -Path $target -SkipImageMetadata
     $Theme | Add-Member -NotePropertyName image -NotePropertyValue $imageName -Force
     if ($Name) { $Theme | Add-Member -NotePropertyName name -NotePropertyValue $Name -Force }
     $Theme = Normalize-DreamSkinThemeContract -Theme $Theme
@@ -669,12 +672,14 @@ function Set-DreamSkinActiveTheme {
     (Test-DreamSkinThemePathWithin -Path $oldImage -Root $paths.Active)) {
     Remove-Item -LiteralPath $oldImage -Force -ErrorAction SilentlyContinue
   }
-  $imageArchive = Join-Path $paths.Images $imageName
-  Assert-DreamSkinNoReparseComponents -Path $imageArchive
-  Copy-Item -LiteralPath $target -Destination $imageArchive -Force
-  Assert-DreamSkinNoReparseComponents -Path $imageArchive
-  Assert-DreamSkinImageFile -Path $imageArchive
-  return Read-DreamSkinTheme -ThemeDirectory $paths.Active
+  if (-not $SkipImageArchive) {
+    $imageArchive = Join-Path $paths.Images $imageName
+    Assert-DreamSkinNoReparseComponents -Path $imageArchive
+    Copy-Item -LiteralPath $target -Destination $imageArchive -Force
+    Assert-DreamSkinNoReparseComponents -Path $imageArchive
+    Assert-DreamSkinImageFile -Path $imageArchive
+  }
+  return Read-DreamSkinTheme -ThemeDirectory $paths.Active -SkipImageMetadata
 }
 
 function Set-DreamSkinActiveThemeImage {
@@ -2211,13 +2216,13 @@ function Use-DreamSkinSavedTheme {
   if (-not (Test-DreamSkinThemePathWithin -Path $directory -Root $paths.Saved)) {
     throw 'Saved theme must remain inside the Dream Skin themes folder.'
   }
-  $saved = Read-DreamSkinTheme -ThemeDirectory $directory
+  $saved = Read-DreamSkinTheme -ThemeDirectory $directory -SkipImageMetadata
   $theme = $saved.Theme | ConvertTo-Json -Depth 8 | ConvertFrom-Json
   $safeCssPath = Join-Path $directory 'theme.css'
   if (-not (Test-Path -LiteralPath $safeCssPath -PathType Leaf)) { $safeCssPath = $null }
   if ($safeCssPath) { Assert-DreamSkinSafeCssFile -Path $safeCssPath }
   return Set-DreamSkinActiveTheme -ImagePath $saved.ImagePath -Theme $theme `
-    -SafeCssPath $safeCssPath -StateRoot $StateRoot
+    -SafeCssPath $safeCssPath -SkipImageArchive -StateRoot $StateRoot
 }
 
 function Set-DreamSkinPaused {

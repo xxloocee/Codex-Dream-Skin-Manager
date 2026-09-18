@@ -105,6 +105,7 @@ namespace CodexDreamSkinManager
                         theme.FramingEnabled = ReadBool(row, "framingEnabled");
                         theme.SafeArea = ReadString(row, "safeArea", "auto");
                         theme.TaskMode = ReadString(row, "taskMode", "auto");
+                        theme.BubbleOpacity = ReadDouble(row, "bubbleOpacity", 0);
                         theme.Accent = ReadString(row, "accent", "");
                         object tags;
                         if (row.TryGetValue("tags", out tags))
@@ -255,7 +256,8 @@ namespace CodexDreamSkinManager
                         { "focusX", item.FocusX }, { "focusY", item.FocusY }, { "safeArea", item.SafeArea },
                         { "positionX", item.PositionX }, { "positionY", item.PositionY }, { "zoom", item.Zoom },
                         { "positionMode", item.PositionMode }, { "framingEnabled", item.FramingEnabled },
-                        { "taskMode", item.TaskMode }, { "accent", item.Accent }, { "category", item.Category },
+                        { "taskMode", item.TaskMode }, { "bubbleOpacity", item.BubbleOpacity },
+                        { "accent", item.Accent }, { "category", item.Category },
                         { "tags", (item.Tags ?? new List<string>()).ToArray() },
                         { "safeCssPath", item.SafeCssPath }, { "licensePath", item.LicensePath }
                     });
@@ -285,23 +287,67 @@ namespace CodexDreamSkinManager
             return RunManagerAsync(args);
         }
 
+        public Task UpdateThemeAsync(ThemeOption theme, SavedThemeEditOptions options)
+        {
+            if (theme == null) throw new ArgumentNullException("theme");
+            if (options == null) throw new ArgumentNullException("options");
+            if (theme.IsPreset || !string.Equals(theme.Source, "saved", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("只能修改“我的”已保存主题。");
+            if (string.IsNullOrWhiteSpace(theme.ThemeDirectory))
+                throw new InvalidOperationException("主题目录为空，无法保存参数。");
+            options.Validate();
+            List<ScriptArgument> args = new List<ScriptArgument> {
+                P("-Action"), V("UpdateTheme"), P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")),
+                P("-ThemeDirectory"), V(theme.ThemeDirectory),
+                P("-Appearance"), V(options.Appearance),
+                P("-FocusX"), V(options.FocusX.ToString(CultureInfo.InvariantCulture)),
+                P("-FocusY"), V(options.FocusY.ToString(CultureInfo.InvariantCulture)),
+                P("-PositionX"), V(options.PositionX.ToString(CultureInfo.InvariantCulture)),
+                P("-PositionY"), V(options.PositionY.ToString(CultureInfo.InvariantCulture)),
+                P("-Zoom"), V(options.Zoom.ToString(CultureInfo.InvariantCulture)),
+                P("-PositionMode"), V(options.PositionMode),
+                P("-FramingEnabled"), V(options.FramingEnabled ? "true" : "false"),
+                P("-SafeArea"), V(options.SafeArea), P("-TaskMode"), V(options.TaskMode),
+                P("-BubbleOpacity"), V(options.BubbleOpacity.ToString(CultureInfo.InvariantCulture)),
+                P("-Accent"), V(options.Accent)
+            };
+            return RunManagerAsync(args);
+        }
+
         public Task<ThemeDeletionResult> DeleteThemeAsync(ThemeOption theme)
         {
             if (theme == null) throw new ArgumentNullException("theme");
-            if (theme.IsPreset || !string.Equals(theme.Source, "saved", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("只能删除“我的”已保存主题。");
+            if (theme.IsPreset && string.Equals(theme.Source, "preset", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(theme.Id))
+                    throw new InvalidOperationException("内置主题 ID 为空，无法删除。");
+                EnsureManagerAvailable();
+                return RunDeletePresetAsync(theme.Id);
+            }
+            if (!string.Equals(theme.Source, "saved", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("只能删除内置主题或“我的”已保存主题。");
             if (string.IsNullOrWhiteSpace(theme.ThemeDirectory))
                 throw new InvalidOperationException("主题目录为空，无法删除。");
             EnsureManagerAvailable();
-            return RunDeleteThemeAsync(theme.ThemeDirectory);
+            return RunDeleteSavedThemeAsync(theme.ThemeDirectory);
         }
 
-        private async Task<ThemeDeletionResult> RunDeleteThemeAsync(string themeDirectory)
+        private async Task<ThemeDeletionResult> RunDeleteSavedThemeAsync(string themeDirectory)
         {
             ScriptResult result = await PowerShellRunner.RunAsync(managerScript, new[] {
                 P("-Action"), V("DeleteTheme"),
                 P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")),
                 P("-ThemeDirectory"), V(themeDirectory)
+            }, 30000);
+            return ParseThemeDeletionResult(result.Output);
+        }
+
+        private async Task<ThemeDeletionResult> RunDeletePresetAsync(string themeId)
+        {
+            ScriptResult result = await PowerShellRunner.RunAsync(managerScript, new[] {
+                P("-Action"), V("DeletePreset"),
+                P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")),
+                P("-ThemeId"), V(themeId)
             }, 30000);
             return ParseThemeDeletionResult(result.Output);
         }
@@ -359,6 +405,7 @@ namespace CodexDreamSkinManager
                 args.Add(P("-FramingEnabled")); args.Add(V(theme.FramingEnabled ? "true" : "false"));
                 args.Add(P("-SafeArea")); args.Add(V(theme.SafeArea));
                 args.Add(P("-TaskMode")); args.Add(V(theme.TaskMode));
+                args.Add(P("-BubbleOpacity")); args.Add(V(theme.BubbleOpacity.ToString(CultureInfo.InvariantCulture)));
                 args.Add(P("-Accent")); args.Add(V(theme.Accent));
             }
         }
@@ -395,6 +442,7 @@ namespace CodexDreamSkinManager
                 P("-PositionMode"), V(options.PositionMode),
                 P("-FramingEnabled"), V("true"),
                 P("-SafeArea"), V(options.SafeArea), P("-TaskMode"), V(options.TaskMode),
+                P("-BubbleOpacity"), V(options.BubbleOpacity.ToString(CultureInfo.InvariantCulture)),
                 P("-Accent"), V(options.Accent)
             });
             if (keepCurrent) args.Add(P("-KeepCurrent"));

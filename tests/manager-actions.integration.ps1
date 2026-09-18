@@ -227,7 +227,7 @@ try {
       '-Name', '集成测试主题', '-Appearance', 'dark', '-FocusX', '0.72', '-FocusY', '0.45',
       '-PositionX', '0.35', '-PositionY', '-0.2', '-Zoom', '1.6',
       '-PositionMode', 'free', '-FramingEnabled', 'true',
-      '-SafeArea', 'right', '-TaskMode', 'banner', '-Accent', '#12AB34',
+      '-SafeArea', 'right', '-TaskMode', 'banner', '-BubbleOpacity', '0.42', '-Accent', '#12AB34',
       '-TagsJson', '[\"动态\",\"人物\",\"城市\"]', '-KeepCurrent'
     ) + $common)
 
@@ -262,14 +262,18 @@ try {
   Assert-Equal $true $saved[0].framingEnabled 'Status did not mark explicit custom framing.'
   Assert-Equal 'right' $theme.art.safeArea 'Safe area was not saved.'
   Assert-Equal 'banner' $theme.art.taskMode 'Task mode was not saved.'
+  Assert-Equal '0.42' $theme.art.bubbleOpacity 'Bubble opacity was not saved.'
+  Assert-Equal '0.42' $saved[0].bubbleOpacity 'Status did not return bubble opacity.'
   Assert-Equal '#12AB34' $theme.palette.accent 'Accent was not saved.'
   Write-Host 'PASS: save-only preserves active theme and paused state'
 
-  Assert-Equal '1.5' $after.managerApiVersion 'Manager API version is missing.'
+  Assert-Equal '1.7' $after.managerApiVersion 'Manager API version is missing.'
   Assert-Equal '1' $after.themeSchemaVersion 'Theme schema version is missing.'
   Assert-True (@($after.supportedActions) -contains 'ValidateImage') 'Supported actions do not include ValidateImage.'
   Assert-True (@($after.supportedActions) -contains 'ResetTheme') 'Supported actions do not include ResetTheme.'
   Assert-True (@($after.supportedActions) -contains 'DeleteTheme') 'Supported actions do not include DeleteTheme.'
+  Assert-True (@($after.supportedActions) -contains 'UpdateTheme') 'Supported actions do not include UpdateTheme.'
+  Assert-True (@($after.supportedActions) -contains 'DeletePreset') 'Supported actions do not include DeletePreset.'
   Assert-True (-not (@($after.supportedActions) -contains 'EmergencyRestore')) 'Supported actions advertise an unavailable EmergencyRestore action.'
   Assert-True -Value ($after.statusKind -in @('stopped','running','paused','stale','mismatch','uninspectable','degraded')) -Message 'Status kind is not structured.'
   Write-Host 'PASS: status exposes versions and capabilities'
@@ -534,7 +538,7 @@ try {
   New-Item -ItemType Directory -Force -Path $requestRoot | Out-Null
   $requestPath = Join-Path $requestRoot 'batch-one.json'
   $batchRequest = [ordered]@{ schemaVersion = 1; items = @(
-    [ordered]@{ imagePath = $sourceImage.FullName; name = '批量主题一'; category = 'nature'; tags = @('森林','收藏'); appearance = 'auto'; focusX = 0.13; focusY = 0.5; positionX = 0.25; positionY = -0.2; zoom = 1.3; positionMode = 'free'; framingEnabled = $true; safeArea = 'auto'; taskMode = 'auto'; accent = '' }
+    [ordered]@{ imagePath = $sourceImage.FullName; name = '批量主题一'; category = 'nature'; tags = @('森林','收藏'); appearance = 'auto'; focusX = 0.13; focusY = 0.5; positionX = 0.25; positionY = -0.2; zoom = 1.3; positionMode = 'free'; framingEnabled = $true; safeArea = 'auto'; taskMode = 'auto'; bubbleOpacity = 0.27; accent = '' }
   ) }
   [System.IO.File]::WriteAllText($requestPath, (($batchRequest | ConvertTo-Json -Depth 8) + "`r`n"), [System.Text.Encoding]::UTF8)
   $batchResult = Invoke-Manager -Arguments (@('-Action', 'ImportBatch', '-RequestPath', $requestPath) + $common)
@@ -551,12 +555,14 @@ try {
   Assert-Equal '-0.2' $savedBatchTheme.art.positionY 'Batch import did not preserve vertical image position.'
   Assert-Equal '1.3' $savedBatchTheme.art.zoom 'Batch import did not preserve image zoom.'
   Assert-Equal 'free' $savedBatchTheme.art.positionMode 'Batch import did not preserve image movement mode.'
+  Assert-Equal '0.27' $savedBatchTheme.art.bubbleOpacity 'Batch import did not preserve bubble opacity.'
   Assert-Equal '2' $savedBatchTheme.managerFingerprintVersion 'Batch import did not version its visual fingerprint.'
   $batchStatusTheme = @($batchAfter.themes | Where-Object { $_.name -eq '批量主题一' })
   Assert-Equal 1 $batchStatusTheme.Count 'Imported batch theme was not returned by status.'
   Assert-Equal 'nature' $batchStatusTheme[0].category 'Status did not return the saved category.'
   Assert-True (@($batchStatusTheme[0].tags) -contains '收藏') 'Status did not return the saved tags.'
   Assert-Equal 'free' $batchStatusTheme[0].positionMode 'Status did not return the batch movement mode.'
+  Assert-Equal '0.27' $batchStatusTheme[0].bubbleOpacity 'Status did not return batch bubble opacity.'
   Assert-Equal $true $batchStatusTheme[0].framingEnabled 'Status did not mark batch custom framing.'
 
   $savedBatchTheme.managerFingerprintVersion = 1

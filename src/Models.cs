@@ -60,6 +60,7 @@ namespace CodexDreamSkinManager
         public bool FramingEnabled = true;
         public string SafeArea = "auto";
         public string TaskMode = "auto";
+        public double BubbleOpacity;
         public string Accent = "";
         public string Category = "custom";
         public List<string> Tags = new List<string>();
@@ -261,6 +262,7 @@ namespace CodexDreamSkinManager
         public bool FramingEnabled { get; set; }
         public string SafeArea { get; set; }
         public string TaskMode { get; set; }
+        public double BubbleOpacity { get; set; }
         public string Accent { get; set; }
 
         public ThemeOption()
@@ -283,6 +285,7 @@ namespace CodexDreamSkinManager
             FramingEnabled = false;
             SafeArea = "auto";
             TaskMode = "auto";
+            BubbleOpacity = 0;
             Accent = "";
         }
 
@@ -439,6 +442,7 @@ namespace CodexDreamSkinManager
         public string PositionMode = "locked";
         public string SafeArea = "auto";
         public string TaskMode = "auto";
+        public double BubbleOpacity;
         public string Accent = "";
 
         public void SetFocusPercent(double x, double y)
@@ -468,6 +472,8 @@ namespace CodexDreamSkinManager
                 throw new ArgumentException("图片位置或缩放超出允许范围。");
             if (PositionMode != "locked" && PositionMode != "free")
                 throw new ArgumentException("图片移动模式无效。");
+            if (double.IsNaN(BubbleOpacity) || double.IsInfinity(BubbleOpacity) || BubbleOpacity < 0 || BubbleOpacity > 1)
+                throw new ArgumentException("消息气泡不透明度必须在 0% 到 100% 之间。");
             Accent = ValidateAccent(Accent);
         }
 
@@ -492,6 +498,43 @@ namespace CodexDreamSkinManager
         private static double ClampZoom(double value)
         {
             return Math.Max(1, Math.Min(2, value));
+        }
+    }
+
+    internal sealed class SavedThemeEditOptions
+    {
+        public string Appearance = "auto";
+        public double FocusX = 0.5;
+        public double FocusY = 0.5;
+        public double PositionX;
+        public double PositionY;
+        public double Zoom = 1.0;
+        public string PositionMode = "locked";
+        public bool FramingEnabled;
+        public string SafeArea = "auto";
+        public string TaskMode = "auto";
+        public double BubbleOpacity;
+        public string Accent = "";
+
+        public void Validate()
+        {
+            if (double.IsNaN(FocusX) || double.IsInfinity(FocusX) || FocusX < 0 || FocusX > 1 ||
+                double.IsNaN(FocusY) || double.IsInfinity(FocusY) || FocusY < 0 || FocusY > 1 ||
+                double.IsNaN(PositionX) || double.IsInfinity(PositionX) || PositionX < -1 || PositionX > 1 ||
+                double.IsNaN(PositionY) || double.IsInfinity(PositionY) || PositionY < -1 || PositionY > 1 ||
+                double.IsNaN(Zoom) || double.IsInfinity(Zoom) || Zoom < 1 || Zoom > 2)
+                throw new ArgumentException("取景参数超出允许范围。");
+            if (Appearance != "auto" && Appearance != "light" && Appearance != "dark")
+                throw new ArgumentException("外观模式无效。");
+            if (PositionMode != "locked" && PositionMode != "free")
+                throw new ArgumentException("图片移动模式无效。");
+            if (SafeArea != "auto" && SafeArea != "left" && SafeArea != "right" && SafeArea != "center" && SafeArea != "none")
+                throw new ArgumentException("文字安全区无效。");
+            if (TaskMode != "auto" && TaskMode != "ambient" && TaskMode != "banner" && TaskMode != "full" && TaskMode != "off")
+                throw new ArgumentException("任务页模式无效。");
+            if (double.IsNaN(BubbleOpacity) || double.IsInfinity(BubbleOpacity) || BubbleOpacity < 0 || BubbleOpacity > 1)
+                throw new ArgumentException("消息气泡不透明度必须在 0% 到 100% 之间。");
+            Accent = CustomThemeOptions.ValidateAccent(Accent);
         }
     }
 }
