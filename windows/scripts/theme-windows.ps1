@@ -482,6 +482,43 @@ function Get-DreamSkinActiveThemeAppearance {
   return 'auto'
 }
 
+function Get-DreamSkinPresetSettingsPath {
+  param([string]$ThemeId, [string]$StateRoot)
+  if ($ThemeId -cnotmatch '^preset-[A-Za-z0-9_-]{1,72}$') { throw 'Invalid preset settings identity.' }
+  $path = Join-Path (Join-Path $StateRoot 'preset-settings') ($ThemeId + '.json')
+  Assert-DreamSkinNoReparseComponents -Path $path
+  return $path
+}
+
+function Read-DreamSkinPresetSettings {
+  param([string]$ThemeId, [string]$StateRoot)
+  if ($ThemeId -cnotmatch '^preset-[A-Za-z0-9_-]{1,72}$') { return $null }
+  $path = Get-DreamSkinPresetSettingsPath -ThemeId $ThemeId -StateRoot $StateRoot
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+  if ((Get-Item -LiteralPath $path).Length -gt 16384) { throw 'Preset settings file is too large.' }
+  $settings = (Read-DreamSkinUtf8File -Path $path) | ConvertFrom-Json -ErrorAction Stop
+  if ($settings.schemaVersion -ne 1 -or $settings.appearance -notin @('auto','light','dark') -or
+      $null -eq $settings.art -or $settings.art -isnot [pscustomobject]) { throw 'Invalid preset settings.' }
+  return $settings
+}
+
+function Merge-DreamSkinPresetSettings {
+  param([object]$Theme, [object]$Settings)
+  if ($null -eq $Settings) { return $Theme }
+  $Theme = Normalize-DreamSkinThemeContract -Theme $Theme
+  $Theme.appearance = $Settings.appearance
+  foreach ($key in @('focusX','focusY','safeArea','taskMode','bubbleOpacity','positionX','positionY','zoom','positionMode','framingEnabled')) {
+    if ($Theme.art.PSObject.Properties[$key]) { $Theme.art.PSObject.Properties.Remove($key) }
+    if ($Settings.art.PSObject.Properties[$key]) {
+      $Theme.art | Add-Member -NotePropertyName $key -NotePropertyValue $Settings.art.$key
+    }
+  }
+  if (-not $Theme.palette) { $Theme | Add-Member -NotePropertyName palette -NotePropertyValue ([pscustomobject]@{}) -Force }
+  if ($Theme.palette.PSObject.Properties['accent']) { $Theme.palette.PSObject.Properties.Remove('accent') }
+  if ($Settings.accent) { $Theme.palette | Add-Member -NotePropertyName accent -NotePropertyValue $Settings.accent }
+  return $Theme
+}
+
 function Initialize-DreamSkinThemeStore {
   param(
     [Parameter(Mandatory = $true)][string]$SkillRoot,
@@ -574,7 +611,8 @@ function Initialize-DreamSkinThemeStore {
     if ($activeId -ceq $bundledPresetId) { $refreshSource = $assetRoot }
     elseif ($activeId -ceq 'preset-gothic-void-crusade' -and
       (Test-Path -LiteralPath $gothicSourceTheme -PathType Leaf)) { $refreshSource = $gothicSource }
-    if ($null -ne $refreshSource) {
+    $presetSettings = Read-DreamSkinPresetSettings -ThemeId $activeId -StateRoot $StateRoot
+    if ($null -ne $refreshSource -and $null -eq $presetSettings) {
       $sourcePack = Read-DreamSkinTheme -ThemeDirectory $refreshSource
       $sourceJson = Read-DreamSkinUtf8File -Path $sourcePack.ThemePath
       $activeJson = Read-DreamSkinUtf8File -Path $activeTheme
@@ -586,6 +624,14 @@ function Initialize-DreamSkinThemeStore {
         Assert-DreamSkinNoReparseComponents -Path $refreshedImage
         Assert-DreamSkinImageFile -Path $refreshedImage
         Copy-Item -LiteralPath $sourcePack.ThemePath -Destination $activeTheme -Force
+      }
+    }
+    if ($null -ne $presetSettings) {
+      $active = Read-DreamSkinTheme -ThemeDirectory $paths.Active -SkipImageMetadata
+      $before = $active.Theme | ConvertTo-Json -Depth 12
+      $merged = Merge-DreamSkinPresetSettings -Theme $active.Theme -Settings $presetSettings
+      if (($merged | ConvertTo-Json -Depth 12) -cne $before) {
+        Write-DreamSkinTheme -ThemeDirectory $paths.Active -Theme $merged
       }
     }
   }

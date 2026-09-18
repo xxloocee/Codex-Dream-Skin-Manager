@@ -228,7 +228,7 @@ namespace CodexDreamSkinManager
             mainTabs.Style = ManagerControlStyles.Get("Tabs");
             TabItem dashboardTab = new TabItem { Header = "控制台", Content = BuildDashboard() };
             TabItem customTab = new TabItem { Header = "自定义换肤", Content = BuildCustomSkin() };
-            TabItem savedThemeTab = new TabItem { Header = "已存主题设置", Content = BuildSavedThemeEditor() };
+            TabItem savedThemeTab = new TabItem { Header = "主题设置", Content = BuildSavedThemeEditor() };
             AutomationProperties.SetName(customTab, "CustomSkinTab");
             AutomationProperties.SetName(savedThemeTab, "SavedThemeEditorTab");
             mainTabs.Items.Add(dashboardTab);
@@ -446,7 +446,7 @@ namespace CodexDreamSkinManager
             editSavedThemeButton = SecondaryButton("编辑主题参数");
             editSavedThemeButton.Margin = new Thickness(0, 0, 0, 8);
             editSavedThemeButton.Visibility = Visibility.Collapsed;
-            editSavedThemeButton.ToolTip = "在主程序内修改所选“我的”主题的显示参数";
+            editSavedThemeButton.ToolTip = "在主程序内修改所选主题的显示参数";
             AutomationProperties.SetName(editSavedThemeButton, "EditSavedThemeButton");
             editSavedThemeButton.Click += delegate { OpenSavedThemeEditor(themeList.SelectedItem as ThemeOption); };
             controlStack.Children.Add(editSavedThemeButton);
@@ -664,6 +664,7 @@ namespace CodexDreamSkinManager
         {
             ScrollViewer scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            scroll.Resources[typeof(ScrollBar)] = ManagerControlStyles.Get("VerticalScroll");
             Grid grid = new Grid { Margin = new Thickness(4, 14, 4, 4), MaxWidth = 1260,
                 HorizontalAlignment = HorizontalAlignment.Stretch };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(300) });
@@ -673,14 +674,15 @@ namespace CodexDreamSkinManager
             Border selectorPanel = PanelBorder();
             selectorPanel.VerticalAlignment = VerticalAlignment.Top;
             StackPanel selectorFields = new StackPanel();
-            selectorFields.Children.Add(SectionLabel("选择已存主题"));
+            selectorFields.Children.Add(SectionLabel("选择主题"));
             selectorFields.Children.Add(new TextBlock {
-                Text = "这里仅列出“我的”主题。图片、名称、分类、标签和 Safe CSS 不会被此页修改。",
+                Text = "选择内置主题或“我的”主题，调整显示和取景参数。",
                 Foreground = MutedBrush, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 14)
             });
-            selectorFields.Children.Add(FieldLabel("已存主题"));
+            selectorFields.Children.Add(FieldLabel("主题"));
             savedThemeSelector = CreateCombo(new string[0], -1);
-            savedThemeSelector.MinHeight = 38;
+            savedThemeSelector.MaxDropDownHeight = 240;
+            savedThemeSelector.Resources[typeof(ScrollBar)] = ManagerControlStyles.Get("VerticalScroll");
             savedThemeSelector.SelectionChanged += SavedThemeSelectionChanged;
             AutomationProperties.SetName(savedThemeSelector, "SavedThemeSelector");
             selectorFields.Children.Add(savedThemeSelector);
@@ -934,7 +936,7 @@ namespace CodexDreamSkinManager
             {
                 savedThemeSelector.Items.Clear();
                 foreach (ThemeOption theme in allThemes)
-                    if (IsSavedTheme(theme)) savedThemeSelector.Items.Add(theme);
+                    if (IsEditableTheme(theme)) savedThemeSelector.Items.Add(theme);
                 for (int i = 0; i < savedThemeSelector.Items.Count; i++)
                 {
                     ThemeOption item = savedThemeSelector.Items[i] as ThemeOption;
@@ -961,9 +963,9 @@ namespace CodexDreamSkinManager
 
         private void OpenSavedThemeEditor(ThemeOption theme)
         {
-            if (!IsSavedTheme(theme))
+            if (!IsEditableTheme(theme))
             {
-                SetMessage("请选择“我的”主题后再编辑参数。", true);
+                SetMessage("请选择内置主题或“我的”主题后再编辑参数。", true);
                 return;
             }
             if (savedThemeSelector != null)
@@ -984,13 +986,13 @@ namespace CodexDreamSkinManager
         private void LoadSelectedSavedTheme()
         {
             ThemeOption theme = savedThemeSelector == null ? null : savedThemeSelector.SelectedItem as ThemeOption;
-            bool available = IsSavedTheme(theme);
+            bool available = IsEditableTheme(theme);
             if (savedThemeStatus != null)
             {
                 savedThemeStatus.Text = available
                     ? (string.Equals(theme.Id, currentStatus.ActiveThemeId, StringComparison.OrdinalIgnoreCase)
                         ? "当前正在使用此主题；保存后会立即刷新。" : "可修改此主题的显示与取景参数。")
-                    : "没有可编辑的已存主题。";
+                    : "没有可编辑的主题。";
             }
             if (!available)
             {
@@ -1028,7 +1030,7 @@ namespace CodexDreamSkinManager
         private void UpdateSavedFramingEnabledState()
         {
             bool enabled = savedFramingEnabled != null && savedFramingEnabled.IsChecked == true &&
-                savedThemeSelector != null && IsSavedTheme(savedThemeSelector.SelectedItem as ThemeOption);
+                savedThemeSelector != null && IsEditableTheme(savedThemeSelector.SelectedItem as ThemeOption);
             if (savedPositionXSlider != null) savedPositionXSlider.IsEnabled = enabled;
             if (savedPositionYSlider != null) savedPositionYSlider.IsEnabled = enabled;
             if (savedZoomSlider != null) savedZoomSlider.IsEnabled = enabled;
@@ -1203,6 +1205,13 @@ namespace CodexDreamSkinManager
                 !string.IsNullOrWhiteSpace(theme.Id));
         }
 
+        internal static bool IsEditableTheme(ThemeOption theme)
+        {
+            return IsSavedTheme(theme) || (theme != null && theme.IsPreset &&
+                string.Equals(theme.Source, "preset", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(theme.Id));
+        }
+
         private async Task EnableAsync()
         {
             if (!ConfirmRestart("启用皮肤")) return;
@@ -1279,7 +1288,7 @@ namespace CodexDreamSkinManager
         private async Task SaveSavedThemeAsync()
         {
             ThemeOption theme = savedThemeSelector == null ? null : savedThemeSelector.SelectedItem as ThemeOption;
-            if (!IsSavedTheme(theme)) { SetMessage("请选择“我的”主题后再保存。", true); return; }
+            if (!IsEditableTheme(theme)) { SetMessage("请选择内置主题或“我的”主题后再保存。", true); return; }
             SavedThemeEditOptions options = ReadSavedThemeOptions();
             try { options.Validate(); }
             catch (Exception ex) { SetMessage(ex.Message, true); return; }
@@ -1560,7 +1569,7 @@ namespace CodexDreamSkinManager
                     FocusX = theme.FocusX, FocusY = theme.FocusY, SafeArea = theme.SafeArea,
                     PositionX = theme.PositionX, PositionY = theme.PositionY, Zoom = theme.Zoom,
                     PositionMode = theme.PositionMode, FramingEnabled = theme.FramingEnabled,
-                    TaskMode = theme.TaskMode, Accent = theme.Accent
+                    TaskMode = theme.TaskMode, BubbleOpacity = theme.BubbleOpacity, Accent = theme.Accent
                 };
                 if (!string.IsNullOrWhiteSpace(theme.ThemeDirectory)) {
                     string css = Path.Combine(theme.ThemeDirectory, "theme.css");
@@ -1649,11 +1658,11 @@ namespace CodexDreamSkinManager
             if (exportThemeButton != null) exportThemeButton.IsEnabled = selected && !busy;
             if (editSavedThemeButton != null)
             {
-                bool savedTheme = IsSavedTheme(selectedTheme);
+                bool savedTheme = IsEditableTheme(selectedTheme);
                 bool supportsUpdate = currentStatus.SupportedActions.Contains("UpdateTheme");
                 editSavedThemeButton.Visibility = savedTheme ? Visibility.Visible : Visibility.Collapsed;
                 editSavedThemeButton.IsEnabled = savedTheme && supportsUpdate && !busy && service != null && service.CanManage;
-                editSavedThemeButton.ToolTip = !supportsUpdate ? "当前管理脚本不支持编辑已存主题参数" : "在主程序内修改所选主题参数";
+                editSavedThemeButton.ToolTip = !supportsUpdate ? "当前管理脚本不支持编辑主题参数" : "在主程序内修改所选主题参数";
             }
             if (deleteThemeButton != null)
             {
@@ -1676,7 +1685,7 @@ namespace CodexDreamSkinManager
             {
                 ThemeOption savedTheme = savedThemeSelector == null ? null : savedThemeSelector.SelectedItem as ThemeOption;
                 bool supportsUpdate = currentStatus.SupportedActions.Contains("UpdateTheme");
-                saveSavedThemeButton.IsEnabled = IsSavedTheme(savedTheme) && supportsUpdate && !busy && service != null && service.CanManage;
+                saveSavedThemeButton.IsEnabled = IsEditableTheme(savedTheme) && supportsUpdate && !busy && service != null && service.CanManage;
             }
         }
 

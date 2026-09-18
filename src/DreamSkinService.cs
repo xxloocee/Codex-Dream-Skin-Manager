@@ -291,14 +291,17 @@ namespace CodexDreamSkinManager
         {
             if (theme == null) throw new ArgumentNullException("theme");
             if (options == null) throw new ArgumentNullException("options");
-            if (theme.IsPreset || !string.Equals(theme.Source, "saved", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("只能修改“我的”已保存主题。");
-            if (string.IsNullOrWhiteSpace(theme.ThemeDirectory))
+            bool preset = theme.IsPreset && string.Equals(theme.Source, "preset", StringComparison.OrdinalIgnoreCase);
+            if (!preset && (theme.IsPreset || !string.Equals(theme.Source, "saved", StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("只能修改内置主题或“我的”已保存主题。");
+            if (preset && string.IsNullOrWhiteSpace(theme.Id))
+                throw new InvalidOperationException("内置主题 ID 为空，无法保存参数。");
+            if (!preset && string.IsNullOrWhiteSpace(theme.ThemeDirectory))
                 throw new InvalidOperationException("主题目录为空，无法保存参数。");
             options.Validate();
             List<ScriptArgument> args = new List<ScriptArgument> {
                 P("-Action"), V("UpdateTheme"), P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")),
-                P("-ThemeDirectory"), V(theme.ThemeDirectory),
+                P(preset ? "-ThemeId" : "-ThemeDirectory"), V(preset ? theme.Id : theme.ThemeDirectory),
                 P("-Appearance"), V(options.Appearance),
                 P("-FocusX"), V(options.FocusX.ToString(CultureInfo.InvariantCulture)),
                 P("-FocusY"), V(options.FocusY.ToString(CultureInfo.InvariantCulture)),

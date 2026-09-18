@@ -126,6 +126,14 @@ function ConvertTo-ManagerPresetOption {
     [Parameter(Mandatory = $true)][object]$Preset,
     [int]$Order = 0
   )
+  $contract = ConvertTo-ManagerPresetThemeContract -Preset $Preset
+  # Resolve both catalog and directory presets through the same user settings.
+  $Preset.appearance = $contract.appearance
+  foreach ($key in @('focusX','focusY','safeArea','taskMode','bubbleOpacity','positionX','positionY','zoom','positionMode')) {
+    $Preset[$key] = $contract.art.$key
+  }
+  $Preset.framingEnabled = Test-ManagerThemeFraming -Theme $contract
+  $Preset.accent = $contract.palette.accent
   $tags = @()
   foreach ($tag in @($Preset.tags)) {
     if (-not [string]::IsNullOrWhiteSpace("$tag")) { $tags += "$tag" }
@@ -349,6 +357,7 @@ function Sync-ManagerActivePresetAppearance {
     $active = Read-DreamSkinTheme -ThemeDirectory $paths.Active -SkipImageMetadata
     $activeId = "$($active.Theme.id)"
     if (-not $activeId) { return }
+    if ($null -ne (Read-DreamSkinPresetSettings -ThemeId $activeId -StateRoot $StateRoot)) { return }
     foreach ($candidate in @(Get-ManagerPresetCandidates -PresetRoot $PresetRoot)) {
       if (-not [string]::Equals("$($candidate.id)", $activeId,
           [System.StringComparison]::OrdinalIgnoreCase) -or "$($candidate.appearance)" -ne 'auto') {
@@ -392,7 +401,9 @@ function Sync-ManagerActivePresetAppearance {
 function ConvertTo-ManagerPresetThemeContract {
   param([Parameter(Mandatory = $true)][object]$Preset)
   if ($Preset.themeContract) {
-    return ($Preset.themeContract | ConvertTo-Json -Depth 12 | ConvertFrom-Json)
+    $theme = $Preset.themeContract | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+    return Merge-DreamSkinPresetSettings -Theme $theme `
+      -Settings (Read-DreamSkinPresetSettings -ThemeId "$($Preset.id)" -StateRoot $StateRoot)
   }
   $theme = [pscustomobject][ordered]@{
     schemaVersion = 1
@@ -413,7 +424,8 @@ function ConvertTo-ManagerPresetThemeContract {
   if ($Preset.accent) {
     $theme.palette | Add-Member -NotePropertyName accent -NotePropertyValue "$($Preset.accent)" -Force
   }
-  return $theme
+  return Merge-DreamSkinPresetSettings -Theme $theme `
+    -Settings (Read-DreamSkinPresetSettings -ThemeId "$($Preset.id)" -StateRoot $StateRoot)
 }
 
 function Get-ManagerWriteMutexName {
@@ -491,33 +503,41 @@ function New-ManagerCustomTheme {
 }
 
 function Update-ManagerSavedTheme {
-  param([Parameter(Mandatory = $true)][string]$SavedThemeDirectory)
+  param([string]$SavedThemeDirectory, [string]$PresetThemeId)
 
   Ensure-DreamSkinManagedDirectory -Path $paths.Root -Root $paths.Root
   Ensure-DreamSkinManagedDirectory -Path $paths.Saved -Root $paths.Root
-  $directory = [System.IO.Path]::GetFullPath($SavedThemeDirectory).TrimEnd(
-    [System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
-  $savedRoot = [System.IO.Path]::GetFullPath($paths.Saved).TrimEnd(
-    [System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
-  $parent = [System.IO.Directory]::GetParent($directory)
-  if ($null -eq $parent -or -not [string]::Equals($parent.FullName.TrimEnd(
-      [System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar),
-      $savedRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
-    -not (Test-DreamSkinThemePathWithin -Path $directory -Root $paths.Saved)) {
-    throw '只能编辑“我的”主题库中的完整主题。'
-  }
+  if ($PresetThemeId) {
+    $preset = @((Get-ManagerPresetCandidates -PresetRoot (Join-Path $SkillRoot 'presets')) |
+      Where-Object { "$($_.id)" -ceq $PresetThemeId })
+    if ($preset.Count -ne 1) { throw '请选择有效的内置主题。' }
+    $theme = ConvertTo-ManagerPresetThemeContract -Preset $preset[0]
+    $settingsPath = Get-DreamSkinPresetSettingsPath -ThemeId $PresetThemeId -StateRoot $StateRoot
+  } else {
+    $directory = [System.IO.Path]::GetFullPath($SavedThemeDirectory).TrimEnd(
+      [System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $savedRoot = [System.IO.Path]::GetFullPath($paths.Saved).TrimEnd(
+      [System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $parent = [System.IO.Directory]::GetParent($directory)
+    if ($null -eq $parent -or -not [string]::Equals($parent.FullName.TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar),
+        $savedRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+      -not (Test-DreamSkinThemePathWithin -Path $directory -Root $paths.Saved)) {
+      throw '只能编辑“我的”主题库中的完整主题。'
+    }
 
-  # Editing metadata must retain the saved image, Safe CSS, ID, name, category,
-  # tags, and unknown future fields. Image validation happens again on apply.
-  $saved = Read-DreamSkinTheme -ThemeDirectory $directory -SkipImageMetadata
-  $theme = $saved.Theme | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+    # Editing metadata must retain the saved image, Safe CSS, ID, name, category,
+    # tags, and unknown future fields. Image validation happens again on apply.
+    $saved = Read-DreamSkinTheme -ThemeDirectory $directory -SkipImageMetadata
+    $theme = $saved.Theme | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+  }
   $theme.appearance = $Appearance
-  $theme.art.focusX = $FocusX
-  $theme.art.focusY = $FocusY
-  $theme.art.safeArea = $SafeArea
-  $theme.art.taskMode = $TaskMode
+  $theme.art | Add-Member -NotePropertyName focusX -NotePropertyValue $FocusX -Force
+  $theme.art | Add-Member -NotePropertyName focusY -NotePropertyValue $FocusY -Force
+  $theme.art | Add-Member -NotePropertyName safeArea -NotePropertyValue $SafeArea -Force
+  $theme.art | Add-Member -NotePropertyName taskMode -NotePropertyValue $TaskMode -Force
   $theme.art | Add-Member -NotePropertyName bubbleOpacity -NotePropertyValue $BubbleOpacity -Force
-  foreach ($property in @('positionX', 'positionY', 'zoom', 'positionMode')) {
+  foreach ($property in @('positionX', 'positionY', 'zoom', 'positionMode', 'framingEnabled')) {
     if ($theme.art.PSObject.Properties[$property]) { $theme.art.PSObject.Properties.Remove($property) }
   }
   if ($UseCustomFraming) {
@@ -531,7 +551,17 @@ function Update-ManagerSavedTheme {
   }
   if ($theme.palette.PSObject.Properties['accent']) { $theme.palette.PSObject.Properties.Remove('accent') }
   if ($Accent) { $theme.palette | Add-Member -NotePropertyName accent -NotePropertyValue $Accent.ToUpperInvariant() }
-  Write-DreamSkinTheme -ThemeDirectory $directory -Theme $theme
+  # The visual parameters changed; do not reuse a cached pre-edit fingerprint.
+  foreach ($property in @('managerFingerprint', 'managerFingerprintVersion')) {
+    if ($theme.PSObject.Properties[$property]) { $theme.PSObject.Properties.Remove($property) }
+  }
+  if ($PresetThemeId) {
+    Ensure-DreamSkinManagedDirectory -Path (Split-Path -Parent $settingsPath) -Root $paths.Root
+    $settings = [pscustomobject]@{ schemaVersion = 1; appearance = $theme.appearance; art = $theme.art; accent = "$($theme.palette.accent)" }
+    Write-DreamSkinUtf8FileAtomically -Path $settingsPath -Content (($settings | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+  } else {
+    Write-DreamSkinTheme -ThemeDirectory $directory -Theme $theme
+  }
 
   $activeUpdated = $false
   if (Test-Path -LiteralPath $paths.Active -PathType Container) {
@@ -708,6 +738,7 @@ function Get-ManagerThemeFingerprint {
     positionMode = if ($Theme.art -and $Theme.art.positionMode) { "$($Theme.art.positionMode)" } else { 'locked' }
     safeArea = if ($Theme.art -and $Theme.art.safeArea) { "$($Theme.art.safeArea)" } else { 'auto' }
     taskMode = if ($Theme.art -and $Theme.art.taskMode) { "$($Theme.art.taskMode)" } else { 'auto' }
+    bubbleOpacity = if ($Theme.art -and $null -ne $Theme.art.bubbleOpacity) { [double]$Theme.art.bubbleOpacity } else { 0.0 }
     accent = $accent
   }
   $sha = [System.Security.Cryptography.SHA256]::Create()
@@ -717,7 +748,7 @@ function Get-ManagerThemeFingerprint {
   } finally { $sha.Dispose() }
 }
 
-$ManagerFingerprintVersion = 2
+$ManagerFingerprintVersion = 3
 
 function Get-ManagerSavedFingerprints {
   $fingerprints = @{}
@@ -1246,8 +1277,11 @@ switch ($Action) {
   }
   'UpdateTheme' {
     Invoke-ManagerWriteLock {
-      if ([string]::IsNullOrWhiteSpace($ThemeDirectory)) { throw '请选择需要编辑的已存主题。' }
-      $result = Update-ManagerSavedTheme -SavedThemeDirectory $ThemeDirectory
+      if ($ThemeDirectory) {
+        $result = Update-ManagerSavedTheme -SavedThemeDirectory $ThemeDirectory
+      } else {
+        $result = Update-ManagerSavedTheme -PresetThemeId $ThemeId
+      }
       $rendererApplied = $false
       if ($result.ActiveUpdated -and -not (Test-DreamSkinPaused -StateRoot $StateRoot)) {
         $rendererApplied = Invoke-ManagerLiveApplyIfRunning

@@ -1151,6 +1151,35 @@ namespace CodexDreamSkinManager
                 finally { Directory.Delete(root, true); }
             });
 
+            Run("Edits preset and saved themes in the same settings page", delegate
+            {
+                string root = CreateLayout();
+                try
+                {
+                    MainWindow window = new MainWindow(new DreamSkinService(root));
+                    DreamSkinStatus status = ReadMemberObject(window, "currentStatus") as DreamSkinStatus;
+                    status.SupportedActions.Add("UpdateTheme");
+                    ThemeOption preset = new ThemeOption { Id = "preset-a", Name = "内置", IsPreset = true, Source = "preset", BubbleOpacity = 0.42 };
+                    ThemeOption saved = new ThemeOption { Id = "saved-a", Name = "我的", Source = "saved", ThemeDirectory = Path.Combine(root, "saved-a") };
+                    typeof(MainWindow).GetMethod("PopulateThemes", BindingFlags.Instance | BindingFlags.NonPublic)
+                        .Invoke(window, new object[] { new List<ThemeOption> { preset, saved } });
+                    ComboBox selector = ReadMemberObject(window, "savedThemeSelector") as ComboBox;
+                    AssertTrue(selector.Items.Count == 2);
+                    selector.SelectedItem = preset;
+                    AssertTrue((ReadMemberObject(window, "saveSavedThemeButton") as Button).IsEnabled);
+                    AssertClose(42, (ReadMemberObject(window, "savedBubbleOpacitySlider") as Slider).Value);
+                    ListBox themes = ReadMemberObject(window, "themeList") as ListBox;
+                    themes.SelectedItem = preset;
+                    Button edit = ReadMemberObject(window, "editSavedThemeButton") as Button;
+                    AssertTrue(edit.Visibility == Visibility.Visible && edit.IsEnabled);
+                    edit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    AssertTrue((ReadMemberObject(window, "mainTabs") as TabControl).SelectedIndex == 2);
+                    AssertTrue(!MainWindow.IsEditableTheme(new ThemeOption { Id = "bad", Source = "preset" }));
+                    window.Close();
+                }
+                finally { Directory.Delete(root, true); }
+            });
+
             Run("Rejects invalid theme deletion requests", delegate
             {
                 string root = CreateLayout();

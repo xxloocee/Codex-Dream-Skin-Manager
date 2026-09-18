@@ -22,6 +22,19 @@ const readme = await fs.readFile(readmePath, "utf8");
 const windowsReadme = await fs.readFile(windowsReadmePath, "utf8");
 const windowsEnglishReadme = await fs.readFile(windowsEnglishReadmePath, "utf8");
 const macosReadme = await fs.readFile(macosReadmePath, "utf8");
+const repoRoot = path.resolve(here, "../..");
+const assemblyInfo = await fs.readFile(path.join(repoRoot, "src/AssemblyInfo.cs"), "utf8");
+const releaseVersion = assemblyInfo.match(/AssemblyInformationalVersion\("([^"]+)"\)/)[1];
+for (const platform of ["windows", "macos"]) {
+  const version = (await fs.readFile(path.join(repoRoot, platform, "VERSION"), "utf8")).trim();
+  assert.equal(version, releaseVersion, `${platform}/VERSION must match the manager release`);
+  const injector = await fs.readFile(path.join(repoRoot, platform, "scripts/injector.mjs"), "utf8");
+  assert.equal(injector.match(/const SKIN_VERSION = "([^"]+)"/)[1], releaseVersion);
+}
+const macosPackage = JSON.parse(await fs.readFile(path.join(repoRoot, "macos/package.json"), "utf8"));
+assert.equal(macosPackage.version, releaseVersion);
+const macosCommon = await fs.readFile(path.join(repoRoot, "macos/scripts/common-macos.sh"), "utf8");
+assert.equal(macosCommon.match(/^SKIN_VERSION="([^"]+)"/m)[1], releaseVersion);
 const crossPlatformLines = crossPlatformWorkflow.split(/\r?\n/);
 const macosJobStart = crossPlatformLines.indexOf("  macos-runtime:");
 const nextJobStart = crossPlatformLines.findIndex(
@@ -87,9 +100,9 @@ assert.match(
 );
 
 for (const asset of [
-  "CodexDreamSkinManager-v1.7.0-windows-x64-setup.exe",
-  "CodexDreamSkinManager-v1.7.0-windows-x64-portable.zip",
-  "CodexDreamSkinManager-v1.7.0-macos-universal.dmg",
+  `CodexDreamSkinManager-v${releaseVersion}-windows-x64-setup.exe`,
+  `CodexDreamSkinManager-v${releaseVersion}-windows-x64-portable.zip`,
+  `CodexDreamSkinManager-v${releaseVersion}-macos-universal.dmg`,
   "SHA256SUMS.txt",
 ]) {
   assert.ok(readme.includes(asset), `README must name release asset: ${asset}`);
