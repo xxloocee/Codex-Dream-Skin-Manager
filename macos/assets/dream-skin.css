@@ -551,6 +551,66 @@ html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surfa
   backdrop-filter: blur(10px) saturate(106%) !important;
 }
 
+/* Current desktop panels use --color-surface instead of the legacy token
+   above. Scope the transparent surfaces to the tabbed side pane: changing
+   --color-surface globally would also erase menus and semantic highlights.
+   Paint the pane tint once; image pixels and embedded webviews stay intact. */
+html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]) aside:has([data-tab-id]) {
+  --app-shell-panel-background: transparent;
+  background: rgb(var(--ds-panel-rgb) / .62) !important;
+  backdrop-filter: blur(10px) saturate(106%) !important;
+}
+
+html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]) aside:has([data-tab-id])
+  :is(div, section, aside):is([class~="bg-surface"], [class~="electron:bg-surface"]):not([data-tab-id]) {
+  background: transparent !important;
+}
+
+/* Diff context rows live inside an open shadow root. Inherit only the base
+   surface token through the host; leave addition/deletion colors untouched.
+   The light-DOM file wrapper has its own supported surface override. */
+html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]) aside:has([data-tab-id])
+  [class~="group/file-diff"] {
+  --codex-diffs-surface-override: transparent;
+}
+
+html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]) aside:has([data-tab-id])
+  diffs-container {
+  --color-surface: transparent;
+}
+
+html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]) aside:has([data-tab-id])
+  [class~="group/diff-header"] {
+  background: rgb(var(--ds-panel-rgb) / .92) !important;
+}
+
+/* macOS settings may remove both the shell and the fallback main/home
+   anchors. Supply static artwork on body only in that case; a translucent
+   settings surface alone cannot reveal an image that is no longer painted.
+   Include legacy appearance anchors, leave video on its existing layer, and
+   reuse the shared framing variables rather than inventing settings offsets. */
+html[data-dream-skin="active"]:not([data-dream-media="video"]):not([data-dream-task-mode="off"]):not([data-dream-art-task-mode="off"]):has([data-settings-panel-slug], input[name="appearance-theme"], [data-testid="theme-preview"]):not(:has(main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]), [data-ds-part="main"], [data-ds-part="home"])) body {
+  background-image: var(--ds-task-full-veil), var(--dream-skin-art) !important;
+  background-position: center, var(--ds-art-position) !important;
+  background-size: 100% 100%, var(--dream-art-background-size, cover) !important;
+  background-repeat: no-repeat !important;
+  background-attachment: fixed !important;
+}
+
+/* Settings can replace the shell, so do not require a main element here.
+   Navigation slugs remain present when switching settings categories. Keep
+   controls and appearance previews on their native surfaces. */
+html[data-dream-skin="active"]:has([data-settings-panel-slug])
+  div[class~="electron:overflow-hidden"][class~="electron:bg-surface"] {
+  background: rgb(var(--ds-panel-rgb) / .62) !important;
+}
+
+html[data-dream-skin="active"]:has([data-settings-panel-slug])
+  div[class~="electron:overflow-hidden"][class~="electron:bg-surface"]
+  div[class~="rounded-2xl"][class~="border-default"] {
+  background-color: rgb(var(--ds-panel-rgb) / .28) !important;
+}
+
 html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]):not(:has([role="main"])) article {
   border: 1px solid rgb(var(--ds-muted-rgb) / .12);
   background: rgb(var(--ds-panel-rgb) / .44);
