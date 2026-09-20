@@ -227,7 +227,7 @@ namespace CodexDreamSkinManager
             mainTabs = new TabControl { Margin = new Thickness(0, 0, 0, 12), Background = Brushes.Transparent, BorderBrush = AppBorderBrush, Tag = statePanel };
             mainTabs.Style = ManagerControlStyles.Get("Tabs");
             TabItem dashboardTab = new TabItem { Header = "控制台", Content = BuildDashboard() };
-            TabItem customTab = new TabItem { Header = "自定义换肤", Content = BuildCustomSkin() };
+            TabItem customTab = new TabItem { Header = "导入图片", Content = BuildCustomSkin() };
             TabItem savedThemeTab = new TabItem { Header = "主题设置", Content = BuildSavedThemeEditor() };
             AutomationProperties.SetName(customTab, "CustomSkinTab");
             AutomationProperties.SetName(savedThemeTab, "SavedThemeEditorTab");
@@ -498,6 +498,7 @@ namespace CodexDreamSkinManager
         private UIElement BuildCustomSkin()
         {
             ScrollViewer scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            scroll.Resources[typeof(ScrollBar)] = ManagerControlStyles.Get("VerticalScroll");
             Grid grid = new Grid { Margin = new Thickness(4, 14, 4, 4), MaxWidth = 1260, HorizontalAlignment = HorizontalAlignment.Stretch };
             AutomationProperties.SetName(grid, "CustomThemeContent");
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -650,6 +651,7 @@ namespace CodexDreamSkinManager
             ScrollViewer fieldsScroll = new ScrollViewer { Content = fields,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+            fieldsScroll.Resources[typeof(ScrollBar)] = ManagerControlStyles.Get("VerticalScroll");
             editorLayout.Children.Add(fieldsScroll);
             Grid.SetRow(saveRow, 1);
             editorLayout.Children.Add(saveRow);
