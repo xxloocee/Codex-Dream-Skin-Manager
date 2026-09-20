@@ -2,15 +2,16 @@
 
 基于 [Fei-Away/Codex-Dream-Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 开发的跨平台主题管理项目：Windows 保留本项目的 WPF 可视化管理器，macOS 复用上游菜单栏客户端，并共享同一套运行时、主题契约和图片 framing 能力。
 
-当前版本：`1.7.6`。运行时支持 Windows 和 macOS；WPF 管理器仍是 Windows 专用界面，macOS 提供原生菜单栏界面及一个共享状态/framing 契约的 `manager-actions-macos.sh` 动作适配层。
+当前版本：`1.7.7`。运行时支持 Windows 和 macOS；WPF 管理器仍是 Windows 专用界面，macOS 提供原生菜单栏界面及一个共享状态/framing 契约的 `manager-actions-macos.sh` 动作适配层。
 
 ## 下载
 
 正式版本从 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载：
 
-- `CodexDreamSkinManager-v1.7.6-windows-x64-setup.exe`：Windows 10/11 x64 推荐安装版。
-- `CodexDreamSkinManager-v1.7.6-windows-x64-portable.zip`：Windows 10/11 x64 便携版。
-- `CodexDreamSkinManager-v1.7.6-macos-universal.dmg`：macOS 13+ 通用安装包，同时支持 Apple Silicon 与 Intel。
+- `CodexDreamSkinManager-v1.7.7-windows-x64-setup.exe`：Windows 10/11 x64 推荐安装版。
+- `CodexDreamSkinManager-v1.7.7-windows-x64-portable.zip`：Windows 10/11 x64 便携版。
+- `CodexDreamSkinManager-v1.7.7-macos-x64.dmg`：macOS 13+，Intel Mac 安装包。
+- `CodexDreamSkinManager-v1.7.7-macos-arm64.dmg`：macOS 13+，Apple Silicon Mac 安装包。
 - `SHA256SUMS.txt`：上述安装包的 SHA-256 校验清单。
 
 Windows 安装版默认安装到当前用户目录，不请求管理员权限，并创建开始菜单快捷方式；
@@ -97,7 +98,7 @@ $iscc = .\tools\prepare-inno-setup.ps1
 .\tools\package-installer.ps1 -IsccPath $iscc
 ```
 
-安装包会生成到 `dist\CodexDreamSkinManager-v1.7.6-windows-x64-setup.exe`。Inno Setup 只用于构建，
+安装包会生成到 `dist\CodexDreamSkinManager-v1.7.7-windows-x64-setup.exe`。Inno Setup 只用于构建，
 不会成为用户电脑上的运行依赖。
 
 仅执行测试：

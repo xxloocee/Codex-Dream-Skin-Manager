@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "preset-ink-feather-glow",
+  "name": "墨羽流光",
+  "brandSubtitle": "CODEX DREAM SKIN",
+  "tagline": "把喜欢的画面变成可交互的 Codex 工作台。",
+  "projectPrefix": "选择项目 · ",
+  "projectLabel": "◉  选择项目",
+  "statusText": "THEME ONLINE",
+  "quote": "Make something wonderful",
+  "image": "background.mp4",
+  "appearance": "auto",
+  "art": {
+    "focusX": 0.5,
+    "focusY": 0.5,
+    "safeArea": "auto",
+    "taskMode": "auto"
+  },
+  "colors": {
+    "background": "#15151C",
+    "panel": "#20202A",
+    "panelAlt": "#2B2B36",
+    "accent": "#FF8040",
+    "accentAlt": "#FF8040",
+    "secondary": "#FF8040",
+    "highlight": "#FF8040",
+    "text": "#F4F4F8",
+    "muted": "#A8A8BA",
+    "line": "rgba(168, 168, 186, .22)"
+  }
+}

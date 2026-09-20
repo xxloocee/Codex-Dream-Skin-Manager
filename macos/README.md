@@ -17,7 +17,8 @@ This project injects through **local loopback CDP**. It does **not** modify the 
 ## Release install (recommended)
 
 普通用户请从 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载
-`CodexDreamSkinManager-vX.Y.Z-macos-universal.dmg`，按本页下方的 Release install 图形界面步骤
+Intel Mac 选择 `CodexDreamSkinManager-vX.Y.Z-macos-x64.dmg`，Apple Silicon Mac 选择
+`CodexDreamSkinManager-vX.Y.Z-macos-arm64.dmg`，按本页下方的 Release install 图形界面步骤
 拖入 Applications。首次运行可能需要在“系统设置 → 隐私与安全性 → 仍要打开”确认一次；不需要
 运行 `xattr` 或安装源码。后续更新下载新的 DMG 覆盖安装即可，用户主题和图片会保留。
 
@@ -113,7 +114,10 @@ Windows. Run `node ../tools/sync-runtime-assets.mjs` from the repository root
 after editing `runtime/`.
 
 The public DMG seeds **Gothic Void Crusade**, contributed through PR #134, as
-its redistributable default. A source checkout also contains the
+its redistributable default, alongside the bundled MP4 animated themes
+**墨羽流光 / Ink Feather Glow** and **银璃幻梦 / Silver Glass Dream**,
+using the same video files as the Windows edition. All three are available
+under the saved themes menu after installation. A source checkout also contains the
 **桥本有菜 / Arina Hashimoto** reference material, but the public app bundle
 deliberately excludes it until independent likeness and redistribution rights
 are confirmed.

@@ -63,7 +63,8 @@ jobs:
           $expectedAssets = @(
             "CodexDreamSkinManager-v$version-windows-x64-setup.exe",
             "CodexDreamSkinManager-v$version-windows-x64-portable.zip",
-            "CodexDreamSkinManager-v$version-macos-universal.dmg",
+            "CodexDreamSkinManager-v$version-macos-x64.dmg",
+            "CodexDreamSkinManager-v$version-macos-arm64.dmg",
             'SHA256SUMS.txt'
           )
           foreach ($asset in $expectedAssets) {
@@ -142,7 +143,17 @@ jobs:
 
   macos:
     needs: validate
-    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            target: arm64
+            runner: macos-14
+          - arch: x64
+            target: x86_64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
 
     steps:
@@ -159,21 +170,23 @@ jobs:
       - name: Check synchronized cross-platform runtime assets
         run: node tools/sync-runtime-assets.mjs --check
 
-      - name: Test and build universal macOS DMG
+      - name: Test and build macOS DMG
         env:
           CODEX_DREAM_SKIN_SKIP_SIGNED_RUNTIME_TESTS: "1"
           CODEX_DREAM_SKIN_SKIP_DOCTOR: "1"
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+          DREAMSKIN_ARCHS: ${{ matrix.target }}
+          RELEASE_ARCH: ${{ matrix.arch }}
         run: |
           NODE="$(command -v node)" bash macos/scripts/build-dmg.sh
           mv "macos/release/CodexDreamSkin-v${RELEASE_VERSION}.dmg" \
-            "macos/release/CodexDreamSkinManager-v${RELEASE_VERSION}-macos-universal.dmg"
+            "macos/release/CodexDreamSkinManager-v${RELEASE_VERSION}-macos-${RELEASE_ARCH}.dmg"
 
       - name: Upload macOS release asset
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: release-macos
-          path: macos/release/*-macos-universal.dmg
+          name: release-macos-${{ matrix.arch }}
+          path: macos/release/*-macos-${{ matrix.arch }}.dmg
           if-no-files-found: error
           retention-days: 30
 
@@ -197,7 +210,18 @@ jobs:
 
       - name: Create SHA-256 manifest
         working-directory: dist
-        run: sha256sum CodexDreamSkinManager-* | LC_ALL=C sort -k2 > SHA256SUMS.txt
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          expected=(
+            "CodexDreamSkinManager-v${RELEASE_VERSION}-windows-x64-setup.exe"
+            "CodexDreamSkinManager-v${RELEASE_VERSION}-windows-x64-portable.zip"
+            "CodexDreamSkinManager-v${RELEASE_VERSION}-macos-x64.dmg"
+            "CodexDreamSkinManager-v${RELEASE_VERSION}-macos-arm64.dmg"
+          )
+          diff -u <(printf '%s\n' "${expected[@]}" | LC_ALL=C sort) \
+            <(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
+          sha256sum "${expected[@]}" | LC_ALL=C sort -k2 > SHA256SUMS.txt
 
       - name: Create GitHub Release
         env:

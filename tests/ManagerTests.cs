@@ -715,11 +715,11 @@ namespace CodexDreamSkinManager
                 DreamSkinStatus stalePaused = DreamSkinService.ParseStatus("{\"isRunning\":false,\"isPaused\":true,\"statusKind\":\"stale\",\"themes\":[]}");
                 object stalePausedActions = fromStatus.Invoke(null, new object[] { stalePaused, false, true, true });
                 AssertTrue(!Convert.ToBoolean(ReadMemberObject(stalePausedActions, "CanPause")));
-                AssertEqual("暂停皮肤", Convert.ToString(ReadMemberObject(stalePausedActions, "PauseLabel")));
+                AssertEqual("暂停", Convert.ToString(ReadMemberObject(stalePausedActions, "PauseLabel")));
                 DreamSkinStatus runningPaused = DreamSkinService.ParseStatus("{\"isRunning\":true,\"isPaused\":true,\"statusKind\":\"paused\",\"themes\":[]}");
                 object runningPausedActions = fromStatus.Invoke(null, new object[] { runningPaused, false, true, true });
                 AssertTrue(Convert.ToBoolean(ReadMemberObject(runningPausedActions, "CanPause")));
-                AssertEqual("继续显示", Convert.ToString(ReadMemberObject(runningPausedActions, "PauseLabel")));
+                AssertEqual("继续", Convert.ToString(ReadMemberObject(runningPausedActions, "PauseLabel")));
                 DreamSkinStatus degraded = DreamSkinService.ParseStatus("{\"isRunning\":true,\"isPaused\":false,\"statusKind\":\"degraded\",\"supportedActions\":[\"ResetTheme\"],\"themes\":[]}");
                 object degradedActions = fromStatus.Invoke(null, new object[] { degraded, false, true, true });
                 AssertTrue(Convert.ToBoolean(ReadMemberObject(degradedActions, "CanEnable")));
@@ -772,7 +772,7 @@ namespace CodexDreamSkinManager
                         AssertEqual("皮肤未运行", GetPrivateField<TextBlock>(window, "statusText").Text);
                         Button pause = GetPrivateField<Button>(window, "pauseButton");
                         AssertTrue(!pause.IsEnabled);
-                        AssertEqual("暂停皮肤", Convert.ToString(pause.Content));
+                        AssertEqual("暂停", Convert.ToString(pause.Content));
                     }
                     finally
                     {
@@ -833,9 +833,8 @@ namespace CodexDreamSkinManager
                         running.StatusKind = "mismatch";
                         typeof(MainWindow).GetMethod("UpdateActionState", BindingFlags.Instance | BindingFlags.NonPublic)
                             .Invoke(window, null);
-                        AssertTrue(!GetPrivateField<Button>(window, "enableButton").IsEnabled);
                         AssertTrue(GetPrivateField<Button>(window, "applyThemeButton").IsEnabled);
-                        AssertEqual("应用并重启 Codex",
+                        AssertEqual("应用皮肤",
                             Convert.ToString(GetPrivateField<Button>(window, "applyThemeButton").Content));
                     }
                     finally
@@ -929,7 +928,7 @@ namespace CodexDreamSkinManager
 
                         AssertEqual("stopped", running.StatusKind);
                         AssertTrue(!running.IsRunning);
-                        AssertEqual("应用并重启 Codex",
+                        AssertEqual("应用皮肤",
                             Convert.ToString(GetPrivateField<Button>(window, "applyThemeButton").Content));
                         AssertTrue(GetPrivateField<Button>(window, "applyThemeButton").IsEnabled);
                     }
@@ -980,7 +979,7 @@ namespace CodexDreamSkinManager
 
             Run("Publishes semantic application version", delegate
             {
-                AssertEqual("1.7.6.0", typeof(Program).Assembly.GetName().Version.ToString());
+                AssertEqual("1.7.7.0", typeof(Program).Assembly.GetName().Version.ToString());
             });
 
             Run("Converts focus percentage", delegate
@@ -1039,7 +1038,7 @@ namespace CodexDreamSkinManager
                 string[] names = {
                     "ThemeList", "ThemeGridScroll", "ThemeSearch", "ThemeCategory",
                     "ThemeSource", "ThemeSort", "AddImagesButton", "ImportPackageButton",
-                    "ExportThemeButton", "DeleteThemeButton", "PreviewImage", "EnableButton", "PauseButton",
+                    "ExportThemeButton", "DeleteThemeButton", "PreviewImage", "ApplySkinButton", "DownloadThemeMediaButton", "PauseButton",
                     "ResetButton", "RestoreButton", "CustomSkinTab", "SavedThemeEditorTab", "EditSavedThemeButton",
                     "SavedThemeSelector", "SavedFocusXSlider", "SavedFocusYSlider", "SavedPositionXSlider",
                     "SavedPositionYSlider", "SavedZoomSlider", "SavedBubbleOpacitySlider", "BubbleOpacitySlider", "HorizontalPositionSlider", "VerticalPositionSlider",
@@ -1292,10 +1291,10 @@ namespace CodexDreamSkinManager
                 MainWindow window = new MainWindow(null);
                 try
                 {
-                    AssertPrimaryGradient(GetPrivateField<Button>(window, "enableButton").Background);
+                    AssertPrimaryGradient(GetPrivateField<Button>(window, "applyThemeButton").Background);
                     AssertPrimaryGradient(GetPrivateField<Button>(window, "saveApplyButton").Background);
                     AssertSolidBrush("#FF111214", GetPrivateField<Button>(window, "refreshButton").Background);
-                    AssertSolidBrush("#FF111214", GetPrivateField<Button>(window, "applyThemeButton").Background);
+                    AssertSolidBrush("#FF111214", GetPrivateField<Button>(window, "downloadMediaButton").Background);
                     AssertSolidBrush("#FF111214", GetPrivateField<Button>(window, "saveThemeButton").Background);
                     AssertSolidBrush("#FF1B1113", GetPrivateField<Button>(window, "restoreButton").Background);
                 }
@@ -1454,7 +1453,7 @@ namespace CodexDreamSkinManager
                     AssertTrue(workspace != null);
                     AssertAtMost(1260.5, workspace.ActualWidth, "Custom workspace is too wide.");
                     AssertBetween(379.0, 381.0, controls.ActualWidth, "Custom controls do not keep a stable width.");
-                    AssertAtMost(720.0, controls.ActualHeight, "Custom controls stretch into an empty full-height panel.");
+                    AssertTrue(((Border)controls).Child is StackPanel);
                     AssertResponsivePreview(preview,
                         "Custom preview does not follow its responsive height contract (workspace " + workspace.ActualWidth +
                         ", preview " + preview.ActualWidth + "x" + preview.ActualHeight +

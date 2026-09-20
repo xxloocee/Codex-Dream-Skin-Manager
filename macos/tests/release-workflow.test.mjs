@@ -86,9 +86,11 @@ assert.match(
 assert.match(macosRuntimeJob, /^\s+run: NODE="\$\(command -v node\)" npm test$/m);
 
 assert.match(workflow, /^  macos:$/m, "The release workflow must build a macOS package.");
-assert.match(workflow, /^    runs-on: macos-14$/m, "The macOS release must use a native runner.");
+assert.match(workflow, /runner: macos-14/, "ARM64 uses a native runner.");
+assert.match(workflow, /runner: macos-15-intel/, "Intel uses a native runner.");
+assert.match(workflow, /DREAMSKIN_ARCHS: \$\{\{ matrix.target \}\}/);
 assert.match(workflow, /NODE="\$\(command -v node\)" bash macos\/scripts\/build-dmg\.sh/);
-assert.match(workflow, /CodexDreamSkinManager-v\$\{RELEASE_VERSION\}-macos-universal\.dmg/);
+assert.match(workflow, /CodexDreamSkinManager-v\$\{RELEASE_VERSION\}-macos-\$\{RELEASE_ARCH\}\.dmg/);
 assert.match(workflow, /^    needs: \[validate, windows, macos\]$/m);
 assert.match(workflow, /SHA256SUMS\.txt/);
 assert.match(workflow, /--notes-file "\$notes"/);
@@ -102,7 +104,8 @@ assert.match(
 for (const asset of [
   `CodexDreamSkinManager-v${releaseVersion}-windows-x64-setup.exe`,
   `CodexDreamSkinManager-v${releaseVersion}-windows-x64-portable.zip`,
-  `CodexDreamSkinManager-v${releaseVersion}-macos-universal.dmg`,
+  `CodexDreamSkinManager-v${releaseVersion}-macos-x64.dmg`,
+  `CodexDreamSkinManager-v${releaseVersion}-macos-arm64.dmg`,
   "SHA256SUMS.txt",
 ]) {
   assert.ok(readme.includes(asset), `README must name release asset: ${asset}`);
@@ -114,7 +117,7 @@ for (const platformReadme of [windowsReadme, windowsEnglishReadme]) {
   );
 }
 assert.ok(
-  macosReadme.includes("CodexDreamSkinManager-vX.Y.Z-macos-universal.dmg"),
+  ["x64", "arm64"].every(arch => macosReadme.includes(`CodexDreamSkinManager-vX.Y.Z-macos-${arch}.dmg`)),
   "macOS README must name the published DMG pattern.",
 );
 

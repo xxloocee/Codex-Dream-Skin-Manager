@@ -146,6 +146,14 @@ actual_public_preset_theme_sha256="$(LC_ALL=C /usr/bin/shasum -a 256 \
   || { printf 'Reviewed public preset metadata hash changed: %s\n' "$actual_public_preset_theme_sha256" >&2; exit 1; }
 /bin/mkdir -p "$ENGINE/presets/$PUBLIC_PRESET"
 /usr/bin/rsync -a "$ROOT/presets/$PUBLIC_PRESET/" "$ENGINE/presets/$PUBLIC_PRESET/"
+for animated_preset in preset-ink-feather-glow preset-silver-glass-dream; do
+  for preset_file in theme.json background.mp4; do
+    [ -s "$ROOT/presets/$animated_preset/$preset_file" ] \
+      || { printf 'Bundled animated preset file missing: %s/%s\n' "$animated_preset" "$preset_file" >&2; exit 1; }
+  done
+  /bin/mkdir -p "$ENGINE/presets/$animated_preset"
+  /usr/bin/rsync -a "$ROOT/presets/$animated_preset/" "$ENGINE/presets/$animated_preset/"
+done
 /bin/cp "$ROOT/VERSION" "$ENGINE/VERSION"
 /bin/cp "$ROOT/LICENSE" "$RESOURCES/LICENSE.txt"
 /bin/cp "$ROOT/NOTICE.md" "$RESOURCES/NOTICE.md"

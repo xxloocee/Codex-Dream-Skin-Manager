@@ -105,6 +105,7 @@ namespace CodexDreamSkinManager
         private Button addImagesButton;
         private Button importPackageButton;
         private Button exportThemeButton;
+        private Button downloadMediaButton;
         private Button deleteThemeButton;
         private Border previewSurface;
         private Border customPreviewSurface;
@@ -114,7 +115,6 @@ namespace CodexDreamSkinManager
         private ThemeOption dashboardPreviewTheme;
         private Brush dashboardPreviewMutedFill;
         private BitmapSource customPreviewBitmap;
-        private Button enableButton;
         private Button pauseButton;
         private Button resetButton;
         private Button restoreButton;
@@ -438,56 +438,57 @@ namespace CodexDreamSkinManager
             activeThemeText = new TextBlock { Text = "未选择", FontSize = 18, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 5, 0, 16) };
             controlStack.Children.Add(activeThemeText);
 
-            applyThemeButton = SecondaryButton("应用选中主题");
-            applyThemeButton.Margin = new Thickness(0, 16, 0, 8);
-            applyThemeButton.Click += async delegate { await ApplySelectedThemeAsync(false); };
+            applyThemeButton = PrimaryButton("应用皮肤");
+            applyThemeButton.Margin = new Thickness(0, 16, 0, 0);
+            AutomationProperties.SetName(applyThemeButton, "ApplySkinButton");
+            applyThemeButton.Click += async delegate
+            {
+                if (themeList.SelectedItem is ThemeOption) await ApplySelectedThemeAsync(false);
+                else await EnableAsync();
+            };
             controlStack.Children.Add(applyThemeButton);
 
-            editSavedThemeButton = SecondaryButton("编辑主题参数");
-            editSavedThemeButton.Margin = new Thickness(0, 0, 0, 8);
-            editSavedThemeButton.Visibility = Visibility.Collapsed;
+            downloadMediaButton = SecondaryButton("下载素材");
+            downloadMediaButton.ToolTip = "将选中主题的原始图片或视频保存到本地，保留原始格式和画质";
+            AutomationProperties.SetName(downloadMediaButton, "DownloadThemeMediaButton");
+            downloadMediaButton.Click += async delegate { await DownloadSelectedMediaAsync(); };
+
+            editSavedThemeButton = SecondaryButton("编辑参数");
             editSavedThemeButton.ToolTip = "在主程序内修改所选主题的显示参数";
             AutomationProperties.SetName(editSavedThemeButton, "EditSavedThemeButton");
             editSavedThemeButton.Click += delegate { OpenSavedThemeEditor(themeList.SelectedItem as ThemeOption); };
-            controlStack.Children.Add(editSavedThemeButton);
 
-            enableButton = PrimaryButton("启用皮肤");
-            AutomationProperties.SetName(enableButton, "EnableButton");
-            enableButton.Click += async delegate { await EnableAsync(); };
-            controlStack.Children.Add(enableButton);
-
-            pauseButton = SecondaryButton("暂停皮肤");
-            pauseButton.Margin = new Thickness(0, 8, 0, 0);
+            pauseButton = SecondaryButton("暂停");
             AutomationProperties.SetName(pauseButton, "PauseButton");
             pauseButton.Click += async delegate { await TogglePauseAsync(); };
-            controlStack.Children.Add(pauseButton);
 
-            resetButton = SecondaryButton("重置皮肤");
-            resetButton.Margin = new Thickness(0, 8, 0, 0);
+            resetButton = SecondaryButton("重置");
             resetButton.ToolTip = "恢复内置默认主题并清除暂停状态，不停止皮肤服务";
             AutomationProperties.SetName(resetButton, "ResetButton");
             resetButton.Click += async delegate { await ResetSkinAsync(); };
 
-            refreshButton = SecondaryButton("刷新状态");
+            refreshButton = SecondaryButton("刷新");
             refreshButton.Click += async delegate { await RefreshStatusAsync(); };
 
-            Grid utilityRow = new Grid { Margin = new Thickness(0, 8, 0, 0) };
-            utilityRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            utilityRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
-            utilityRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            resetButton.Margin = new Thickness(0);
-            refreshButton.Margin = new Thickness(0);
-            utilityRow.Children.Add(resetButton);
-            Grid.SetColumn(refreshButton, 2);
-            utilityRow.Children.Add(refreshButton);
-            controlStack.Children.Add(utilityRow);
-
-            restoreButton = DangerButton("紧急恢复原始外观");
-            restoreButton.Margin = new Thickness(0, 8, 0, 0);
-            restoreButton.ToolTip = "管理脚本异常时仍可直接调用恢复脚本";
+            restoreButton = DangerButton("恢复原貌");
+            restoreButton.ToolTip = "关闭皮肤并恢复 Codex 原始外观；管理脚本异常时仍可使用";
             AutomationProperties.SetName(restoreButton, "RestoreButton");
             restoreButton.Click += async delegate { await RestoreAsync(); };
-            controlStack.Children.Add(restoreButton);
+            Button[] secondaryActions = { downloadMediaButton, editSavedThemeButton,
+                pauseButton, resetButton, refreshButton, restoreButton };
+            Grid secondaryGrid = new Grid { Margin = new Thickness(0, 8, 0, 0) };
+            secondaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            secondaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
+            secondaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            for (int i = 0; i < secondaryActions.Length; i++)
+            {
+                if (i % 2 == 0) secondaryGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                secondaryActions[i].Margin = new Thickness(0, i < 2 ? 0 : 8, 0, 0);
+                Grid.SetRow(secondaryActions[i], i / 2);
+                Grid.SetColumn(secondaryActions[i], i % 2 == 0 ? 0 : 2);
+                secondaryGrid.Children.Add(secondaryActions[i]);
+            }
+            controlStack.Children.Add(secondaryGrid);
             controls.Child = controlStack;
             Grid.SetColumn(controls, 2);
             grid.Children.Add(controls);
@@ -642,20 +643,10 @@ namespace CodexDreamSkinManager
             saveApplyButton.Click += async delegate { await SaveCustomAsync(true); };
             Grid.SetColumn(saveApplyButton, 2);
             saveRow.Children.Add(saveApplyButton);
-            // Keep the action row fixed at the bottom. The parameter list can
-            // scroll independently, so adding new controls never pushes the
-            // save actions outside the reachable area on a small window.
-            Grid editorLayout = new Grid { MaxHeight = 680 };
-            editorLayout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            editorLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            ScrollViewer fieldsScroll = new ScrollViewer { Content = fields,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
-            fieldsScroll.Resources[typeof(ScrollBar)] = ManagerControlStyles.Get("VerticalScroll");
-            editorLayout.Children.Add(fieldsScroll);
-            Grid.SetRow(saveRow, 1);
-            editorLayout.Children.Add(saveRow);
-            panel.Child = editorLayout;
+            // Let the page own scrolling, including the save actions, so the
+            // parameter form has no competing scrollbar or height limit.
+            fields.Children.Add(saveRow);
+            panel.Child = fields;
             Grid.SetColumn(panel, 2);
             grid.Children.Add(panel);
             scroll.Content = grid;
@@ -1144,32 +1135,27 @@ namespace CodexDreamSkinManager
         {
             ThemeOption theme = themeList.SelectedItem as ThemeOption;
             if (theme == null) { SetMessage("请先选择一个主题。", true); return; }
-            ActionAvailability availability = ActionAvailability.FromStatus(currentStatus, false, true, hasValidCustomImage);
-            bool restartAfterApply = restart || availability.RestartAfterApply;
-            if (restartAfterApply && !(availability.RequiresRecovery
-                ? ConfirmThemeRecoveryRestart(theme.Name)
-                : ConfirmRestart("应用主题"))) return;
             await RunOperationAsync(async delegate
             {
-                if (restartAfterApply)
+                // The manager may have stayed open while Codex exited or restarted.
+                currentStatus = await service.GetStatusAsync();
+                ActionAvailability availability = ActionAvailability.FromStatus(currentStatus, false, true, hasValidCustomImage);
+                if (availability.RequiresRecovery)
                 {
-                    if (availability.RequiresRecovery)
-                    {
-                        await service.ApplyThemeAndRecoverAsync(theme);
-                    }
-                    else
-                    {
-                        await service.ApplyThemeAsync(theme);
-                        await service.StartAsync(true);
-                    }
-                    SetExpectedRuntimeState(true, false);
+                    if (!ConfirmThemeRecoveryRestart(theme.Name))
+                        throw new OperationCanceledException("已取消操作，未切换主题或重启 Codex。");
+                    await service.ApplyThemeAndRecoverAsync(theme);
                 }
                 else
                 {
+                    bool restartAuthorized = await ConfirmStartupIfRequiredAsync("应用主题", restart);
+                    // Confirm before mutating the theme, then start with the NEW
+                    // active theme so startup appearance follows that selection.
                     await service.ApplyThemeAsync(theme);
-                    SetExpectedRuntimeState(currentStatus.IsRunning, false);
+                    await service.StartAsync(restartAuthorized);
                 }
-            }, restartAfterApply ? "主题已应用，Codex 已重新启动。" : "主题已应用。");
+                SetExpectedRuntimeState(true, false);
+            }, "主题已应用。");
         }
 
         private async Task DeleteSelectedThemeAsync()
@@ -1216,12 +1202,38 @@ namespace CodexDreamSkinManager
 
         private async Task EnableAsync()
         {
-            if (!ConfirmRestart("启用皮肤")) return;
             await RunOperationAsync(async delegate
             {
-                await service.StartAsync(true);
+                currentStatus = await service.GetStatusAsync();
+                if (currentStatus.IsRunning && currentStatus.IsPaused)
+                    await service.SetPausedAsync(false);
+                else
+                    await StartSkinWithConfirmationAsync("启用皮肤");
                 SetExpectedRuntimeState(true, false);
-            }, "皮肤已启用，Codex 已重新启动。");
+            }, "皮肤已启用。");
+        }
+
+        private async Task StartSkinWithConfirmationAsync(string operation)
+        {
+            bool restartAuthorized = await ConfirmStartupIfRequiredAsync(operation, false);
+            await service.StartAsync(restartAuthorized);
+        }
+
+        private async Task<bool> ConfirmStartupIfRequiredAsync(string operation, bool forceRestart)
+        {
+            bool requiresRestart = forceRestart;
+            try
+            {
+                await service.CheckStartupAsync();
+            }
+            catch (Exception ex)
+            {
+                if (ex.Message.IndexOf("DREAM_SKIN_RESTART_REQUIRED:", StringComparison.Ordinal) < 0) throw;
+                requiresRestart = true;
+            }
+            if (requiresRestart && !ConfirmRestart(operation))
+                throw new OperationCanceledException("已取消操作，未切换主题或重启 Codex。");
+            return requiresRestart;
         }
 
         private async Task TogglePauseAsync()
@@ -1333,9 +1345,15 @@ namespace CodexDreamSkinManager
             SetMessage("正在执行...", false);
             string finalMessage = success;
             bool finalError = false;
+            bool cancelled = false;
             try
             {
                 await action();
+            }
+            catch (OperationCanceledException ex)
+            {
+                finalMessage = ex.Message;
+                cancelled = true;
             }
             catch (Exception ex)
             {
@@ -1349,7 +1367,7 @@ namespace CodexDreamSkinManager
             }
             catch (Exception ex)
             {
-                if (!finalError)
+                if (!finalError && !cancelled)
                 {
                     finalMessage = ex.Message;
                     finalError = true;
@@ -1360,7 +1378,7 @@ namespace CodexDreamSkinManager
                 operationRunning = false;
                 UpdateActionState();
             }
-            if (!refreshed && !finalError)
+            if (!refreshed && !finalError && !cancelled)
             {
                 finalMessage = success + " 状态刷新失败，请点击刷新状态重试。";
                 finalError = true;
@@ -1549,6 +1567,69 @@ namespace CodexDreamSkinManager
             SetMessage(message, error);
         }
 
+        private async Task DownloadSelectedMediaAsync()
+        {
+            if (operationRunning || statusRefreshCount > 0 || imageValidationRunning || updateRunning) return;
+            ThemeOption theme = themeList == null ? null : themeList.SelectedItem as ThemeOption;
+            if (theme == null) { SetMessage("请先选择需要下载的主题。", true); return; }
+            if (!File.Exists(theme.ImagePath)) {
+                SetMessage("该主题的原始图片或视频不存在，请刷新主题列表后重试。", true);
+                return;
+            }
+            try
+            {
+                string source = Path.GetFullPath(theme.ImagePath);
+                string extension = Path.GetExtension(source);
+                SaveFileDialog dialog = new SaveFileDialog {
+                    Title = "下载原图 / 视频",
+                    Filter = "原始素材 (*" + extension + ")|*" + extension,
+                    FileName = SafeFileName(theme.Name) + extension,
+                    DefaultExt = extension,
+                    AddExtension = true,
+                    OverwritePrompt = true,
+                    CheckPathExists = true
+                };
+                if (dialog.ShowDialog(this) != true) return;
+                string destination = Path.GetFullPath(dialog.FileName);
+                if (string.Equals(source, destination, StringComparison.OrdinalIgnoreCase)) {
+                    SetMessage("所选位置就是原始素材，请选择其他文件名或文件夹。", true);
+                    return;
+                }
+                if (!string.Equals(Path.GetExtension(destination), extension, StringComparison.OrdinalIgnoreCase)) {
+                    SetMessage("下载保留原始格式，请使用 " + extension + " 扩展名。", true);
+                    return;
+                }
+                operationRunning = true;
+                UpdateActionState();
+                SetMessage("正在保存原始素材...", false);
+                try
+                {
+                    await Task.Run(delegate
+                    {
+                        string temporary = Path.Combine(Path.GetDirectoryName(destination),
+                            ".dream-skin-download-" + Guid.NewGuid().ToString("N") + ".tmp");
+                        try
+                        {
+                            File.Copy(source, temporary, false);
+                            if (File.Exists(destination)) File.Replace(temporary, destination, null);
+                            else File.Move(temporary, destination);
+                        }
+                        finally
+                        {
+                            if (File.Exists(temporary)) try { File.Delete(temporary); } catch { }
+                        }
+                    });
+                    SetMessage("原始素材已保存：" + destination, false);
+                }
+                finally
+                {
+                    operationRunning = false;
+                    UpdateActionState();
+                }
+            }
+            catch (Exception ex) { SetMessage("下载失败：" + ex.Message, true); }
+        }
+
         private void ExportSelectedTheme(object sender, RoutedEventArgs e)
         {
             ThemeOption theme = themeList == null ? null : themeList.SelectedItem as ThemeOption;
@@ -1638,7 +1719,6 @@ namespace CodexDreamSkinManager
             bool selected = selectedTheme != null;
             bool busy = operationRunning || statusRefreshCount > 0 || imageValidationRunning || updateRunning;
             ActionAvailability state = ActionAvailability.FromStatus(currentStatus, busy, selected, hasValidCustomImage);
-            if (enableButton != null) { enableButton.IsEnabled = state.CanEnable && service != null && service.CanManage; enableButton.Content = state.EnableLabel; }
             if (pauseButton != null) { pauseButton.IsEnabled = state.CanPause && service != null && service.CanManage; pauseButton.Content = state.PauseLabel; }
             if (resetButton != null) resetButton.IsEnabled = state.CanReset && service != null && service.CanManage;
             if (restoreButton != null) restoreButton.IsEnabled = state.CanRestore && service != null && service.CanRestore;
@@ -1648,21 +1728,25 @@ namespace CodexDreamSkinManager
             if (applyThemeButton != null)
             {
                 bool canRunApply = service != null && (state.RequiresRecovery ? service.CanRecover : service.CanManage);
-                applyThemeButton.IsEnabled = state.CanApplyTheme && canRunApply;
-                applyThemeButton.Content = state.RestartAfterApply ? "应用并重启 Codex" : "应用选中主题";
-                applyThemeButton.ToolTip = state.RequiresRecovery
-                    ? "安全检查通过后应用选中主题并重启 Codex"
-                    : state.RestartAfterApply ? "应用选中主题并重启 Codex" : null;
+                applyThemeButton.IsEnabled = selected
+                    ? state.CanApplyTheme && canRunApply
+                    : state.CanEnable && service != null && service.CanManage;
+                applyThemeButton.Content = "应用皮肤";
+                applyThemeButton.ToolTip = !selected && state.RequiresRecovery
+                    ? "请先选择一个主题以恢复皮肤，或使用恢复原貌"
+                    : selected ? "应用选中主题并按需启用皮肤；需要重启 Codex 时会先征求确认"
+                    : "启用当前主题；需要重启 Codex 时会先征求确认";
             }
             if (addImagesButton != null) addImagesButton.IsEnabled = !busy && service != null && service.CanManage;
             if (browseImageButton != null) browseImageButton.IsEnabled = !busy && service != null && service.CanManage;
             if (importPackageButton != null) importPackageButton.IsEnabled = !busy && service != null && service.CanManage;
             if (exportThemeButton != null) exportThemeButton.IsEnabled = selected && !busy;
+            if (downloadMediaButton != null) downloadMediaButton.IsEnabled = selected && !busy;
             if (editSavedThemeButton != null)
             {
                 bool savedTheme = IsEditableTheme(selectedTheme);
                 bool supportsUpdate = currentStatus.SupportedActions.Contains("UpdateTheme");
-                editSavedThemeButton.Visibility = savedTheme ? Visibility.Visible : Visibility.Collapsed;
+                editSavedThemeButton.Visibility = Visibility.Visible;
                 editSavedThemeButton.IsEnabled = savedTheme && supportsUpdate && !busy && service != null && service.CanManage;
                 editSavedThemeButton.ToolTip = !supportsUpdate ? "当前管理脚本不支持编辑主题参数" : "在主程序内修改所选主题参数";
             }

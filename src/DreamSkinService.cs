@@ -471,6 +471,12 @@ namespace CodexDreamSkinManager
             return RunScriptAsync(Path.Combine(scriptsDirectory, "start-dream-skin.ps1"), args);
         }
 
+        public Task CheckStartupAsync()
+        {
+            return RunScriptAsync(Path.Combine(scriptsDirectory, "start-dream-skin.ps1"),
+                new[] { P("-CheckOnly") });
+        }
+
         public Task RestoreAsync(bool restartExisting)
         {
             if (!CanRestore) throw new FileNotFoundException("缺少紧急恢复脚本。", restoreScript);

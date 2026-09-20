@@ -208,7 +208,7 @@ namespace CodexDreamSkinManager
         public bool RestartAfterApply;
         public bool RequiresRecovery;
         public string EnableLabel = "启用皮肤";
-        public string PauseLabel = "暂停皮肤";
+        public string PauseLabel = "暂停";
 
         public static ActionAvailability FromStatus(DreamSkinStatus status, bool busy,
             bool hasSelection, bool hasValidCustomImage)
@@ -222,8 +222,8 @@ namespace CodexDreamSkinManager
                 string.Equals(kind, "error", StringComparison.OrdinalIgnoreCase);
             bool stopped = string.Equals(kind, "stopped", StringComparison.OrdinalIgnoreCase);
             ActionAvailability result = new ActionAvailability();
-            result.EnableLabel = status.IsRunning ? "重新应用" : "启用皮肤";
-            result.PauseLabel = status.IsRunning && status.IsPaused ? "继续显示" : "暂停皮肤";
+            result.EnableLabel = status.IsRunning ? (status.IsPaused ? "继续皮肤" : "重新应用") : "启用皮肤";
+            result.PauseLabel = status.IsRunning && status.IsPaused ? "继续" : "暂停";
             result.RestartAfterApply = recoveryState || stopped || stale;
             result.RequiresRecovery = recoveryState;
             result.CanRestore = !busy;

@@ -75,6 +75,12 @@ MOUNTED_ICON="$MOUNTED_APP/Contents/Resources/${MOUNTED_ICON_NAME%.icns}.icns"
   || { printf 'Mounted app icon is missing or empty: %s\n' "$MOUNTED_ICON" >&2; exit 1; }
 [ -f "$MOUNTED_APP/Contents/Resources/engine/presets/preset-gothic-void-crusade/theme.json" ] \
   || { printf 'Mounted app is missing the public release preset.\n' >&2; exit 1; }
+for animated_preset in preset-ink-feather-glow preset-silver-glass-dream; do
+  for preset_file in theme.json background.mp4; do
+    [ -s "$MOUNTED_APP/Contents/Resources/engine/presets/$animated_preset/$preset_file" ] \
+      || { printf 'Mounted app is missing animated preset file: %s/%s\n' "$animated_preset" "$preset_file" >&2; exit 1; }
+  done
+done
 [ ! -e "$MOUNTED_APP/Contents/Resources/engine/presets/preset-arina-hashimoto" ] \
   || { printf 'Mounted app contains a rights-restricted preset.\n' >&2; exit 1; }
 MOUNTED_ENGINE="$MOUNTED_APP/Contents/Resources/engine"
@@ -82,7 +88,8 @@ MOUNTED_ENGINE="$MOUNTED_APP/Contents/Resources/engine"
   && [ -s "$MOUNTED_ENGINE/runtime/node/LICENSE" ] \
   && [ -s "$MOUNTED_ENGINE/runtime/node/VERSION" ] \
   || { printf 'Mounted app is missing the bundled Node runtime or license.\n' >&2; exit 1; }
-/usr/bin/lipo "$MOUNTED_ENGINE/runtime/node/bin/node" -verify_arch arm64 x86_64
+read -r -a EXPECTED_ARCHS <<< "${DREAMSKIN_ARCHS:-arm64 x86_64}"
+/usr/bin/lipo "$MOUNTED_ENGINE/runtime/node/bin/node" -verify_arch "${EXPECTED_ARCHS[@]}"
 /usr/bin/codesign --verify --strict "$MOUNTED_ENGINE/runtime/node/bin/node"
 "$MOUNTED_ENGINE/runtime/node/bin/node" -e '
   const fs = require("node:fs");

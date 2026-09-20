@@ -3,6 +3,7 @@ param(
   [int]$Port = 9335,
   [switch]$RestartExisting,
   [switch]$PromptRestart,
+  [switch]$CheckOnly,
   [string]$ProfilePath,
   [switch]$ForegroundInjector,
   [ValidateRange(0, 300000)][int]$OperationLockTimeoutMilliseconds = 0,
@@ -78,20 +79,22 @@ try {
   $codex = $currentCodex
   $language = Resolve-DreamSkinLanguage -StateRoot $StateRoot
   $themePaths = Get-DreamSkinThemePaths -StateRoot $StateRoot
-  Ensure-DreamSkinManagedDirectory -Path $themePaths.Root -Root $themePaths.Root
+  if (-not $CheckOnly) { Ensure-DreamSkinManagedDirectory -Path $themePaths.Root -Root $themePaths.Root }
   if (-not $ProfilePathExplicit) {
     # Chromium 136+ ignores remote-debugging switches for its default data
     # directory. Keep Dream Skin on a separate persistent profile so current
     # Codex builds can expose CDP without weakening or modifying the official
     # profile. A caller-provided path remains an explicit advanced override.
     $ProfilePath = [System.IO.Path]::GetFullPath((Join-Path $StateRoot 'cdp-profile'))
-    Ensure-DreamSkinManagedDirectory -Path $ProfilePath -Root $StateRoot
+    if (-not $CheckOnly) { Ensure-DreamSkinManagedDirectory -Path $ProfilePath -Root $StateRoot }
   }
   $StatePath = Join-Path $StateRoot 'state.json'
   $StdoutPath = Join-Path $StateRoot 'injector.log'
   $StderrPath = Join-Path $StateRoot 'injector-error.log'
   $VerifyPath = Join-Path $StateRoot 'verify.log'
-  $themePaths = Initialize-DreamSkinThemeStore -SkillRoot (Split-Path -Parent $PSScriptRoot) -StateRoot $StateRoot
+  if (-not $CheckOnly) {
+    $themePaths = Initialize-DreamSkinThemeStore -SkillRoot (Split-Path -Parent $PSScriptRoot) -StateRoot $StateRoot
+  }
   $pauseWasSet = Test-DreamSkinPaused -StateRoot $StateRoot
   if ($RequireUnpaused -and $pauseWasSet) {
     $startFailureCategory = 'superseded'
@@ -171,6 +174,12 @@ try {
     Get-DreamSkinCodexProcesses -Codex $codexToStop
   }
   $closedExistingCodex = $false
+  if ($CheckOnly) {
+    if (-not $debugReady -and $codexProcesses.Count -gt 0) {
+      throw 'DREAM_SKIN_RESTART_REQUIRED: Codex must restart before Dream Skin can connect.'
+    }
+    return
+  }
   if (-not $debugReady -and $codexProcesses.Count -gt 0) {
     $restartAuthorized = [bool]$RestartExisting
     if (-not $restartAuthorized -and $PromptRestart) {
@@ -182,7 +191,7 @@ try {
       }
     }
     if (-not $restartAuthorized) {
-      throw 'Codex is open without a verified Dream Skin CDP endpoint. Close it first or explicitly use -RestartExisting.'
+      throw 'DREAM_SKIN_RESTART_REQUIRED: Codex is open without a verified Dream Skin CDP endpoint. Close it first or explicitly use -RestartExisting.'
     }
     Stop-DreamSkinCodex -Codex $codexToStop -AllowForce
     $closedExistingCodex = $true

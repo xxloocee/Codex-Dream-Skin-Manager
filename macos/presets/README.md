@@ -4,7 +4,16 @@
 
 > This folder holds the bundled preset themes. Install seeds each `preset-*/` into the user theme library, so a fresh install ships with ready-to-use skins.
 
-## 内置实测预设
+## 内置动态预设
+
+Mac 发行包包含与 Windows 版相同的两款 MP4 动态皮肤：
+
+- `preset-ink-feather-glow/`：墨羽流光。
+- `preset-silver-glass-dream/`：银璃幻梦。
+
+两款预设均包含 `theme.json` 和原始视频 `background.mp4`，沿用 Windows 的强调色、构图参数和自动浅暗设置。安装后可在「已保存的主题」中选择；视频静音循环播放。此次移植尚未进行 Mac 实机播放验证。
+
+## 原有实测预设
 
 当前内置 `preset-gothic-void-crusade/`（Gothic Void Crusade）与
 `preset-arina-hashimoto/`（桥本有菜 / Arina Hashimoto）两套实机验证主题。

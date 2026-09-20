@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Build-time only. Users receive this runtime in the app/ZIP and never download
-# or install Node themselves. Keep both slices even for a single-arch app build.
+# or install Node themselves. Match a single-arch app when explicitly requested.
 set -euo pipefail
 export LC_ALL=C
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
@@ -37,6 +37,12 @@ done
   "$TMP/node-v$NODE_VERSION-darwin-x64/bin/node" \
   -output "$TMP/runtime/bin/node"
 /usr/bin/lipo "$TMP/runtime/bin/node" -verify_arch arm64 x86_64
+case "${DREAMSKIN_ARCHS:-arm64 x86_64}" in
+  arm64|x86_64)
+    /usr/bin/lipo "$TMP/runtime/bin/node" -thin "$DREAMSKIN_ARCHS" -output "$TMP/runtime/bin/node-thin"
+    /bin/mv "$TMP/runtime/bin/node-thin" "$TMP/runtime/bin/node"
+    ;;
+esac
 /bin/chmod 755 "$TMP/runtime/bin/node"
 /bin/cp "$TMP/node-v$NODE_VERSION-darwin-arm64/LICENSE" "$TMP/runtime/LICENSE"
 /usr/bin/printf '%s\n' "$NODE_VERSION" > "$TMP/runtime/VERSION"
@@ -50,4 +56,4 @@ done
 ' "$NODE_VERSION"
 /bin/mkdir -p "$(dirname "$OUTPUT")"
 /usr/bin/ditto "$TMP/runtime" "$OUTPUT"
-/usr/bin/printf 'Bundled Node.js %s (arm64 + x86_64): %s\n' "$NODE_VERSION" "$OUTPUT"
+/usr/bin/printf 'Bundled Node.js %s (%s): %s\n' "$NODE_VERSION" "${DREAMSKIN_ARCHS:-arm64 x86_64}" "$OUTPUT"
