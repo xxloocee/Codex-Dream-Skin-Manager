@@ -1,6 +1,6 @@
 import { probeVideoDecode } from "./video-decode-probe.mjs";
 import fs from "node:fs/promises";
-import { constants as fsConstants } from "node:fs";
+import { constants as fsConstants, writeSync } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
@@ -15,6 +15,15 @@ import { decodeAndValidateSafeCss } from "../assets/safe-css-validator.mjs";
 const scriptPath = fileURLToPath(import.meta.url);
 const here = path.dirname(scriptPath);
 const root = path.resolve(here, "..");
+// CLI one-shot calls share one budget across connection, all windows, and
+// verification. Imported helpers and the long-lived watcher retain their own limits.
+let operationDeadline = Infinity;
+let operationCompleted = false;
+function remainingOperationTime(requestedMs) {
+  const remaining = Math.min(requestedMs, operationDeadline - Date.now());
+  if (remaining <= 0) throw new Error("Dream Skin renderer operation timed out");
+  return remaining;
+}
 const SELECTOR_CONTRACT = JSON.parse(await fs.readFile(
   path.join(root, "assets", "selectors.json"), "utf8",
 ));
@@ -304,11 +313,12 @@ class CdpSession {
   }
 
   async open() {
+    const openTimeoutMs = remainingOperationTime(5000);
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         try { this.ws.close(); } catch {}
         reject(new Error("CDP WebSocket open timed out"));
-      }, 5000);
+      }, openTimeoutMs);
       this.ws.addEventListener("open", () => { clearTimeout(timeout); resolve(); }, { once: true });
       this.ws.addEventListener("error", () => { clearTimeout(timeout); reject(new Error("CDP WebSocket open failed")); }, { once: true });
     });
@@ -360,11 +370,12 @@ class CdpSession {
   send(method, params = {}) {
     if (this.closed) return Promise.reject(new Error("CDP session is closed"));
     return new Promise((resolve, reject) => {
+      const commandTimeoutMs = remainingOperationTime(10000);
       const id = this.nextId++;
       const timeout = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`CDP command timed out: ${method}`));
-      }, 10000);
+      }, commandTimeoutMs);
       this.pending.set(id, { resolve, reject, timeout });
       try {
         this.ws.send(JSON.stringify({ id, method, params }));
@@ -444,7 +455,7 @@ class BrowserIdentityAnchor {
 
 async function fetchCdpJson(port, resource) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 2000);
+  const timeout = setTimeout(() => controller.abort(), remainingOperationTime(2000));
   try {
     const response = await fetch(`http://127.0.0.1:${port}${resource}`, {
       redirect: "error",
@@ -999,7 +1010,13 @@ async function waitForCodexProbe(session, timeoutMs = 1800) {
 }
 
 async function connectTarget(target, port) {
-  return new CdpSession(target, port).open();
+  const session = new CdpSession(target, port);
+  try {
+    return await session.open();
+  } catch (error) {
+    session.close();
+    throw error;
+  }
 }
 
 function unavailableNativeWindow(error) {
@@ -1072,7 +1089,7 @@ export async function inspectTargetWindow(session, targetId) {
 }
 
 async function connectCodexTargets(port, timeoutMs, expectedBrowserId) {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = Date.now() + remainingOperationTime(timeoutMs);
   let lastError;
   while (Date.now() < deadline) {
     try {
@@ -1695,7 +1712,7 @@ async function waitForVerifiedSession(
   expectedThemeId = null,
   expectedRevision = null,
 ) {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = Date.now() + remainingOperationTime(timeoutMs);
   let lastResult;
   let lastError;
   while (Date.now() < deadline) {
@@ -1718,7 +1735,7 @@ async function waitForAppliedSession(
   expectedThemeId = null,
   expectedRevision = null,
 ) {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = Date.now() + remainingOperationTime(timeoutMs);
   let lastResult;
   let lastError;
   while (Date.now() < deadline) {
@@ -1902,7 +1919,9 @@ async function runOneShot(options) {
   } finally {
     for (const { session } of connected) session.close();
   }
-  console.log(JSON.stringify({ mode: options.mode, port: options.port, targets: results }, null, 2));
+  // Flush the result before marking logical completion; a socket that closes
+  // late must not turn an already reported success into a timeout or truncate it.
+  writeSync(1, JSON.stringify({ mode: options.mode, port: options.port, targets: results }, null, 2) + "\n");
   const removedMode = options.mode === "remove" || options.mode === "verify-removed";
   const failed = results.length === 0 || results.some((item) =>
     item.error || (removedMode ? item.result !== true : !item.result?.pass));
@@ -2214,6 +2233,16 @@ async function runWatch(options) {
 
 if (path.resolve(process.argv[1] || "") === path.resolve(scriptPath)) {
   const options = parseArgs(process.argv.slice(2));
+  if (!["watch", "self-test", "check-payload"].includes(options.mode)) {
+    operationDeadline = Date.now() + options.timeoutMs;
+    // Bound even an unresolved socket close or renderer promise. Never apply
+    // this watchdog to --watch, which must outlive the manager invocation.
+    setTimeout(() => {
+      if (operationCompleted) process.exit(process.exitCode ?? 0);
+      try { writeSync(2, `Dream Skin ${options.mode} exceeded its ${options.timeoutMs} ms total budget\n`); }
+      finally { process.exit(2); }
+    }, options.timeoutMs + 1000).unref();
+  }
   if (options.mode === "self-test") {
   const valid = validatedDebuggerUrl({ webSocketDebuggerUrl: `ws://127.0.0.1:${options.port}/devtools/page/test` }, options.port);
   const browserId = browserIdFromVersion({
@@ -2292,4 +2321,5 @@ if (path.resolve(process.argv[1] || "") === path.resolve(scriptPath)) {
   else if (options.mode === "finish-operation") await runFinishOperation(options);
   else if (options.mode === "watch") await runWatch(options);
   else await runOneShot(options);
+  operationCompleted = true;
 }

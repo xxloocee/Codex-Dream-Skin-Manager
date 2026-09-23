@@ -537,10 +537,15 @@ try {
     $verifyDeadline = (Get-Date).AddSeconds(90)
     $forceInjectedAfterVerifyFailure = $false
     while ($true) {
+      # Share the startup verification deadline across retries and the fallback
+      # injection. The injector reserves up to one second for socket cleanup.
+      $remainingVerifyMs = [int]($verifyDeadline - (Get-Date)).TotalMilliseconds - 1000
+      if ($remainingVerifyMs -lt 250) { throw "Dream Skin verification failed. See $VerifyPath" }
+      $verifyTimeoutMs = [Math]::Min(30000, $remainingVerifyMs)
       $verify = Invoke-DreamSkinNative -FilePath $node.Path -ArgumentList @(
         $Injector, '--verify', '--port', "$Port",
         '--browser-id', $cdpIdentity.BrowserId, '--theme-dir', $themePaths.Active,
-        '--timeout-ms', '30000')
+        '--timeout-ms', "$verifyTimeoutMs")
       Write-DreamSkinUtf8FileAtomically -Path $VerifyPath -Content (($verify.Output -join "`r`n") + "`r`n")
       if ($verify.ExitCode -eq 0) { break }
       # A verify can fail while the theme is demonstrably on screen: the
@@ -557,10 +562,13 @@ try {
       if (-not $forceInjectedAfterVerifyFailure) {
         $forceInjectedAfterVerifyFailure = $true
         try { [void](Invoke-DreamSkinCodexWindowActivation -Codex $codex) } catch {}
+        $remainingVerifyMs = [int]($verifyDeadline - (Get-Date)).TotalMilliseconds - 1000
+        if ($remainingVerifyMs -lt 250) { throw "Dream Skin verification failed. See $VerifyPath" }
+        $onceTimeoutMs = [Math]::Min(15000, $remainingVerifyMs)
         $once = Invoke-DreamSkinNative -FilePath $node.Path -ArgumentList @(
           $Injector, '--once', '--port', "$Port",
           '--browser-id', $cdpIdentity.BrowserId, '--theme-dir', $themePaths.Active,
-          '--timeout-ms', '15000')
+          '--timeout-ms', "$onceTimeoutMs")
         Write-DreamSkinUtf8FileAtomically -Path $VerifyPath -Content (
           (($verify.Output + $once.Output) -join "`r`n") + "`r`n"
         )

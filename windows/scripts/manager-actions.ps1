@@ -26,7 +26,8 @@ param(
   [ValidateRange(0.0, 1.0)][double]$BubbleOpacity = 0.0,
   [ValidatePattern('^$|^#[0-9A-Fa-f]{6}$')][string]$Accent = '',
   [switch]$KeepCurrent,
-  [ValidateRange(1, 30)][int]$LockTimeoutSeconds = 30
+  # Keep lock waiting below the manager's 30-second whole-operation budget.
+  [ValidateRange(1, 30)][int]$LockTimeoutSeconds = 5
 )
 
 $ErrorActionPreference = 'Stop'

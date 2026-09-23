@@ -471,7 +471,18 @@ namespace CodexDreamSkinManager
             resetButton.Click += async delegate { await ResetSkinAsync(); };
 
             refreshButton = SecondaryButton("刷新");
-            refreshButton.Click += async delegate { await RefreshStatusAsync(); };
+            refreshButton.Click += async delegate
+            {
+                if (await RefreshStatusAsync())
+                {
+                    bool unhealthy = currentStatus.StatusKind == "mismatch" ||
+                        currentStatus.StatusKind == "uninspectable" || currentStatus.StatusKind == "error" ||
+                        currentStatus.StatusKind == "degraded";
+                    SetMessage(unhealthy
+                        ? "状态已刷新：" + currentStatus.StatusMessage
+                        : "状态已刷新。", unhealthy);
+                }
+            };
 
             restoreButton = DangerButton("恢复原貌");
             restoreButton.ToolTip = "关闭皮肤并恢复 Codex 原始外观；管理脚本异常时仍可使用";

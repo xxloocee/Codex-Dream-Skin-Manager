@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml;
@@ -59,8 +60,14 @@ namespace CodexDreamSkinManager
             return Task.Run(delegate
             {
                 ProcessStartInfo info = new ProcessStartInfo();
+                string completionMarker = "__DREAM_SKIN_COMPLETE_" + Guid.NewGuid().ToString("N") + "__";
+                string operation = Path.GetFileName(scriptPath);
+                for (int index = 0; index + 1 < arguments.Count; index++)
+                    if (arguments[index] != null && arguments[index + 1] != null &&
+                        arguments[index].IsParameter && arguments[index].Text == "-Action")
+                        operation += " / " + arguments[index + 1].Text;
                 info.FileName = "powershell.exe";
-                info.Arguments = BuildArguments(scriptPath, arguments);
+                info.Arguments = BuildArguments(scriptPath, arguments, completionMarker);
                 info.UseShellExecute = false;
                 info.CreateNoWindow = true;
                 info.RedirectStandardOutput = true;
@@ -71,20 +78,25 @@ namespace CodexDreamSkinManager
                 using (Process process = Process.Start(info))
                 {
                     Stopwatch stopwatch = Stopwatch.StartNew();
-                    Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-                    Task<string> errorTask = process.StandardError.ReadToEndAsync();
+                    Task<string> outputTask = ReadScriptOutputAsync(process.StandardOutput, completionMarker);
+                    Task<string> errorTask = ReadScriptOutputAsync(process.StandardError, completionMarker);
                     if (!process.WaitForExit(timeoutMilliseconds))
                     {
                         try { if (!process.HasExited) process.Kill(); } catch { }
                         process.WaitForExit(5000);
-                        throw new TimeoutException("PowerShell 操作超时，请查看 Codex Dream Skin 状态后重试。");
+                        throw new TimeoutException(string.Format(CultureInfo.InvariantCulture,
+                            "操作执行超时（{0}，等待 {1} 秒）。操作结果尚未确认，请刷新状态。",
+                            operation, timeoutMilliseconds / 1000.0));
                     }
                     int remainingMilliseconds = Math.Max(0,
                         timeoutMilliseconds - (int)Math.Min(stopwatch.ElapsedMilliseconds, int.MaxValue));
-                    if (!Task.WaitAll(new Task[] { outputTask, errorTask }, remainingMilliseconds))
-                        throw new TimeoutException("PowerShell 操作超时，请查看 Codex Dream Skin 状态后重试。");
+                    int exitCode = process.ExitCode;
+                    if (!Task.WaitAll(new Task[] { outputTask, errorTask }, Math.Min(2000, remainingMilliseconds)))
+                        throw new TimeoutException(string.Format(CultureInfo.InvariantCulture,
+                            "脚本已退出，但输出未完整回收（{0}，退出码 {1}）。请刷新状态确认操作结果。",
+                            operation, exitCode));
                     ScriptResult result = new ScriptResult();
-                    result.ExitCode = process.ExitCode;
+                    result.ExitCode = exitCode;
                     result.Output = outputTask.Result.Trim();
                     result.Error = NormalizePowerShellError(errorTask.Result);
                     if (result.ExitCode != 0)
@@ -101,6 +113,25 @@ namespace CodexDreamSkinManager
 
         internal static string BuildArguments(string scriptPath, IList<ScriptArgument> arguments)
         {
+            return BuildArguments(scriptPath, arguments, null);
+        }
+
+        // A long-lived descendant can retain the pipe even after PowerShell exits.
+        // The wrapper marks its own output complete without waiting for descendant EOF.
+        private static async Task<string> ReadScriptOutputAsync(StreamReader reader, string completionMarker)
+        {
+            StringBuilder output = new StringBuilder();
+            string line;
+            while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
+            {
+                if (line == completionMarker) break;
+                output.AppendLine(line);
+            }
+            return output.ToString();
+        }
+
+        private static string BuildArguments(string scriptPath, IList<ScriptArgument> arguments, string completionMarker)
+        {
             StringBuilder command = new StringBuilder();
             command.Append("$utf8 = New-Object System.Text.UTF8Encoding($false); ");
             command.Append("[Console]::OutputEncoding = $utf8; $OutputEncoding = $utf8; try { & ");
@@ -116,6 +147,14 @@ namespace CodexDreamSkinManager
             command.Append("[Console]::Out.WriteLine('");
             command.Append(EncodedErrorPrefix);
             command.Append("' + [Convert]::ToBase64String($utf8.GetBytes($message))); exit 1 }");
+            if (completionMarker != null)
+            {
+                command.Append(" finally { [Console]::Out.WriteLine(); [Console]::Out.WriteLine(");
+                command.Append(QuoteLiteral(completionMarker));
+                command.Append("); [Console]::Error.WriteLine(); [Console]::Error.WriteLine(");
+                command.Append(QuoteLiteral(completionMarker));
+                command.Append("); }");
+            }
             string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command.ToString()));
             return "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + encoded;
         }

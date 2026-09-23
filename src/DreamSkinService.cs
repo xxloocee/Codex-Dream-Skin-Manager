@@ -125,7 +125,9 @@ namespace CodexDreamSkinManager
         {
             EnsureManagerAvailable();
             ScriptResult result = await PowerShellRunner.RunAsync(managerScript,
-                new[] { P("-Action"), V("Status"), P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")) }, 8000);
+                // Leave room for PowerShell startup and state inspection around the
+                // renderer's bounded three-second one-shot probe.
+                new[] { P("-Action"), V("Status"), P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")) }, 15000);
             return ParseStatus(result.Output);
         }
 
@@ -509,7 +511,9 @@ namespace CodexDreamSkinManager
 
         private async Task RunScriptAsync(string script, IList<ScriptArgument> args)
         {
-            await PowerShellRunner.RunAsync(script, args, 180000);
+            // Recovery can stop Codex, reconnect, then run the bounded startup
+            // verification. Its outer budget must include those serial phases.
+            await PowerShellRunner.RunAsync(script, args, 300000);
         }
 
         private void EnsureManagerAvailable()
