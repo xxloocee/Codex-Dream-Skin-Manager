@@ -173,9 +173,12 @@ namespace CodexDreamSkinManager
         private bool suppressSavedThemeSelection;
         private bool hasValidCustomImage;
 
-        public MainWindow(DreamSkinService service)
+        private readonly Func<string, bool> restartConfirmation;
+
+        public MainWindow(DreamSkinService service, Func<string, bool> restartConfirmation = null)
         {
             this.service = service;
+            this.restartConfirmation = restartConfirmation;
             Title = "Codex Dream Skin Manager";
             Width = Math.Min(1280, SystemParameters.WorkArea.Width);
             Height = Math.Min(720, SystemParameters.WorkArea.Height);
@@ -1148,11 +1151,17 @@ namespace CodexDreamSkinManager
                 }
                 else
                 {
-                    bool restartAuthorized = await ConfirmStartupIfRequiredAsync("应用主题", restart);
-                    // Confirm before mutating the theme, then start with the NEW
-                    // active theme so startup appearance follows that selection.
+                    bool video = string.Equals(Path.GetExtension(theme.ImagePath), ".mp4", StringComparison.OrdinalIgnoreCase);
+                    bool needsStart = !currentStatus.IsRunning ||
+                        string.Equals(currentStatus.StatusKind, "degraded", StringComparison.OrdinalIgnoreCase);
+                    // A video connection is temporary: after validation startup
+                    // closes it to install the selected theme's native appearance.
+                    bool restartAuthorized = await ConfirmStartupIfRequiredAsync("应用主题", restart || (video && needsStart));
+                    needsStart = needsStart || restartAuthorized;
+                    if (needsStart && video)
+                        await service.ConnectAsync(restartAuthorized);
                     await service.ApplyThemeAsync(theme);
-                    await service.StartAsync(restartAuthorized);
+                    if (needsStart) await service.StartAsync(restartAuthorized);
                 }
                 SetExpectedRuntimeState(true, false);
             }, "主题已应用。");
@@ -1205,18 +1214,14 @@ namespace CodexDreamSkinManager
             await RunOperationAsync(async delegate
             {
                 currentStatus = await service.GetStatusAsync();
-                if (currentStatus.IsRunning && currentStatus.IsPaused)
+                bool restartAuthorized = await ConfirmStartupIfRequiredAsync("启用皮肤", false);
+                if (restartAuthorized || !currentStatus.IsRunning ||
+                    string.Equals(currentStatus.StatusKind, "degraded", StringComparison.OrdinalIgnoreCase))
+                    await service.StartAsync(restartAuthorized);
+                else if (currentStatus.IsPaused)
                     await service.SetPausedAsync(false);
-                else
-                    await StartSkinWithConfirmationAsync("启用皮肤");
                 SetExpectedRuntimeState(true, false);
             }, "皮肤已启用。");
-        }
-
-        private async Task StartSkinWithConfirmationAsync(string operation)
-        {
-            bool restartAuthorized = await ConfirmStartupIfRequiredAsync(operation, false);
-            await service.StartAsync(restartAuthorized);
         }
 
         private async Task<bool> ConfirmStartupIfRequiredAsync(string operation, bool forceRestart)
@@ -1777,6 +1782,7 @@ namespace CodexDreamSkinManager
 
         private bool ConfirmRestart(string operation)
         {
+            if (restartConfirmation != null) return restartConfirmation(operation);
             return MessageBox.Show(this, operation + "需要关闭并重新打开 Codex。是否继续？", "确认操作", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
         }
 

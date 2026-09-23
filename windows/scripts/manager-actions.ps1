@@ -876,6 +876,9 @@ function Get-ManagerInjectorStatus {
     return [pscustomobject]@{ Kind = 'stopped'; Message = '未检测到皮肤注入器。'; Running = $false }
   }
   if (-not $State.injectorPid) {
+    if ($State.connectionOnly -is [bool] -and $State.connectionOnly) {
+      return [pscustomobject]@{ Kind = 'stopped'; Message = 'Codex 已连接，皮肤尚未启用。'; Running = $false }
+    }
     return [pscustomobject]@{ Kind = 'stale'; Message = '状态文件缺少注入器进程编号。'; Running = $false }
   }
 

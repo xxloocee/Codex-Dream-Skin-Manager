@@ -1537,6 +1537,7 @@ try {
   & (Join-Path $PSScriptRoot 'config-startup-rollback.tests.ps1') -Root $Root
   & (Join-Path $PSScriptRoot 'start-result-contract.tests.ps1') -Root $Root
   & (Join-Path $PSScriptRoot 'start-cdp-failure-appearance-recovery.tests.ps1') -Root $Root
+  & (Join-Path $PSScriptRoot 'start-connection-only.tests.ps1') -Root $Root
   & (Join-Path $PSScriptRoot 'start-post-launch-appearance-recovery.tests.ps1') -Root $Root
   & (Join-Path $PSScriptRoot 'start-renderer-readiness.tests.ps1') -Root $Root
   & (Join-Path $PSScriptRoot 'start-verified-skin-preserved.tests.ps1') -Root $Root

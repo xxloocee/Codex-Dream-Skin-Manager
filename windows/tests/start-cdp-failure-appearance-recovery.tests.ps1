@@ -16,7 +16,9 @@ $source = $source.Replace(
   '$Injector = ''mock-injector.mjs'''
 )
 $source = $source.Replace('(Split-Path -Parent $PSScriptRoot)', '''mock-skill-root''')
-if ($source.Contains('$PSScriptRoot')) {
+$source = $source.Replace('$ConfigPath = Join-Path $HOME ''.codex\config.toml''',
+  '$ConfigPath = Join-Path $StateRoot ''fixture-config.toml''')
+if ($source.Contains('$PSScriptRoot') -or $source.Contains('$HOME')) {
   throw 'CDP failure fixture left a real script-root dependency in isolated source.'
 }
 
@@ -174,6 +176,9 @@ try {
     Get-DreamSkinStartResultPath -StateRoot $childStateRoot -Token $pendingToken
   ) -Force
   if ($null -eq $pendingFailure -or $script:pendingResolveCalls -ne 1 -or
+    -not $pendingFailure.Exception.Message.Contains('forced pending appearance recovery failure') -or
+    $null -eq $pendingFailure.Exception.InnerException -or
+    $pendingFailure.Exception.InnerException.Message -cne 'forced pending appearance recovery failure' -or
     $script:installCalls -ne 0 -or $script:events.Count -ne 0 -or
     "$($pendingResult.outcome)" -cne 'failure' -or
     "$($pendingResult.category)" -cne 'state-reconciliation-failed' -or
@@ -184,8 +189,14 @@ try {
 } finally {
   Remove-Variable -Name forcedCategory -Scope Script -ErrorAction SilentlyContinue
   Remove-Variable -Name debugArguments -Scope Script -ErrorAction SilentlyContinue
-  Remove-Item -LiteralPath $fixtureStateRoot -Recurse -Force -ErrorAction SilentlyContinue
   $env:LOCALAPPDATA = $originalLocalAppData
+  $resolvedFixture = [System.IO.Path]::GetFullPath($fixtureStateRoot)
+  $tempPrefix = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+  if (-not $resolvedFixture.StartsWith($tempPrefix, [StringComparison]::OrdinalIgnoreCase) -or
+    [System.IO.Path]::GetFileName($resolvedFixture) -notlike 'dreamskin-start-cdp-failure-*') {
+    throw 'Unsafe CDP failure fixture cleanup path.'
+  }
+  Remove-Item -LiteralPath $resolvedFixture -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Output 'PASS: failed Windows CDP launch restores appearance and writes exact child categories.'

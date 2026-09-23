@@ -26,6 +26,30 @@ namespace CodexDreamSkinManager
         [STAThread]
         private static int Main()
         {
+            Run("Cold video apply connects before validation and starts after publication", delegate {
+                AssertApplyFlow(false, true, true, false, "check,confirm,connect,apply,start", true);
+            });
+            Run("Rejected video preserves active theme and does not start injector", delegate {
+                AssertApplyFlow(false, true, true, true, "check,confirm,connect,apply", false);
+            });
+            Run("Cancelled video startup does not connect or change theme", delegate {
+                AssertApplyFlow(false, true, false, false, "check,confirm", false);
+            });
+            Run("Failed connection never publishes a video or starts an injector", delegate {
+                AssertApplyFlow(false, true, true, false, "check,confirm,connect", false, true);
+            });
+            Run("Lost connection obtains restart consent before video validation", delegate {
+                AssertApplyFlow(true, true, true, false, "check,confirm,connect,apply,start", true, false, true);
+            });
+            Run("Healthy video apply reuses the running injector", delegate {
+                AssertApplyFlow(true, true, true, false, "check,apply", true);
+            });
+            Run("Healthy image apply reuses the running injector", delegate {
+                AssertApplyFlow(true, false, true, false, "check,apply", true);
+            });
+            Run("Cold image apply publishes before starting native appearance", delegate {
+                AssertApplyFlow(false, false, true, false, "check,apply,start", true);
+            });
             Run("Finds windows scripts next to executable", delegate
             {
                 string root = CreateLayout();
@@ -1755,6 +1779,80 @@ namespace CodexDreamSkinManager
             foreach (string failure in Failures) Console.Error.WriteLine(failure);
             Console.Error.WriteLine("FAIL: " + Failures.Count + " test(s)");
             return 1;
+        }
+
+        private static void AssertApplyFlow(bool running, bool video, bool consent, bool reject,
+            string expectedEvents, bool published, bool failConnect = false, bool lostConnection = false)
+        {
+            string root = CreateLayout();
+            string scripts = Path.Combine(root, "windows", "scripts");
+            string log = Path.Combine(scripts, "events.txt");
+            string active = Path.Combine(scripts, "active.txt");
+            File.WriteAllText(active, "previous");
+            File.WriteAllText(Path.Combine(scripts, "status.json"),
+                "{\"isRunning\":" + (running ? "true" : "false") +
+                ",\"statusKind\":\"" + (running ? "running" : "stopped") + "\",\"themes\":[]}");
+            if (running) File.WriteAllText(Path.Combine(scripts, "connected"), "yes");
+            if (video) File.WriteAllText(Path.Combine(scripts, "video"), "yes");
+            if (reject) File.WriteAllText(Path.Combine(scripts, "reject"), "yes");
+            if (failConnect) File.WriteAllText(Path.Combine(scripts, "fail-connect"), "yes");
+            if (lostConnection) File.WriteAllText(Path.Combine(scripts, "restart-required"), "yes");
+            File.WriteAllText(Path.Combine(scripts, "start-dream-skin.ps1"), @"
+param([switch]$CheckOnly,[switch]$ConnectOnly,[switch]$RestartExisting)
+$ErrorActionPreference = 'Stop'
+$log = Join-Path $PSScriptRoot 'events.txt'
+if ($CheckOnly) {
+  Add-Content $log 'check'
+  if (Test-Path (Join-Path $PSScriptRoot 'restart-required')) { throw 'DREAM_SKIN_RESTART_REQUIRED: fixture' }
+  return
+}
+if ($ConnectOnly) {
+  Add-Content $log 'connect'
+  if (-not $RestartExisting) { throw 'Video connection did not carry restart consent' }
+  if (Test-Path (Join-Path $PSScriptRoot 'fail-connect')) { throw 'Fixture connection failure' }
+  Set-Content (Join-Path $PSScriptRoot 'connected') 'yes'
+  return
+}
+if ((Get-Content (Join-Path $PSScriptRoot 'active.txt') -Raw).Trim() -ne 'candidate') { throw 'Started with old theme' }
+if ((Test-Path (Join-Path $PSScriptRoot 'video')) -and -not $RestartExisting) { throw 'Final video startup lost restart consent' }
+Add-Content $log 'start'
+");
+            File.WriteAllText(Path.Combine(scripts, "manager-actions.ps1"), @"
+param($Action,$SkillRoot,$ThemeDirectory)
+$ErrorActionPreference = 'Stop'
+if ($Action -eq 'Status') { Get-Content (Join-Path $PSScriptRoot 'status.json') -Raw; return }
+if ($Action -ne 'ApplyTheme') { throw 'Unexpected action' }
+Add-Content (Join-Path $PSScriptRoot 'events.txt') 'apply'
+if ((Test-Path (Join-Path $PSScriptRoot 'video')) -and -not (Test-Path (Join-Path $PSScriptRoot 'connected'))) { throw 'No video connection' }
+if (Test-Path (Join-Path $PSScriptRoot 'reject')) { throw 'Fixture decode failure' }
+Set-Content (Join-Path $PSScriptRoot 'active.txt') 'candidate'
+'{}'
+");
+            MainWindow window = null;
+            SynchronizationContext previousContext = SynchronizationContext.Current;
+            try
+            {
+                window = new MainWindow(new DreamSkinService(root), delegate(string operation) {
+                    File.AppendAllText(log, "confirm" + Environment.NewLine);
+                    return consent;
+                });
+                SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(window.Dispatcher));
+                ListBox themes = GetPrivateField<ListBox>(window, "themeList");
+                themes.Items.Add(new ThemeOption { Id = "candidate", Name = "Candidate",
+                    ThemeDirectory = root, ImagePath = Path.Combine(root, video ? "art.mp4" : "art.png") });
+                themes.SelectedIndex = 0;
+                Task operationTask = (Task)typeof(MainWindow).GetMethod("ApplySelectedThemeAsync",
+                    BindingFlags.Instance | BindingFlags.NonPublic).Invoke(window, new object[] { false });
+                WaitForTask(operationTask, window.Dispatcher);
+                AssertEqual(expectedEvents, string.Join(",", File.ReadAllLines(log)));
+                AssertEqual(published ? "candidate" : "previous", File.ReadAllText(active).Trim());
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(previousContext);
+                if (window != null) window.Close();
+                Directory.Delete(root, true);
+            }
         }
 
         private static string CreateLayout(bool includeManager = true)

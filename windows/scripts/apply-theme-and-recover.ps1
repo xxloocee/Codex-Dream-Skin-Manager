@@ -70,7 +70,6 @@ if ($ThemeDirectory) {
 }
 
 $videoRecovery = [System.IO.Path]::GetExtension($recoveryMedia) -ieq '.mp4'
-if ($videoRecovery) { Assert-DreamSkinVideoDecodable -Path $recoveryMedia -StateRoot $StateRoot }
 
 $operationLock = $null
 $previousRecoveryLockHeld = $env:CODEX_DREAM_SKIN_RECOVERY_LOCK_HELD
@@ -124,8 +123,8 @@ try {
       }
     }
 
-    # Reconnect using the previous active theme before committing a video candidate.
-    if ($videoRecovery) { & $startScript -RestartExisting }
+    # Validate video only after reconnecting, without loading the previous skin.
+    if ($videoRecovery) { & $startScript -RestartExisting -ConnectOnly }
 
     $applyArguments = @('-Action', 'ApplyTheme', '-SkillRoot', $SkillRoot, '-StateRoot', $StateRoot)
     if ($ThemeDirectory) {
@@ -149,7 +148,7 @@ try {
       }
     }
     $null = Invoke-RecoveryManager -Arguments $applyArguments
-    if (-not $videoRecovery) { & $startScript -RestartExisting }
+    & $startScript -RestartExisting
 
     [ordered]@{
       recovered = $true

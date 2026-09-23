@@ -1241,10 +1241,16 @@ function Read-DreamSkinState {
       }
     }
     if ($schemaVersion -ge 3) {
-      foreach ($required in @(
-        'platform', 'port', 'injectorPid', 'injectorStartedAt', 'injectorPath', 'nodePath',
+      $requiredFields = @(
+        'platform', 'port',
         'codexExe', 'codexPackageRoot', 'codexPackageFullName', 'codexPackageFamilyName', 'browserId'
-      )) {
+      )
+      if ($state.connectionOnly -isnot [bool] -or -not $state.connectionOnly) {
+        $requiredFields += @('injectorPid', 'injectorStartedAt', 'injectorPath', 'nodePath')
+      } elseif ($properties -contains 'injectorPid') {
+        throw 'A connection-only state cannot claim an injector process.'
+      }
+      foreach ($required in $requiredFields) {
         if ($properties -notcontains $required -or -not $state.$required) {
           throw "State schema 3 is missing required field: $required"
         }

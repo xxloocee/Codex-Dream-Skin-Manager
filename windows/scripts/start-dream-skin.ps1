@@ -4,6 +4,7 @@ param(
   [switch]$RestartExisting,
   [switch]$PromptRestart,
   [switch]$CheckOnly,
+  [switch]$ConnectOnly,
   [string]$ProfilePath,
   [switch]$ForegroundInjector,
   [ValidateRange(0, 300000)][int]$OperationLockTimeoutMilliseconds = 0,
@@ -167,6 +168,12 @@ try {
     $appearanceRecovery = 'blocked'
     $cdpIdentity = $null
   }
+  # The decode-only session has not installed native appearance. Final startup
+  # must close it (with restart consent) and configure the newly selected theme.
+  if (-not $ConnectOnly -and $null -ne $previousState -and
+      $previousState.connectionOnly -is [bool] -and $previousState.connectionOnly) {
+    $cdpIdentity = $null
+  }
   $debugReady = $null -ne $cdpIdentity
   $codexProcesses = if (Test-DreamSkinPathEqual -Left $codexToStop.Executable -Right $currentCodex.Executable) {
     $currentProcesses
@@ -219,18 +226,22 @@ try {
         $pendingAppearanceTransaction = $false
       } catch {
         $appearanceRecovery = 'blocked'
-        throw 'Interrupted startup appearance could not be recovered safely; config was preserved.'
+        throw [System.InvalidOperationException]::new(
+          "无法恢复上次未完成的启动外观配置，启动已停止。具体原因：$($_.Exception.Message)",
+          $_.Exception)
       }
     }
     if ($null -eq (Get-DreamSkinVerifiedCdpIdentity -Port $Port -Codex $codex)) {
       # Codex is closed on this path; sync the appearanceTheme pin to the
       # active theme before launching (config writes race the app while it runs).
       try {
-        $appearanceTransaction = Install-DreamSkinBaseTheme `
-          -ConfigPath $ConfigPath -BackupPath $BackupPath `
-          -AppearanceTheme (Get-DreamSkinActiveThemeAppearance -ThemeDirectory $themePaths.Active) `
-          -PassThruTransaction
-        if ($null -ne $appearanceTransaction) { $appearanceRecovery = 'retained' }
+        if (-not $ConnectOnly) {
+          $appearanceTransaction = Install-DreamSkinBaseTheme `
+            -ConfigPath $ConfigPath -BackupPath $BackupPath `
+            -AppearanceTheme (Get-DreamSkinActiveThemeAppearance -ThemeDirectory $themePaths.Active) `
+            -PassThruTransaction
+          if ($null -ne $appearanceTransaction) { $appearanceRecovery = 'retained' }
+        }
       } catch {
         $appearanceTransaction = $null
         $appearanceRecovery = 'not-needed'
@@ -318,8 +329,10 @@ try {
     }
     # Keep a paused, already-running watcher paused until all state checks and
     # restart consent have succeeded. A cancelled prompt stays side-effect free.
-    Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
-    $pauseCleared = $true
+    if (-not $ConnectOnly) {
+      Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
+      $pauseCleared = $true
+    }
   } catch {
     if ($launchedWithCdp) {
       $stateRollbackClosed = $false
@@ -346,6 +359,27 @@ try {
       }
     }
     throw
+  }
+
+  if ($ConnectOnly) {
+    # A verified browser connection is not a running skin. Do not load the old
+    # theme: it may be the video the user is trying to replace.
+    $connectionState = [pscustomobject]@{
+      schemaVersion = 3
+      platform = 'windows'
+      connectionOnly = $true
+      port = $Port
+      codexExe = $codex.Executable
+      codexPackageRoot = $codex.PackageRoot
+      codexPackageFullName = $codex.PackageFullName
+      codexPackageFamilyName = $codex.PackageFamilyName
+      codexVersion = $codex.Version
+      browserId = $cdpIdentity.BrowserId
+      profilePath = $ProfilePath
+      createdAt = (Get-Date).ToUniversalTime().ToString('o')
+    }
+    Write-DreamSkinState -Path $StatePath -State $connectionState
+    return
   }
 
   if ($ForegroundInjector) {

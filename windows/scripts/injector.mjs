@@ -1111,30 +1111,30 @@ async function applyToSession(session, payload) {
 }
 
 export async function probeVideoInCodex(snapshotPath, state) {
-  let targets;
+  let connected = [];
   let anchor = null;
   try {
     if (!BROWSER_ID_PATTERN.test(state.browserId || "")) throw new Error("Missing browser identity");
     anchor = await connectBrowserIdentityAnchor(state.port, state.browserId);
-    targets = await listAppTargets(state.port, state.browserId);
+    // A newly launched browser can expose CDP before its main window is ready.
+    // Wait for the shell, but never retry an actual decode failure.
+    connected = await connectCodexTargets(state.port, 10000, state.browserId);
   } catch {
     anchor?.close();
     throw new Error("无法验证视频解码能力：请先启动 Codex 并连接皮肤运行时，再重试导入或应用。");
   }
   try {
-    for (const target of targets) {
-      let session;
-      try {
-        session = await connectTarget(target, state.port);
-        const probe = await probeSession(session);
-        if (!probe?.codex || probe.excludedPetSurface) continue;
-        const result = await probeVideoDecode(session, snapshotPath);
-        if (anchor?.closed) throw new Error("Codex 连接已变化，请重试视频校验。");
-        return result;
-      } finally { session?.close(); }
+    for (const { session, probe } of connected) {
+      if (!probe?.codex || probe.excludedPetSurface) continue;
+      const result = await probeVideoDecode(session, snapshotPath);
+      if (anchor?.closed) throw new Error("Codex 连接已变化，请重试视频校验。");
+      return result;
     }
     throw new Error("未找到可校验的 Codex 主窗口，请打开 Codex 主界面后重试。");
-  } finally { anchor?.close(); }
+  } finally {
+    for (const { session } of connected) session.close();
+    anchor?.close();
+  }
 }
 
 export async function bindMediaFileToSession(session, loadedPayload, timeoutMs = 10000) {

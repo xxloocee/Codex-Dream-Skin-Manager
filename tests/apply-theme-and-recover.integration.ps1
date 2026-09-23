@@ -115,6 +115,7 @@ function Assert-DreamSkinImageFile { param([string]$Path) if (-not (Test-Path -L
 function Assert-DreamSkinVideoDecodable {
   param([string]$Path,[string]$StateRoot)
   Add-Content -LiteralPath $env:RECOVERY_TEST_LOG -Value 'decode'
+  if (-not (Test-Path -LiteralPath (Join-Path $StateRoot 'connected'))) { throw 'video validation ran before connection' }
   if ((Get-Content -LiteralPath $Path -Raw) -eq 'reject') { throw 'decode failed' }
 }
 '@
@@ -126,6 +127,10 @@ param([string]$Action,[string]$SkillRoot,[string]$StateRoot,[string]$ThemeDirect
 if ($Action -eq 'Status') {
   [ordered]@{ statusKind = (Get-Content -LiteralPath $env:RECOVERY_TEST_KIND -Raw).Trim() } | ConvertTo-Json
 } elseif ($Action -eq 'ApplyTheme') {
+  if ([System.IO.Path]::GetExtension($ImagePath) -ieq '.mp4') {
+    . (Join-Path $PSScriptRoot 'theme-windows.ps1')
+    Assert-DreamSkinVideoDecodable -Path $ImagePath -StateRoot $StateRoot
+  }
   if ($Name -eq 'Selected image' -and
       ($PositionX -ne 0.4 -or $PositionY -ne -0.3 -or $Zoom -ne 1.5 -or
        $PositionMode -ne 'free' -or $FramingEnabled -ne 'true')) {
@@ -141,7 +146,12 @@ Add-Content -LiteralPath $env:RECOVERY_TEST_LOG -Value 'restore'
 Remove-Item -LiteralPath (Join-Path $env:LOCALAPPDATA 'CodexDreamSkin\state.json') -Force -ErrorAction SilentlyContinue
 '@
   Write-Utf8 (Join-Path $scripts 'start-dream-skin.ps1') @'
-param([switch]$RestartExisting)
+param([switch]$RestartExisting,[switch]$ConnectOnly)
+if ($ConnectOnly) {
+  Add-Content -LiteralPath $env:RECOVERY_TEST_LOG -Value 'connect'
+  Set-Content -LiteralPath (Join-Path $env:LOCALAPPDATA 'CodexDreamSkin\connected') -Value 'ready'
+  return
+}
 Add-Content -LiteralPath $env:RECOVERY_TEST_LOG -Value 'start'
 '@
 
@@ -180,14 +190,15 @@ Add-Content -LiteralPath $env:RECOVERY_TEST_LOG -Value 'start'
     Write-TestState
     $rejectedVideo = Invoke-Recovery -UseImage
     Assert-True ($rejectedVideo.ExitCode -ne 0) 'Undecodable video recovery was accepted.'
-    Assert-Equal 'decode' ((Get-Content -LiteralPath $logPath) -join "`r`n") 'Rejected video stopped Codex or changed the theme.'
+    Assert-Equal "restore`r`nconnect`r`ndecode`r`nfallback" ((Get-Content -LiteralPath $logPath) -join "`r`n") 'Rejected video was published or started an injector.'
     Write-Utf8 $imagePath 'decodable'
     Remove-Item -LiteralPath $logPath -Force
+    Write-TestState
     $videoRecovery = Invoke-Recovery -UseImage
     Assert-Equal 0 $videoRecovery.ExitCode 'Decodable video recovery failed.'
-    Assert-Equal "decode`r`nrestore`r`nstart`r`napply" ((Get-Content -LiteralPath $logPath) -join "`r`n") 'Video must reconnect before candidate application.'
+    Assert-Equal "restore`r`nconnect`r`ndecode`r`napply`r`nstart" ((Get-Content -LiteralPath $logPath) -join "`r`n") 'Video must reconnect and validate before candidate publication and startup.'
     $imagePath = Join-Path $testRoot 'selected.jpg'
-    Write-Host 'PASS: video recovery rejects before stopping and reconnects before applying'
+    Write-Host 'PASS: video recovery connects before validation and rejects before publication'
 
     Remove-Item -LiteralPath $logPath -Force -ErrorAction SilentlyContinue
     Get-ChildItem -LiteralPath $stateRoot -Filter 'state.archived-*.json' | Remove-Item -Force
