@@ -64,6 +64,10 @@ dreamskin_text() {
     en:applying_skin) /usr/bin/printf '%s' 'Applying skin' ;;
     zh:cancelled_unchanged) /usr/bin/printf '%s' '操作已取消，原皮肤保持不变' ;;
     en:cancelled_unchanged) /usr/bin/printf '%s' 'Operation cancelled; the previous skin is unchanged' ;;
+    zh:restart_cancelled) /usr/bin/printf '%s' '重启已取消，主题配置未回滚' ;;
+    en:restart_cancelled) /usr/bin/printf '%s' 'Restart cancelled; theme settings were not rolled back' ;;
+    zh:restart_cancelled_theme_saved) /usr/bin/printf '%s' '主题已保存' ;;
+    en:restart_cancelled_theme_saved) /usr/bin/printf '%s' 'Theme saved' ;;
     zh:pause_failed) /usr/bin/printf '%s' '暂停失败，原状态可能未改变' ;;
     en:pause_failed) /usr/bin/printf '%s' 'Pause failed; the previous state may be unchanged' ;;
     zh:pause_failed_alert) /usr/bin/printf '%s' '暂停失败，请重新打开菜单查看状态。' ;;

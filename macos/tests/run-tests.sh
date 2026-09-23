@@ -827,7 +827,7 @@ APPLY_SCRIPT="$ROOT/scripts/apply-from-menubar-macos.sh"
 /usr/bin/grep -F -q 'if hot_reapply_theme "$PORT" 8000; then' "$APPLY_SCRIPT"
 /usr/bin/grep -F -q 'SESSION="off"' "$APPLY_SCRIPT"
 /usr/bin/grep -F -q 'if ! confirm "$PROMPT" "$OK_LABEL"; then' "$APPLY_SCRIPT"
-/usr/bin/grep -F -q '"$SCRIPT_DIR/start-dream-skin-macos.sh" --restart-existing' "$APPLY_SCRIPT"
+/usr/bin/grep -F -q '"$SCRIPT_DIR/start-dream-skin-macos.sh" --prompt-restart' "$APPLY_SCRIPT"
 if /usr/bin/grep -F -q 'CODEX_RUNNING=' "$APPLY_SCRIPT" ||
    /usr/bin/grep -F -q 'MENU_ACTION=' "$APPLY_SCRIPT" ||
    /usr/bin/grep -F -q 'OPEN_PROMPT=' "$APPLY_SCRIPT"; then
@@ -836,7 +836,7 @@ if /usr/bin/grep -F -q 'CODEX_RUNNING=' "$APPLY_SCRIPT" ||
 fi
 HOT_LINE="$(/usr/bin/grep -n 'hot_reapply_theme "$PORT" 8000' "$APPLY_SCRIPT" | /usr/bin/head -1 | /usr/bin/cut -d: -f1)"
 CONFIRM_LINE="$(/usr/bin/grep -n 'if ! confirm "$PROMPT" "$OK_LABEL"; then' "$APPLY_SCRIPT" | /usr/bin/head -1 | /usr/bin/cut -d: -f1)"
-START_LINE="$(/usr/bin/grep -n 'start-dream-skin-macos.sh" --restart-existing' "$APPLY_SCRIPT" | /usr/bin/head -1 | /usr/bin/cut -d: -f1)"
+START_LINE="$(/usr/bin/grep -n 'start-dream-skin-macos.sh" --prompt-restart' "$APPLY_SCRIPT" | /usr/bin/head -1 | /usr/bin/cut -d: -f1)"
 if [ -z "$HOT_LINE" ] || [ -z "$CONFIRM_LINE" ] || [ -z "$START_LINE" ] ||
    [ "$CONFIRM_LINE" -ge "$HOT_LINE" ] ||
    [ "$HOT_LINE" -ge "$START_LINE" ]; then

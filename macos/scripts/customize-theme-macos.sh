@@ -134,7 +134,10 @@ esac
 fi
 
 if [ "$APPLY_NOW" = "true" ]; then
-  "$SCRIPT_DIR/start-dream-skin-macos.sh" --port 9341 --prompt-restart
+  start_args=(--port 9341 --prompt-restart)
+  # reset-demo removes the custom theme instead of saving a new one.
+  [ "$RESET_DEMO" = "true" ] || start_args+=(--theme-staged)
+  "$SCRIPT_DIR/start-dream-skin-macos.sh" "${start_args[@]}"
 fi
 
 printf 'Codex Dream Skin Studio theme is ready.\n'

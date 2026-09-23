@@ -18,7 +18,7 @@ finish_switch() {
   local code="$1"
   [ -z "${stage:-}" ] || /bin/rm -rf "$stage"
   release_theme_switch_lock
-  if [ "$code" -ne 0 ] && [ -n "${OPERATION_TOKEN:-}" ]; then
+  if [ "$code" -ne 0 ] && [ "$code" -ne 20 ] && [ -n "${OPERATION_TOKEN:-}" ]; then
     write_operation_state failed "$(dreamskin_text theme_switch_unconfirmed)" "$OPERATION_TOKEN" 2>/dev/null || true
     finish_client_operation "${PORT:-9341}" error "$(dreamskin_text theme_switch_unconfirmed)" \
       "$OPERATION_TOKEN" 1500 >/dev/null 2>&1 || true
@@ -186,9 +186,13 @@ fi
 
 # Cold path only when debug port is missing
 progress "$(dreamskin_text restarting_chatgpt_for_apply)"
-if "$SCRIPT_DIR/start-dream-skin-macos.sh" --port "$PORT" --restart-existing; then
+if "$SCRIPT_DIR/start-dream-skin-macos.sh" --port "$PORT" --restart-existing --theme-staged; then
   progress "$(dreamskin_text skin_applied): ${THEME_NAME}"
   exit 0
+else
+  start_code=$?
+  # Preserve the acknowledged cancellation and its operation state.
+  [ "$start_code" -ne 20 ] || exit 20
 fi
 
 alert_user "$(dreamskin_text theme_switch_apply_failed)"

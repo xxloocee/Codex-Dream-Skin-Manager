@@ -1406,6 +1406,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
       self.operationInFlight = false
       self.refreshStatus()
       self.rebuildMenu()
+      // These entry points reserve 20 for a cancelled restart, not a failure.
+      if result.exitCode == 20 && ["load-image-theme-macos.sh", "switch-theme-macos.sh"].contains(name) {
+        return
+      }
       if !result.succeeded {
         self.showError(
           title: self.copy.operationFailed(operation),

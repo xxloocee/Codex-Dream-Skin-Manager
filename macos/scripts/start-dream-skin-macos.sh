@@ -32,17 +32,39 @@ record_start_exit() {
 }
 trap 'code=$?; record_start_exit "$code" "$LINENO"' EXIT
 
+cancel_start() {
+  local message
+  if [ "$THEME_STAGED" = "true" ]; then
+    message="$(dreamskin_text restart_cancelled_theme_saved)"
+  else
+    message="$(dreamskin_text restart_cancelled)"
+  fi
+  if [ -n "$OPERATION_TOKEN" ]; then
+    write_operation_state cancelled "$message" "$OPERATION_TOKEN" \
+      || fail "Could not publish the cancelled apply state."
+    finish_client_operation "$PORT" cancelled "$message" \
+      "$OPERATION_TOKEN" 1500 >/dev/null 2>&1 || true
+  fi
+  OPERATION_FINISHED="true"
+  printf '%s\n' "$message" >&2
+  notify_user "$message" || true
+  # Reserve a non-signal exit code for acknowledged, pre-restart cancellation.
+  exit 20
+}
+
 PORT=9341
 PORT_EXPLICIT="false"
 RESTART_EXISTING="false"
 PROMPT_RESTART="false"
 FOREGROUND_INJECTOR="false"
+THEME_STAGED="false"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --port) PORT="${2:-}"; PORT_EXPLICIT="true"; shift 2 ;;
     --restart-existing) RESTART_EXISTING="true"; shift ;;
     --prompt-restart) PROMPT_RESTART="true"; shift ;;
     --foreground-injector) FOREGROUND_INJECTOR="true"; shift ;;
+    --theme-staged) THEME_STAGED="true"; shift ;;
     *) fail "Unknown start argument: $1" ;;
   esac
 done
@@ -90,17 +112,18 @@ on run argv
 end run
 APPLESCRIPT
     then
-      write_operation_state cancelled "$(dreamskin_text cancelled_unchanged)" "$OPERATION_TOKEN" \
-        || fail "Could not publish the cancelled apply state."
-      finish_client_operation "$PORT" cancelled "$(dreamskin_text cancelled_unchanged)" \
-        "$OPERATION_TOKEN" 1500 >/dev/null 2>&1 || true
-      OPERATION_FINISHED="true"
-      exit 0
+      cancel_start
     fi
     RESTART_EXISTING="true"
   fi
   [ "$RESTART_EXISTING" = "true" ] || fail "ChatGPT is already running without the verified skin CDP endpoint. Close it first or pass --restart-existing."
-  stop_codex true
+  if quit_codex_for_restart; then
+    :
+  else
+    quit_status=$?
+    [ "$quit_status" -ne 20 ] || cancel_start
+    exit "$quit_status"
+  fi
 fi
 
 if [ -f "$STATE_PATH" ]; then

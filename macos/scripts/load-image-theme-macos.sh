@@ -222,9 +222,12 @@ if hot_reapply_theme "$PORT" 8000; then
 fi
 
 progress "$(dreamskin_text starting_chatgpt_for_apply)"
-if "$SCRIPT_DIR/start-dream-skin-macos.sh" --port "$PORT" --restart-existing; then
+if "$SCRIPT_DIR/start-dream-skin-macos.sh" --port "$PORT" --restart-existing --theme-staged; then
   progress "$(dreamskin_text skin_applied): ${THEME_NAME}"
   exit 0
+else
+  start_code=$?
+  [ "$start_code" -ne 20 ] || exit 20
 fi
 
 alert_user "$(dreamskin_text image_saved_apply_failed)"

@@ -4,6 +4,8 @@
 
 构建产物包含来自 [Codex Dream Skin](https://github.com/Fei-Away/Codex-Dream-Skin) 的 Windows/macOS 运行时和相关软件文件。仓库内运行时以同步自上游 `main` 提交 `e0341de`（发布版本 `v1.5.16`）的代码为基础，并在本项目中扩展为 `v1.7.0`；本地传入 `build.ps1` 的 `-SkillRoot` 仅用于兼容性验证。
 
+在上述基线之上，另定向吸收上游 `0b33497`（macOS 尊重退出取消）、`beb7e5f`（更新检查回退）、`5489590`（保留原生字体偏好）和 `b934408` 中的首页建议标签类名兼容修复。这不代表完整同步上游 `v1.5.18`；本项目保留独立版本号、发布地址和扩展功能。
+
 这些软件文件按上游 MIT License 提供。发布目录中会附带：
 
 - `THIRD_PARTY/Codex-Dream-Skin/LICENSE`
