@@ -616,7 +616,7 @@ try {
   Assert-Equal '1.3' $savedBatchTheme.art.zoom 'Batch import did not preserve image zoom.'
   Assert-Equal 'free' $savedBatchTheme.art.positionMode 'Batch import did not preserve image movement mode.'
   Assert-Equal '0.27' $savedBatchTheme.art.bubbleOpacity 'Batch import did not preserve bubble opacity.'
-  Assert-Equal '3' $savedBatchTheme.managerFingerprintVersion 'Batch import did not version its visual fingerprint.'
+  Assert-Equal '4' $savedBatchTheme.managerFingerprintVersion 'Batch import did not version its visual fingerprint.'
   $batchStatusTheme = @($batchAfter.themes | Where-Object { $_.name -eq '批量主题一' })
   Assert-Equal 1 $batchStatusTheme.Count 'Imported batch theme was not returned by status.'
   Assert-Equal 'nature' $batchStatusTheme[0].category 'Status did not return the saved category.'
