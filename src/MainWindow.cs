@@ -131,6 +131,7 @@ namespace CodexDreamSkinManager
         private ComboBox savedSafeAreaCombo;
         private ComboBox savedTaskModeCombo;
         private Slider savedBubbleOpacitySlider;
+        private Slider savedSurfaceOpacitySlider;
         private Slider savedFocusXSlider;
         private Slider savedFocusYSlider;
         private Slider savedPositionXSlider;
@@ -142,6 +143,7 @@ namespace CodexDreamSkinManager
         private TextBlock savedPositionYValue;
         private TextBlock savedZoomValue;
         private TextBlock savedBubbleOpacityValue;
+        private TextBlock savedSurfaceOpacityValue;
         private ListBox savedPositionModeSegment;
         private CheckBox savedFramingEnabled;
         private TextBox savedAccentBox;
@@ -160,7 +162,9 @@ namespace CodexDreamSkinManager
         private ComboBox safeAreaCombo;
         private ComboBox taskModeCombo;
         private Slider bubbleOpacitySlider;
+        private Slider surfaceOpacitySlider;
         private TextBlock bubbleOpacityValue;
+        private TextBlock surfaceOpacityValue;
         private Button browseImageButton;
         private DreamSkinStatus currentStatus = new DreamSkinStatus();
         private readonly SemaphoreSlim statusRefreshLock = new SemaphoreSlim(1, 1);
@@ -632,6 +636,13 @@ namespace CodexDreamSkinManager
             bubbleOpacitySlider.ValueChanged += FramingChanged;
             fields.Children.Add(bubbleOpacitySlider);
 
+            surfaceOpacityValue = new TextBlock { Text = "80%", Foreground = MutedBrush, HorizontalAlignment = HorizontalAlignment.Right };
+            fields.Children.Add(SliderLabel("面板不透明度（输入框、工具面板等）", surfaceOpacityValue));
+            surfaceOpacitySlider = CreateSlider(0, 100, 80, 1, "SurfaceOpacitySlider");
+            surfaceOpacitySlider.ToolTip = "0% 完全透明，100% 不透明；不影响文字和消息气泡。保存主题后生效。";
+            surfaceOpacitySlider.ValueChanged += FramingChanged;
+            fields.Children.Add(surfaceOpacitySlider);
+
             fields.Children.Add(FieldLabel("主题强调色"));
             Grid colorRow = new Grid();
             colorRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -733,6 +744,13 @@ namespace CodexDreamSkinManager
             savedBubbleOpacitySlider = CreateSlider(0, 100, 0, 1, "SavedBubbleOpacitySlider");
             savedBubbleOpacitySlider.ValueChanged += SavedThemeFramingChanged;
             fields.Children.Add(savedBubbleOpacitySlider);
+
+            savedSurfaceOpacityValue = new TextBlock { Text = "80%", Foreground = MutedBrush, HorizontalAlignment = HorizontalAlignment.Right };
+            fields.Children.Add(SliderLabel("面板不透明度（输入框、工具面板等）", savedSurfaceOpacityValue));
+            savedSurfaceOpacitySlider = CreateSlider(0, 100, 80, 1, "SavedSurfaceOpacitySlider");
+            savedSurfaceOpacitySlider.ToolTip = "0% 完全透明，100% 不透明；不影响文字和消息气泡。保存主题后生效。";
+            savedSurfaceOpacitySlider.ValueChanged += SavedThemeFramingChanged;
+            fields.Children.Add(savedSurfaceOpacitySlider);
 
             fields.Children.Add(FieldLabel("主题强调色"));
             Grid colorRow = new Grid();
@@ -1013,6 +1031,7 @@ namespace CodexDreamSkinManager
             savedSafeAreaCombo.SelectedIndex = SafeAreaIndex(theme.SafeArea);
             savedTaskModeCombo.SelectedIndex = TaskModeIndex(theme.TaskMode);
             savedBubbleOpacitySlider.Value = ClampPercent(theme.BubbleOpacity * 100, 0, 100);
+            savedSurfaceOpacitySlider.Value = ClampPercent(theme.SurfaceOpacity * 100, 0, 100);
             savedAccentBox.Text = theme.Accent ?? "";
             savedFramingEnabled.IsChecked = theme.FramingEnabled;
             savedPositionXSlider.Value = ClampPercent(theme.PositionX * 100, -100, 100);
@@ -1032,6 +1051,8 @@ namespace CodexDreamSkinManager
             savedPositionYValue.Text = FormatSignedPercent(savedPositionYSlider.Value);
             savedZoomValue.Text = Math.Round(savedZoomSlider.Value) + "%";
             savedBubbleOpacityValue.Text = Math.Round(savedBubbleOpacitySlider.Value) + "%";
+            if (savedSurfaceOpacityValue != null && savedSurfaceOpacitySlider != null)
+                savedSurfaceOpacityValue.Text = Math.Round(savedSurfaceOpacitySlider.Value) + "%";
         }
 
         private void UpdateSavedFramingEnabledState()
@@ -1052,6 +1073,7 @@ namespace CodexDreamSkinManager
             if (savedSafeAreaCombo != null) savedSafeAreaCombo.IsEnabled = enabled;
             if (savedTaskModeCombo != null) savedTaskModeCombo.IsEnabled = enabled;
             if (savedBubbleOpacitySlider != null) savedBubbleOpacitySlider.IsEnabled = enabled;
+            if (savedSurfaceOpacitySlider != null) savedSurfaceOpacitySlider.IsEnabled = enabled;
             if (savedAccentBox != null) savedAccentBox.IsEnabled = enabled;
             if (savedFramingEnabled != null) savedFramingEnabled.IsEnabled = enabled;
             if (savedPositionXSlider != null) savedPositionXSlider.IsEnabled = enabled;
@@ -1311,6 +1333,7 @@ namespace CodexDreamSkinManager
             options.SafeArea = MapSafeArea(safeAreaCombo.SelectedIndex);
             options.TaskMode = MapTaskMode(taskModeCombo.SelectedIndex);
             options.BubbleOpacity = bubbleOpacitySlider == null ? 0 : bubbleOpacitySlider.Value / 100.0;
+            options.SurfaceOpacity = surfaceOpacitySlider == null ? 0.8 : surfaceOpacitySlider.Value / 100.0;
             options.Accent = accentBox.Text.Trim();
             return options;
         }
@@ -1341,6 +1364,7 @@ namespace CodexDreamSkinManager
             options.SafeArea = MapSafeArea(savedSafeAreaCombo.SelectedIndex);
             options.TaskMode = MapTaskMode(savedTaskModeCombo.SelectedIndex);
             options.BubbleOpacity = savedBubbleOpacitySlider.Value / 100.0;
+            options.SurfaceOpacity = savedSurfaceOpacitySlider.Value / 100.0;
             options.Accent = savedAccentBox.Text.Trim();
             return options;
         }
@@ -1530,7 +1554,7 @@ namespace CodexDreamSkinManager
                 FocusX = data.FocusX, FocusY = data.FocusY, SafeArea = data.SafeArea,
                 PositionX = data.PositionX, PositionY = data.PositionY, Zoom = data.Zoom,
                 PositionMode = data.PositionMode, FramingEnabled = data.FramingEnabled,
-                TaskMode = data.TaskMode, BubbleOpacity = data.BubbleOpacity,
+                TaskMode = data.TaskMode, BubbleOpacity = data.BubbleOpacity, SurfaceOpacity = data.SurfaceOpacity,
                 Accent = data.Accent, Category = data.Category,
                 Tags = new List<string>(data.Tags ?? new List<string>()),
                 SafeCssPath = data.SafeCssPath, LicensePath = data.LicensePath
@@ -1668,7 +1692,7 @@ namespace CodexDreamSkinManager
                     FocusX = theme.FocusX, FocusY = theme.FocusY, SafeArea = theme.SafeArea,
                     PositionX = theme.PositionX, PositionY = theme.PositionY, Zoom = theme.Zoom,
                     PositionMode = theme.PositionMode, FramingEnabled = theme.FramingEnabled,
-                    TaskMode = theme.TaskMode, BubbleOpacity = theme.BubbleOpacity, Accent = theme.Accent
+                    TaskMode = theme.TaskMode, BubbleOpacity = theme.BubbleOpacity, SurfaceOpacity = theme.SurfaceOpacity, Accent = theme.Accent
                 };
                 if (!string.IsNullOrWhiteSpace(theme.ThemeDirectory)) {
                     string css = Path.Combine(theme.ThemeDirectory, "theme.css");
@@ -1712,6 +1736,8 @@ namespace CodexDreamSkinManager
             positionYValue.Text = FormatSignedPercent(positionYSlider.Value);
             zoomValue.Text = Math.Round(zoomSlider.Value) + "%";
             bubbleOpacityValue.Text = Math.Round(bubbleOpacitySlider.Value) + "%";
+            if (surfaceOpacityValue != null && surfaceOpacitySlider != null)
+                surfaceOpacityValue.Text = Math.Round(surfaceOpacitySlider.Value) + "%";
             UpdateCustomPreview();
         }
 

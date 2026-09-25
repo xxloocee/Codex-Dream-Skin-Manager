@@ -1,5 +1,5 @@
 /* Canonical cross-platform skin. Run tools/sync-runtime-assets.mjs after editing. */
-@layer dreamskin-accessibility, dreamskin-community;
+@layer dreamskin-accessibility, dreamskin-community, dreamskin-surfaces;
 
 :root[data-dream-skin="active"] {
   color-scheme: dark !important;
@@ -16,6 +16,12 @@
   --ds-bg-rgb: 17 19 24;
   --ds-panel-rgb: 25 28 34;
   --ds-panel-2-rgb: 32 36 43;
+  /* Shared interface surface settings. Change background alpha, never element
+     opacity: text, icons, images and semantic highlights must stay opaque. */
+  --ds-surface-opacity: .80;
+  --ds-surface-blur: 10px;
+  --ds-surface-background: rgb(var(--ds-panel-rgb) / var(--ds-surface-opacity));
+  --ds-surface-filter: blur(var(--ds-surface-blur)) saturate(106%);
   --ds-text-rgb: 237 240 241;
   --ds-muted-rgb: 163 170 174;
   --ds-accent-rgb: 130 152 163;
@@ -53,10 +59,8 @@
   --ds-immersive-sidebar: rgb(var(--ds-panel-rgb) / .46);
   --ds-task-immersive-sidebar: rgb(var(--ds-panel-rgb) / .70);
   --ds-immersive-chrome: rgb(var(--ds-panel-rgb) / .28);
-  --ds-immersive-composer: rgb(var(--ds-panel-rgb) / .44);
-  --ds-immersive-composer-solid: color-mix(in srgb,
-    rgb(var(--ds-panel-2-rgb)) 88%,
-    rgb(var(--ds-muted-rgb)) 12%);
+  --ds-immersive-composer: var(--ds-surface-background);
+  --ds-immersive-composer-solid: var(--ds-surface-background);
   --ds-immersive-line: rgb(var(--ds-muted-rgb) / .42);
   --ds-task-immersive-edge: rgb(var(--ds-bg-rgb) / .82);
   --ds-task-immersive-mid: rgb(var(--ds-bg-rgb) / .74);
@@ -103,8 +107,8 @@ html[data-dream-skin="active"][data-dream-shell="light"] {
   --ds-immersive-sidebar: rgb(var(--ds-panel-rgb) / .48);
   --ds-task-immersive-sidebar: rgb(var(--ds-panel-rgb) / .72);
   --ds-immersive-chrome: rgb(var(--ds-panel-rgb) / .34);
-  --ds-immersive-composer: rgb(var(--ds-panel-rgb) / .46);
-  --ds-immersive-composer-solid: rgb(var(--ds-panel-rgb) / .74);
+  --ds-immersive-composer: var(--ds-surface-background);
+  --ds-immersive-composer-solid: var(--ds-surface-background);
   --ds-immersive-line: rgb(var(--ds-accent-rgb) / .24);
   --ds-task-immersive-edge: rgb(var(--ds-panel-rgb) / .86);
   --ds-task-immersive-mid: rgb(var(--ds-panel-rgb) / .78);
@@ -116,7 +120,50 @@ html[data-dream-skin="active"][data-dream-shell="light"] {
    popover keeps the opposite palette (#233). Remap the dropdown token family to
    skin variables so those surfaces inherit the theme in both shells. */
 html[data-dream-skin="active"] {
-  --color-token-dropdown-background: var(--ds-panel);
+  --color-token-dropdown-background: var(--ds-surface-background);
+  /* Codex's terminal theme reads this token and enables allowTransparency.
+     Keep the canvas clear; the shared outer surface supplies its tint. */
+  --color-codex-terminal-background: transparent !important;
+}
+
+/* Neutral native surfaces are bound once by the renderer, using semantic
+   containers and shared background classes rather than route-specific rules.
+   Important declarations in this layer beat old unlayered surface styling;
+   the earlier community layer still owns explicit user overrides. Only the
+   outer surface paints glass. Nested wrappers stay clear, preventing alpha
+   and backdrop blur from accumulating through the component tree. */
+@layer dreamskin-surfaces {
+  html[data-dream-skin="active"] [data-ds-surface="panel"] {
+    background: var(--ds-surface-background) !important;
+    backdrop-filter: var(--ds-surface-filter) !important;
+  }
+
+  html[data-dream-skin="active"] [data-ds-surface="clear"] {
+    background: transparent !important;
+    backdrop-filter: none !important;
+  }
+
+  html[data-dream-skin="active"] [data-ds-surface] {
+    --app-shell-panel-background: transparent !important;
+    --color-codex-terminal-background: transparent !important;
+  }
+
+  /* Diff renderers inherit their base paint through the host. Do not touch
+     addition/deletion colors, syntax colors, images or embedded documents. */
+  html[data-dream-skin="active"] :is(
+    [data-ds-surface][class~="group/file-diff"],
+    [data-ds-surface] [class~="group/file-diff"]
+  ) {
+    --codex-diffs-surface-override: transparent !important;
+  }
+
+  html[data-dream-skin="active"] [data-ds-surface] diffs-container {
+    --color-surface: transparent !important;
+  }
+
+  html[data-dream-skin="active"] [data-ds-surface] :is(.xterm, .xterm-viewport) {
+    background-color: transparent !important;
+  }
 }
 
 html[data-dream-skin="active"] [class~="bg-token-dropdown-background"] {
@@ -533,56 +580,6 @@ html[data-dream-skin="active"][data-dream-shell="light"] main:is(.main-surface, 
   text-shadow: none;
 }
 
-/* Newer Codex builds paint the list/detail panes (pull requests, the chat
-   review/terminal/browser/files side panel) with token surfaces instead of
-   [role="main"]. The side panel can coexist with a visible home shell, so this
-   transparency is deliberately not gated on the home-route selector. The nested
-   surfaces all carry the same token, so they are cleared everywhere and the
-   translucent pane tint is painted once, on the bordered outer wrapper. */
-html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"])
-  :is(div, section, aside)[class~="bg-token-main-surface-primary"] {
-  background: transparent !important;
-}
-
-html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"])
-  div[class~="bg-token-main-surface-primary"][class~="border-l"] {
-  background: rgb(var(--ds-panel-rgb) / .62) !important;
-  backdrop-filter: blur(10px) saturate(106%) !important;
-}
-
-/* Current desktop panels use --color-surface instead of the legacy token
-   above. Scope the transparent surfaces to the tabbed side pane: changing
-   --color-surface globally would also erase menus and semantic highlights.
-   Paint the pane tint once; image pixels and embedded webviews stay intact. */
-html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]) aside:has([data-tab-id]) {
-  --app-shell-panel-background: transparent;
-  background: rgb(var(--ds-panel-rgb) / .62) !important;
-  backdrop-filter: blur(10px) saturate(106%) !important;
-}
-
-html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]) aside:has([data-tab-id])
-  :is(div, section, aside):is([class~="bg-surface"], [class~="electron:bg-surface"]):not([data-tab-id]) {
-  background: transparent !important;
-}
-
-/* Diff context rows live inside an open shadow root. Inherit only the base
-   surface token through the host; leave addition/deletion colors untouched.
-   The light-DOM file wrapper has its own supported surface override. */
-html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]) aside:has([data-tab-id])
-  [class~="group/file-diff"] {
-  --codex-diffs-surface-override: transparent;
-}
-
-html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]) aside:has([data-tab-id])
-  diffs-container {
-  --color-surface: transparent;
-}
-
-html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]) aside:has([data-tab-id])
-  [class~="group/diff-header"] {
-  background: rgb(var(--ds-panel-rgb) / .92) !important;
-}
-
 /* macOS settings may remove both the shell and the fallback main/home
    anchors. Supply static artwork on body only in that case; a translucent
    settings surface alone cannot reveal an image that is no longer painted.
@@ -594,20 +591,6 @@ html[data-dream-skin="active"]:not([data-dream-media="video"]):not([data-dream-t
   background-size: 100% 100%, var(--dream-art-background-size, cover) !important;
   background-repeat: no-repeat !important;
   background-attachment: fixed !important;
-}
-
-/* Settings can replace the shell, so do not require a main element here.
-   Navigation slugs remain present when switching settings categories. Keep
-   controls and appearance previews on their native surfaces. */
-html[data-dream-skin="active"]:has([data-settings-panel-slug])
-  div[class~="electron:overflow-hidden"][class~="electron:bg-surface"] {
-  background: rgb(var(--ds-panel-rgb) / .62) !important;
-}
-
-html[data-dream-skin="active"]:has([data-settings-panel-slug])
-  div[class~="electron:overflow-hidden"][class~="electron:bg-surface"]
-  div[class~="rounded-2xl"][class~="border-default"] {
-  background-color: rgb(var(--ds-panel-rgb) / .28) !important;
 }
 
 html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]):not(:has([role="main"])) article {
@@ -955,9 +938,9 @@ html[data-dream-skin="active"] :is(.composer-surface-chrome, [class*="_ComposerL
   overflow: visible !important;
   border: 1px solid rgb(var(--ds-muted-rgb) / .18) !important;
   border-radius: 22px !important;
-  background: rgb(var(--ds-panel-rgb) / .94) !important;
+  background: var(--ds-surface-background) !important;
   box-shadow: 0 10px 28px rgb(var(--ds-bg-rgb) / .24) !important;
-  backdrop-filter: blur(16px) saturate(108%) !important;
+  backdrop-filter: var(--ds-surface-filter) !important;
 }
 
 /* Manager-owned framing is a shared CSS contract. Position values are
@@ -1022,12 +1005,12 @@ html[data-dream-skin="active"] [data-codex-composer-root][data-composer-placemen
    Match its surface to the public composer without affecting task routes. */
 html[data-dream-skin="active"] [data-codex-composer-root][data-composer-placement="home"]
   [data-composer-home-utility-bar-position="above"] {
-  background: rgb(var(--ds-panel-rgb) / .94) !important;
+  background: var(--ds-surface-background) !important;
   border: 1px solid rgb(var(--ds-muted-rgb) / .18) !important;
   border-bottom: 0 !important;
   border-radius: 22px 22px 0 0 !important;
   box-shadow: 0 10px 28px rgb(var(--ds-bg-rgb) / .24) !important;
-  backdrop-filter: blur(16px) saturate(108%) !important;
+  backdrop-filter: var(--ds-surface-filter) !important;
 }
 
 /* Newer app shells may no longer expose the selector contract above. The
@@ -1085,9 +1068,9 @@ html[data-dream-skin="active"]:not(:has(main:is(.main-surface, [data-app-shell-m
   overflow: visible !important;
   border: 1px solid rgb(var(--ds-muted-rgb) / .18) !important;
   border-radius: 22px !important;
-  background: rgb(var(--ds-panel-rgb) / .94) !important;
+  background: var(--ds-surface-background) !important;
   box-shadow: 0 10px 28px rgb(var(--ds-bg-rgb) / .24) !important;
-  backdrop-filter: blur(16px) saturate(108%) !important;
+  backdrop-filter: var(--ds-surface-filter) !important;
 }
 
 html[data-dream-skin="active"]:not(:has(main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]))) [data-ds-part="composer"]::before {
@@ -1254,12 +1237,12 @@ html[data-dream-skin="active"] :is([class*="_homeUtilityBar_"], [class*="_Compos
   margin-inline: 0 !important;
   padding-inline: 18px !important;
   border-radius: 22px 22px 0 0 !important;
-  background: rgb(var(--ds-panel-rgb) / .94) !important;
+  background: var(--ds-surface-background) !important;
   box-shadow:
     inset 1px 0 rgb(var(--ds-muted-rgb) / .18),
     inset -1px 0 rgb(var(--ds-muted-rgb) / .18),
     inset 0 1px rgb(var(--ds-muted-rgb) / .18) !important;
-  backdrop-filter: blur(16px) saturate(108%) !important;
+  backdrop-filter: var(--ds-surface-filter) !important;
 }
 
 html[data-dream-skin="active"] [role="main"]:has([data-testid="home-icon"]):has(:is([class*="_homeUtilityBar_"], [class*="_ComposerHomeUtilityBar_"]))

@@ -24,6 +24,7 @@ param(
   [ValidateSet('auto','left','right','center','none')][string]$SafeArea = 'auto',
   [ValidateSet('auto','ambient','banner','full','off')][string]$TaskMode = 'auto',
   [ValidateRange(0.0, 1.0)][double]$BubbleOpacity = 0.0,
+  [ValidateRange(0.0, 1.0)][double]$SurfaceOpacity = 0.8,
   [ValidatePattern('^$|^#[0-9A-Fa-f]{6}$')][string]$Accent = '',
   [switch]$KeepCurrent,
   # Keep lock waiting below the manager's 30-second whole-operation budget.
@@ -94,6 +95,7 @@ function ConvertTo-ManagerTheme {
     [string]$ThemeSafeArea = 'auto',
     [string]$ThemeTaskMode = 'auto',
     [double]$ThemeBubbleOpacity = 0.0,
+    [double]$ThemeSurfaceOpacity = 0.8,
     [string]$ThemeAccent = ''
   )
   return [ordered]@{
@@ -118,6 +120,7 @@ function ConvertTo-ManagerTheme {
     safeArea = $ThemeSafeArea
     taskMode = $ThemeTaskMode
     bubbleOpacity = $ThemeBubbleOpacity
+    surfaceOpacity = $ThemeSurfaceOpacity
     accent = $ThemeAccent
   }
 }
@@ -130,7 +133,7 @@ function ConvertTo-ManagerPresetOption {
   $contract = ConvertTo-ManagerPresetThemeContract -Preset $Preset
   # Resolve both catalog and directory presets through the same user settings.
   $Preset.appearance = $contract.appearance
-  foreach ($key in @('focusX','focusY','safeArea','taskMode','bubbleOpacity','positionX','positionY','zoom','positionMode')) {
+  foreach ($key in @('focusX','focusY','safeArea','taskMode','bubbleOpacity','surfaceOpacity','positionX','positionY','zoom','positionMode')) {
     $Preset[$key] = $contract.art.$key
   }
   $Preset.framingEnabled = Test-ManagerThemeFraming -Theme $contract
@@ -154,6 +157,7 @@ function ConvertTo-ManagerPresetOption {
     -ThemeSafeArea $(if ($Preset.safeArea) { "$($Preset.safeArea)" } else { 'auto' }) `
     -ThemeTaskMode $(if ($Preset.taskMode) { "$($Preset.taskMode)" } else { 'auto' }) `
     -ThemeBubbleOpacity $(if ($null -ne $Preset.bubbleOpacity) { [double]$Preset.bubbleOpacity } else { 0.0 }) `
+    -ThemeSurfaceOpacity $(if ($null -ne $Preset.surfaceOpacity) { [double]$Preset.surfaceOpacity } else { 0.8 }) `
     -ThemeAccent $(if ($Preset.accent) { "$($Preset.accent)" } else { '' })
 }
 
@@ -488,6 +492,7 @@ function New-ManagerCustomTheme {
       safeArea = $SafeArea
       taskMode = $TaskMode
       bubbleOpacity = $BubbleOpacity
+      surfaceOpacity = $SurfaceOpacity
     }
     palette = [pscustomobject]@{}
   }
@@ -538,6 +543,7 @@ function Update-ManagerSavedTheme {
   $theme.art | Add-Member -NotePropertyName safeArea -NotePropertyValue $SafeArea -Force
   $theme.art | Add-Member -NotePropertyName taskMode -NotePropertyValue $TaskMode -Force
   $theme.art | Add-Member -NotePropertyName bubbleOpacity -NotePropertyValue $BubbleOpacity -Force
+  $theme.art | Add-Member -NotePropertyName surfaceOpacity -NotePropertyValue $SurfaceOpacity -Force
   foreach ($property in @('positionX', 'positionY', 'zoom', 'positionMode', 'framingEnabled')) {
     if ($theme.art.PSObject.Properties[$property]) { $theme.art.PSObject.Properties.Remove($property) }
   }
@@ -740,6 +746,7 @@ function Get-ManagerThemeFingerprint {
     safeArea = if ($Theme.art -and $Theme.art.safeArea) { "$($Theme.art.safeArea)" } else { 'auto' }
     taskMode = if ($Theme.art -and $Theme.art.taskMode) { "$($Theme.art.taskMode)" } else { 'auto' }
     bubbleOpacity = if ($Theme.art -and $null -ne $Theme.art.bubbleOpacity) { [double]$Theme.art.bubbleOpacity } else { 0.0 }
+    surfaceOpacity = if ($Theme.art -and $null -ne $Theme.art.surfaceOpacity) { [double]$Theme.art.surfaceOpacity } else { 0.8 }
     accent = $accent
   }
   $sha = [System.Security.Cryptography.SHA256]::Create()
@@ -749,14 +756,14 @@ function Get-ManagerThemeFingerprint {
   } finally { $sha.Dispose() }
 }
 
-$ManagerFingerprintVersion = 3
+$ManagerFingerprintVersion = 4
 
 function Get-ManagerSavedFingerprints {
   $fingerprints = @{}
   foreach ($saved in @(Get-DreamSkinSavedThemes -StateRoot $StateRoot -SkipImageMetadata)) {
     try {
       $loaded = Read-DreamSkinTheme -ThemeDirectory $saved.Path -SkipImageMetadata
-      # Stored fingerprints from older manager versions omit custom-framing fields.
+      # Older fingerprints omit framing fields or the shared panel opacity.
       # Recompute unless the theme explicitly records the current fingerprint version.
       $fingerprintVersion = 0
       if ($null -ne $loaded.Theme.managerFingerprintVersion) {
@@ -799,6 +806,7 @@ function ConvertTo-ManagerBatchTheme {
   $safeAreaValue = if ($Item.safeArea) { "$($Item.safeArea)" } else { 'auto' }
   $taskModeValue = if ($Item.taskMode) { "$($Item.taskMode)" } else { 'auto' }
   $bubbleOpacityValue = if ($null -ne $Item.bubbleOpacity) { [double]$Item.bubbleOpacity } else { 0.0 }
+  $surfaceOpacityValue = if ($null -ne $Item.surfaceOpacity) { [double]$Item.surfaceOpacity } else { 0.8 }
   $categoryValue = if ($Item.category) { "$($Item.category)" } else { 'custom' }
   $tagsValue = @($Item.tags | ForEach-Object { "$_".Trim() })
   if ($appearanceValue -notin @('auto','light','dark') -or $safeAreaValue -notin @('auto','left','right','center','none') -or
@@ -830,6 +838,8 @@ function ConvertTo-ManagerBatchTheme {
   if ($positionModeValue -notin @('locked','free')) { throw '图片移动模式无效。' }
   if ([double]::IsNaN($bubbleOpacityValue) -or [double]::IsInfinity($bubbleOpacityValue) -or
     $bubbleOpacityValue -lt 0 -or $bubbleOpacityValue -gt 1) { throw '消息气泡不透明度必须是 0 到 1 之间的有限数字。' }
+  if ([double]::IsNaN($surfaceOpacityValue) -or [double]::IsInfinity($surfaceOpacityValue) -or
+    $surfaceOpacityValue -lt 0 -or $surfaceOpacityValue -gt 1) { throw '面板不透明度必须是 0 到 1 之间的有限数字。' }
   $accentValue = "$($Item.accent)"
   if ($accentValue -and $accentValue -notmatch '^#[0-9A-Fa-f]{6}$') { throw '强调色必须是 #RRGGBB。' }
   $theme = [pscustomobject][ordered]@{
@@ -838,6 +848,7 @@ function ConvertTo-ManagerBatchTheme {
     art = [pscustomobject][ordered]@{
       focusX = $focusXValue; focusY = $focusYValue
       safeArea = $safeAreaValue; taskMode = $taskModeValue; bubbleOpacity = $bubbleOpacityValue
+      surfaceOpacity = $surfaceOpacityValue
     }
     palette = [pscustomobject]@{}
   }
@@ -1202,6 +1213,7 @@ switch ($Action) {
         -ThemeSafeArea $(if ($loaded.Theme.art.safeArea) { "$($loaded.Theme.art.safeArea)" } else { 'auto' }) `
         -ThemeTaskMode $(if ($loaded.Theme.art.taskMode) { "$($loaded.Theme.art.taskMode)" } else { 'auto' }) `
         -ThemeBubbleOpacity $(if ($null -ne $loaded.Theme.art.bubbleOpacity) { [double]$loaded.Theme.art.bubbleOpacity } else { 0.0 }) `
+        -ThemeSurfaceOpacity $(if ($null -ne $loaded.Theme.art.surfaceOpacity) { [double]$loaded.Theme.art.surfaceOpacity } else { 0.8 }) `
         -ThemeAccent $(if ($loaded.Theme.palette.accent) { "$($loaded.Theme.palette.accent)" } else { '' })
     }
     $nodeVersion = ''

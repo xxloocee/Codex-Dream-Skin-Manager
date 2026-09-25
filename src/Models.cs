@@ -61,6 +61,7 @@ namespace CodexDreamSkinManager
         public string SafeArea = "auto";
         public string TaskMode = "auto";
         public double BubbleOpacity;
+        public double SurfaceOpacity = 0.8;
         public string Accent = "";
         public string Category = "custom";
         public List<string> Tags = new List<string>();
@@ -263,6 +264,7 @@ namespace CodexDreamSkinManager
         public string SafeArea { get; set; }
         public string TaskMode { get; set; }
         public double BubbleOpacity { get; set; }
+        public double SurfaceOpacity { get; set; }
         public string Accent { get; set; }
 
         public ThemeOption()
@@ -286,6 +288,7 @@ namespace CodexDreamSkinManager
             SafeArea = "auto";
             TaskMode = "auto";
             BubbleOpacity = 0;
+            SurfaceOpacity = 0.8;
             Accent = "";
         }
 
@@ -443,6 +446,7 @@ namespace CodexDreamSkinManager
         public string SafeArea = "auto";
         public string TaskMode = "auto";
         public double BubbleOpacity;
+        public double SurfaceOpacity = 0.8;
         public string Accent = "";
 
         public void SetFocusPercent(double x, double y)
@@ -474,6 +478,8 @@ namespace CodexDreamSkinManager
                 throw new ArgumentException("图片移动模式无效。");
             if (double.IsNaN(BubbleOpacity) || double.IsInfinity(BubbleOpacity) || BubbleOpacity < 0 || BubbleOpacity > 1)
                 throw new ArgumentException("消息气泡不透明度必须在 0% 到 100% 之间。");
+            if (double.IsNaN(SurfaceOpacity) || double.IsInfinity(SurfaceOpacity) || SurfaceOpacity < 0 || SurfaceOpacity > 1)
+                throw new ArgumentException("面板不透明度必须在 0% 到 100% 之间。");
             Accent = ValidateAccent(Accent);
         }
 
@@ -514,6 +520,7 @@ namespace CodexDreamSkinManager
         public string SafeArea = "auto";
         public string TaskMode = "auto";
         public double BubbleOpacity;
+        public double SurfaceOpacity = 0.8;
         public string Accent = "";
 
         public void Validate()
@@ -534,6 +541,8 @@ namespace CodexDreamSkinManager
                 throw new ArgumentException("任务页模式无效。");
             if (double.IsNaN(BubbleOpacity) || double.IsInfinity(BubbleOpacity) || BubbleOpacity < 0 || BubbleOpacity > 1)
                 throw new ArgumentException("消息气泡不透明度必须在 0% 到 100% 之间。");
+            if (double.IsNaN(SurfaceOpacity) || double.IsInfinity(SurfaceOpacity) || SurfaceOpacity < 0 || SurfaceOpacity > 1)
+                throw new ArgumentException("面板不透明度必须在 0% 到 100% 之间。");
             Accent = CustomThemeOptions.ValidateAccent(Accent);
         }
     }

@@ -106,6 +106,7 @@ namespace CodexDreamSkinManager
                         theme.SafeArea = ReadString(row, "safeArea", "auto");
                         theme.TaskMode = ReadString(row, "taskMode", "auto");
                         theme.BubbleOpacity = ReadDouble(row, "bubbleOpacity", 0);
+                        theme.SurfaceOpacity = ReadDouble(row, "surfaceOpacity", 0.8);
                         theme.Accent = ReadString(row, "accent", "");
                         object tags;
                         if (row.TryGetValue("tags", out tags))
@@ -259,6 +260,7 @@ namespace CodexDreamSkinManager
                         { "positionX", item.PositionX }, { "positionY", item.PositionY }, { "zoom", item.Zoom },
                         { "positionMode", item.PositionMode }, { "framingEnabled", item.FramingEnabled },
                         { "taskMode", item.TaskMode }, { "bubbleOpacity", item.BubbleOpacity },
+                        { "surfaceOpacity", item.SurfaceOpacity },
                         { "accent", item.Accent }, { "category", item.Category },
                         { "tags", (item.Tags ?? new List<string>()).ToArray() },
                         { "safeCssPath", item.SafeCssPath }, { "licensePath", item.LicensePath }
@@ -314,6 +316,7 @@ namespace CodexDreamSkinManager
                 P("-FramingEnabled"), V(options.FramingEnabled ? "true" : "false"),
                 P("-SafeArea"), V(options.SafeArea), P("-TaskMode"), V(options.TaskMode),
                 P("-BubbleOpacity"), V(options.BubbleOpacity.ToString(CultureInfo.InvariantCulture)),
+                P("-SurfaceOpacity"), V(options.SurfaceOpacity.ToString(CultureInfo.InvariantCulture)),
                 P("-Accent"), V(options.Accent)
             };
             return RunManagerAsync(args);
@@ -411,6 +414,7 @@ namespace CodexDreamSkinManager
                 args.Add(P("-SafeArea")); args.Add(V(theme.SafeArea));
                 args.Add(P("-TaskMode")); args.Add(V(theme.TaskMode));
                 args.Add(P("-BubbleOpacity")); args.Add(V(theme.BubbleOpacity.ToString(CultureInfo.InvariantCulture)));
+                args.Add(P("-SurfaceOpacity")); args.Add(V(theme.SurfaceOpacity.ToString(CultureInfo.InvariantCulture)));
                 args.Add(P("-Accent")); args.Add(V(theme.Accent));
             }
         }
@@ -448,6 +452,7 @@ namespace CodexDreamSkinManager
                 P("-FramingEnabled"), V("true"),
                 P("-SafeArea"), V(options.SafeArea), P("-TaskMode"), V(options.TaskMode),
                 P("-BubbleOpacity"), V(options.BubbleOpacity.ToString(CultureInfo.InvariantCulture)),
+                P("-SurfaceOpacity"), V(options.SurfaceOpacity.ToString(CultureInfo.InvariantCulture)),
                 P("-Accent"), V(options.Accent)
             });
             if (keepCurrent) args.Add(P("-KeepCurrent"));

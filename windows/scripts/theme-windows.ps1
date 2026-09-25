@@ -453,7 +453,7 @@ function Normalize-DreamSkinThemeContract {
   }
   if (-not $Theme.PSObject.Properties['art'] -or -not $Theme.PSObject.Properties['art'].Value) {
     $Theme | Add-Member -NotePropertyName art -NotePropertyValue `
-      ([pscustomobject]@{ focusX = $null; focusY = $null; bubbleOpacity = 0.0; safeArea = 'auto'; taskMode = 'auto' }) -Force
+      ([pscustomobject]@{ focusX = $null; focusY = $null; bubbleOpacity = 0.0; surfaceOpacity = 0.8; safeArea = 'auto'; taskMode = 'auto' }) -Force
   }
   return $Theme
 }
@@ -507,7 +507,7 @@ function Merge-DreamSkinPresetSettings {
   if ($null -eq $Settings) { return $Theme }
   $Theme = Normalize-DreamSkinThemeContract -Theme $Theme
   $Theme.appearance = $Settings.appearance
-  foreach ($key in @('focusX','focusY','safeArea','taskMode','bubbleOpacity','positionX','positionY','zoom','positionMode','framingEnabled')) {
+  foreach ($key in @('focusX','focusY','safeArea','taskMode','bubbleOpacity','surfaceOpacity','positionX','positionY','zoom','positionMode','framingEnabled')) {
     if ($Theme.art.PSObject.Properties[$key]) { $Theme.art.PSObject.Properties.Remove($key) }
     if ($Settings.art.PSObject.Properties[$key]) {
       $Theme.art | Add-Member -NotePropertyName $key -NotePropertyValue $Settings.art.$key
@@ -671,7 +671,7 @@ function Set-DreamSkinActiveTheme {
       id = 'custom'
       name = '自定义主题'
       appearance = 'auto'
-      art = [pscustomobject]@{ focusX = $null; focusY = $null; bubbleOpacity = 0.0; safeArea = 'auto'; taskMode = 'auto' }
+      art = [pscustomobject]@{ focusX = $null; focusY = $null; bubbleOpacity = 0.0; surfaceOpacity = 0.8; safeArea = 'auto'; taskMode = 'auto' }
     }
   }
   $imageName = New-DreamSkinThemeImageName -Extension $extension

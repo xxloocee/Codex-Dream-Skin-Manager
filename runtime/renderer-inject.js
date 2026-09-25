@@ -7,6 +7,34 @@
   const STYLE_ID = "codex-dream-skin-style";
   const SHELL_ATTR = "data-dream-shell";
   const PART_ATTR = "data-ds-part";
+  const SURFACE_ATTR = "data-ds-surface";
+  // Native neutral surface classes are shared by settings, side/bottom panes,
+  // source cards, popovers and future screens. Never match bg-* indiscriminately:
+  // selection, status, diff and image backgrounds are not interface surfaces.
+  const SURFACE_CLASSES = [
+    "bg-surface", "electron:bg-surface", "bg-surface-primary",
+    "bg-surface-secondary", "bg-surface-tertiary", "bg-surface-elevated",
+    "bg-surface-elevated-primary", "bg-surface-elevated-secondary",
+    "bg-token-main-surface-primary", "bg-token-sidebar-surface-primary",
+    "bg-token-dropdown-background",
+  ];
+  const NEUTRAL_SURFACE_SELECTOR = ':is(div, section, aside, main, nav, header, footer, form):is(' +
+    SURFACE_CLASSES.map((name) => `[class~="${name}"]`).join(',') + ')';
+  const SURFACE_BOUNDARIES = [
+    'aside', '[role="dialog"]', '[role="menu"]', '[role="tooltip"]',
+    '[data-summary-panel-variant]', '[data-radix-popper-content-wrapper] > div',
+    '[data-composer-home-utility-bar-position="above"]',
+    '[class*="_ComposerLayoutBody_"]',
+    '[class~="group/diff-header"]',
+  ].join(',');
+  const PROTECTED_SURFACE_CONTENT = [
+    'button', 'input', 'textarea', 'pre', 'code', 'canvas', 'svg', 'img', 'video',
+    'iframe', 'webview', '[contenteditable="true"]', '[role="button"]',
+    '[role="tab"]', '[role="option"]', '[role="menuitem"]',
+    '[role="menuitemcheckbox"]', '[role="menuitemradio"]',
+    '[data-testid="theme-preview"]', '[data-ds-part="message"]',
+    '[class*="_markdown"]',
+  ].join(',');
   const COMPOSER_BORDER_BRIDGES = [
     "border-color", "border-top-color", "border-right-color", "border-bottom-color",
     "border-left-color", "border-width", "border-top-width", "border-right-width",
@@ -566,6 +594,8 @@
       ? ART.taskMode : profile?.taskMode || "ambient";
     const bubbleOpacity = typeof ART.bubbleOpacity === "number"
       ? clamp(ART.bubbleOpacity, 0, 1) : 0;
+    const surfaceOpacity = typeof ART.surfaceOpacity === "number" && Number.isFinite(ART.surfaceOpacity)
+      ? clamp(ART.surfaceOpacity, 0, 1) : 0.8;
     const wide = artMediaType === "video" || profile?.wide ||
       profile?.aspect === "wide" || profile?.aspect === "ultrawide";
     const aspect = profile?.aspect || "unknown";
@@ -609,6 +639,7 @@
     setStyleProperty(root, "--dream-art-framing-position", framingPosition);
     setStyleProperty(root, "--dream-art-background-size", backgroundSize);
     setStyleProperty(root, "--ds-bubble-opacity", String(Number(bubbleOpacity.toFixed(4))));
+    setStyleProperty(root, "--ds-surface-opacity", String(Number(surfaceOpacity.toFixed(4))));
     setStyleProperty(root, "--ds-theme-image-focus-x", String(Number(focusX.toFixed(4))));
     setStyleProperty(root, "--ds-theme-image-focus-y", String(Number(focusY.toFixed(4))));
   };
@@ -829,6 +860,7 @@
   };
 
   const partNodes = new Set();
+  const surfaceNodes = new Map();
   const composerBorderRestores = new Map();
   const queryAll = (selector) => {
     if (!selector) return [];
@@ -942,6 +974,48 @@
       '[class*="max-w-"][class*="rounded-2xl"][class*="text-start"]',
     ) ?? node;
   });
+
+  const restoreSurface = (node) => {
+    const previous = surfaceNodes.get(node);
+    if (previous === null) node.removeAttribute?.(SURFACE_ATTR);
+    else if (previous !== undefined) node.setAttribute?.(SURFACE_ATTR, previous);
+    surfaceNodes.delete(node);
+  };
+  const refreshSurfaces = (parts, composerNodes) => {
+    const shellParts = new Set(["root", "main", "home", "thread", "sidebar", "header"]);
+    const sceneNodes = [...parts].filter(([, part]) => part === "main" || part === "home")
+      .map(([node]) => node);
+    const candidates = new Set([
+      ...genericNodes(NEUTRAL_SURFACE_SELECTOR), ...genericNodes(SURFACE_BOUNDARIES),
+      ...composerNodes, ...selectorNodes("home-utility"),
+    ].filter((node) => !shellParts.has(parts.get(node)) &&
+      !node.closest?.(PROTECTED_SURFACE_CONTENT)));
+    // A generic bg-surface wrapper around the entire app must not become an
+    // extra panel or cause every independent panel beneath it to lose its tint.
+    const sceneWrappers = new Set([...candidates]
+      .filter((node) => sceneNodes.some((scene) => node.contains?.(scene))));
+
+    for (const node of surfaceNodes.keys()) {
+      if (!candidates.has(node)) restoreSurface(node);
+    }
+    for (const node of candidates) {
+      // Portaled and inline floating surfaces both need their own paint even
+      // when their logical parent belongs to an existing panel.
+      const floating = node.matches?.('[role="dialog"], [role="menu"], [role="tooltip"]') ||
+        node.parentElement?.hasAttribute?.('data-radix-popper-content-wrapper') ||
+        node.classList?.contains('sticky') || node.classList?.contains('fixed');
+      let nested = false;
+      if (!floating) {
+        for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+          if (candidates.has(parent) && !sceneWrappers.has(parent)) { nested = true; break; }
+        }
+      }
+      if (!surfaceNodes.has(node)) surfaceNodes.set(node, node.getAttribute(SURFACE_ATTR));
+      const value = nested || sceneWrappers.has(node) ? "clear" : "panel";
+      if (node.getAttribute(SURFACE_ATTR) !== value) node.setAttribute(SURFACE_ATTR, value);
+    }
+  };
+
   const refreshParts = () => {
     metrics.partPasses += 1;
     const desired = new Map();
@@ -980,9 +1054,11 @@
       partNodes.add(node);
     }
     refreshComposerBorders(composerNodes);
+    refreshSurfaces(desired, composerNodes);
   };
 
   const removeParts = () => {
+    for (const node of [...surfaceNodes.keys()]) restoreSurface(node);
     for (const node of [...composerBorderRestores.keys()]) restoreComposerBorders(node);
     for (const node of partNodes) node.removeAttribute?.(PART_ATTR);
     partNodes.clear();
@@ -1205,7 +1281,13 @@
   };
   const observePartTree = (node) => {
     if (!partObserver || !node) return;
-    partObserver.observe(node, { childList: true, subtree: true });
+    partObserver.observe(node, {
+      childList: true, subtree: true, attributes: true,
+      // Ignore our own part/surface attributes and inline palette writes.
+      attributeFilter: ["class", "role", "data-composer-surface-variant",
+        "data-composer-home-utility-bar-position", "data-summary-panel-variant",
+        "data-radix-popper-content-wrapper", "data-testid", "contenteditable"],
+    });
   };
   observeAttributes(document.documentElement);
   const observeBody = () => {
