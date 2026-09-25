@@ -1686,7 +1686,8 @@ namespace CodexDreamSkinManager
                     AssertTrue(parentExited);
                     ScriptResult result = task.GetAwaiter().GetResult();
                     AssertEqual("done", result.Output);
-                    AssertEqual("", result.Error);
+                    // Windows PowerShell can emit an empty CLIXML header on stderr.
+                    AssertTrue(string.IsNullOrWhiteSpace(result.Error) || result.Error == "#< CLIXML");
                     AssertTrue(result.ExitCode == 0);
                     using (Process child = Process.GetProcessById(childPid))
                         AssertTrue(!child.HasExited);

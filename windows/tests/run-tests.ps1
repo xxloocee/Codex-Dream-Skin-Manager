@@ -317,7 +317,7 @@ try {
       $installedScript.FullName, [ref]$tokens, [ref]$parseErrors
     ) | Out-Null
     if ($parseErrors.Count -gt 0) {
-      throw "Installed runtime script failed to parse after its source checkout was removed: $($installedScript.Name)"
+      throw "Installed runtime script failed to parse after its source checkout was removed: $($installedScript.Name): $($parseErrors -join '; ')"
     }
   }
   if (-not (Test-Path -LiteralPath $engine.CommunityApply -PathType Leaf) -or
