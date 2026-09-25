@@ -199,13 +199,13 @@ function Invoke-DreamSkinStartupFixture {
   function Write-Host {
     param([Parameter(ValueFromRemainingArguments = $true)][object[]]$Object)
   }
-  # The launch and verify deadlines share the first two timestamps. Permit one
-  # retry at +30 seconds, then cross the 90-second verification deadline.
+  # Keep the verify and one-shot probes inside their shared budget. Expire
+  # after the second verify so malformed later evidence cannot erase a latch.
   function Get-Date {
     $script:dateCall += 1
-    $offsets = @(0, 0, 30, 120)
-    $index = [Math]::Min($script:dateCall - 1, $offsets.Count - 1)
-    return [DateTime]::new(2026, 7, 25, 0, 0, 0, [DateTimeKind]::Utc).AddSeconds($offsets[$index])
+    $elapsedSeconds = $script:dateCall
+    if ($script:verifyPayloadIndex -ge 2) { $elapsedSeconds += 120 }
+    return [DateTime]::new(2026, 7, 25, 0, 0, 0, [DateTimeKind]::Utc).AddSeconds($elapsedSeconds)
   }
   function Start-Sleep { param([int]$Milliseconds, [int]$Seconds) }
 
