@@ -52,6 +52,8 @@ namespace CodexDreamSkinManager
             status.IsPaused = ReadBool(data, "isPaused");
             status.StatusKind = ReadString(data, "statusKind", status.IsRunning ? "running" : "stopped");
             status.StatusMessage = ReadString(data, "statusMessage", "");
+            status.RendererStatus = ReadString(data, "rendererStatus", "unavailable");
+            status.RendererMessage = ReadString(data, "rendererMessage", "");
             status.ActiveThemeId = ReadString(data, "activeThemeId", "");
             status.ActiveThemeName = ReadString(data, "activeTheme", "未选择");
             status.ActiveThemeImage = ReadString(data, "activeImage", "");
@@ -106,6 +108,7 @@ namespace CodexDreamSkinManager
                         theme.SafeArea = ReadString(row, "safeArea", "auto");
                         theme.TaskMode = ReadString(row, "taskMode", "auto");
                         theme.BubbleOpacity = ReadDouble(row, "bubbleOpacity", 0);
+                        theme.SurfaceOpacity = ReadDouble(row, "surfaceOpacity", 0.8);
                         theme.Accent = ReadString(row, "accent", "");
                         object tags;
                         if (row.TryGetValue("tags", out tags))
@@ -259,6 +262,7 @@ namespace CodexDreamSkinManager
                         { "positionX", item.PositionX }, { "positionY", item.PositionY }, { "zoom", item.Zoom },
                         { "positionMode", item.PositionMode }, { "framingEnabled", item.FramingEnabled },
                         { "taskMode", item.TaskMode }, { "bubbleOpacity", item.BubbleOpacity },
+                        { "surfaceOpacity", item.SurfaceOpacity },
                         { "accent", item.Accent }, { "category", item.Category },
                         { "tags", (item.Tags ?? new List<string>()).ToArray() },
                         { "safeCssPath", item.SafeCssPath }, { "licensePath", item.LicensePath }
@@ -280,13 +284,30 @@ namespace CodexDreamSkinManager
             }
         }
 
-        public Task ApplyThemeAsync(ThemeOption theme)
+        public async Task<bool> ApplyThemeAsync(ThemeOption theme, bool deferLiveApply = false)
         {
             List<ScriptArgument> args = new List<ScriptArgument>();
             args.Add(P("-Action")); args.Add(V("ApplyTheme"));
             args.Add(P("-SkillRoot")); args.Add(V(Path.Combine(rootDirectory, "windows")));
             AddThemeArguments(args, theme);
-            return RunManagerAsync(args);
+            if (deferLiveApply) args.Add(P("-DeferLiveApply"));
+            EnsureManagerAvailable();
+            ScriptResult result;
+            try
+            {
+                result = await PowerShellRunner.RunAsync(managerScript, args, 30000);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // A healthy status can race a lost CDP connection. Only the
+                // explicit post-commit live failure is eligible for startup.
+                if (ex.Message.StartsWith("DREAM_SKIN_LIVE_APPLY_FAILED:", StringComparison.Ordinal))
+                    return false;
+                throw;
+            }
+            Dictionary<string, object> data = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(result.Output);
+            if (data == null) throw new FormatException("应用主题结果为空。");
+            return ReadBool(data, "rendererApplied");
         }
 
         public Task UpdateThemeAsync(ThemeOption theme, SavedThemeEditOptions options)
@@ -314,6 +335,7 @@ namespace CodexDreamSkinManager
                 P("-FramingEnabled"), V(options.FramingEnabled ? "true" : "false"),
                 P("-SafeArea"), V(options.SafeArea), P("-TaskMode"), V(options.TaskMode),
                 P("-BubbleOpacity"), V(options.BubbleOpacity.ToString(CultureInfo.InvariantCulture)),
+                P("-SurfaceOpacity"), V(options.SurfaceOpacity.ToString(CultureInfo.InvariantCulture)),
                 P("-Accent"), V(options.Accent)
             };
             return RunManagerAsync(args);
@@ -411,6 +433,7 @@ namespace CodexDreamSkinManager
                 args.Add(P("-SafeArea")); args.Add(V(theme.SafeArea));
                 args.Add(P("-TaskMode")); args.Add(V(theme.TaskMode));
                 args.Add(P("-BubbleOpacity")); args.Add(V(theme.BubbleOpacity.ToString(CultureInfo.InvariantCulture)));
+                args.Add(P("-SurfaceOpacity")); args.Add(V(theme.SurfaceOpacity.ToString(CultureInfo.InvariantCulture)));
                 args.Add(P("-Accent")); args.Add(V(theme.Accent));
             }
         }
@@ -448,16 +471,22 @@ namespace CodexDreamSkinManager
                 P("-FramingEnabled"), V("true"),
                 P("-SafeArea"), V(options.SafeArea), P("-TaskMode"), V(options.TaskMode),
                 P("-BubbleOpacity"), V(options.BubbleOpacity.ToString(CultureInfo.InvariantCulture)),
+                P("-SurfaceOpacity"), V(options.SurfaceOpacity.ToString(CultureInfo.InvariantCulture)),
                 P("-Accent"), V(options.Accent)
             });
             if (keepCurrent) args.Add(P("-KeepCurrent"));
             return RunManagerAsync(args);
         }
 
-        public Task SetPausedAsync(bool paused)
+        public async Task<bool> SetPausedAsync(bool paused)
         {
-            return RunManagerAsync(new[] { P("-Action"), V(paused ? "Pause" : "Resume"),
-                P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")) });
+            EnsureManagerAvailable();
+            ScriptResult result = await PowerShellRunner.RunAsync(managerScript,
+                new[] { P("-Action"), V(paused ? "Pause" : "Resume"),
+                    P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")) }, 30000);
+            Dictionary<string, object> data = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(result.Output);
+            if (data == null) throw new FormatException("暂停/继续结果为空。");
+            return ReadBool(data, paused ? "rendererRemoved" : "rendererApplied");
         }
 
         public Task ResetThemeAsync()

@@ -26,6 +26,7 @@ namespace CodexDreamSkinManager
         public string SafeArea = "auto";
         public string TaskMode = "auto";
         public double BubbleOpacity;
+        public double SurfaceOpacity = 0.8;
         public string Accent = "";
         public string SafeCssPath = "";
         public string LicensePath = "";
@@ -265,6 +266,7 @@ namespace CodexDreamSkinManager
             data.SafeArea = ReadString(art, "safeArea", "auto");
             data.TaskMode = ReadString(art, "taskMode", "auto");
             data.BubbleOpacity = ReadDouble(art, "bubbleOpacity", 0);
+            data.SurfaceOpacity = ReadDouble(art, "surfaceOpacity", 0.8);
             data.Accent = ReadString(palette, "accent", "").ToUpperInvariant();
             object tags;
             if (manifest.TryGetValue("tags", out tags))
@@ -302,6 +304,8 @@ namespace CodexDreamSkinManager
                 throw new InvalidDataException("主题包任务模式无效。 ");
             if (double.IsNaN(data.BubbleOpacity) || double.IsInfinity(data.BubbleOpacity) || data.BubbleOpacity < 0 || data.BubbleOpacity > 1)
                 throw new InvalidDataException("主题包消息气泡不透明度无效。 ");
+            if (double.IsNaN(data.SurfaceOpacity) || double.IsInfinity(data.SurfaceOpacity) || data.SurfaceOpacity < 0 || data.SurfaceOpacity > 1)
+                throw new InvalidDataException("主题包面板不透明度无效。 ");
             if (!string.IsNullOrEmpty(data.Accent) && !System.Text.RegularExpressions.Regex.IsMatch(data.Accent, "^#[0-9A-F]{6}$"))
                 throw new InvalidDataException("主题包强调色无效。 ");
         }
@@ -328,7 +332,7 @@ namespace CodexDreamSkinManager
             Dictionary<string, object> art = new Dictionary<string, object> {
                 { "focusX", data.FocusX }, { "focusY", data.FocusY },
                 { "safeArea", data.SafeArea }, { "taskMode", data.TaskMode },
-                { "bubbleOpacity", data.BubbleOpacity }
+                { "bubbleOpacity", data.BubbleOpacity }, { "surfaceOpacity", data.SurfaceOpacity }
             };
             if (data.FramingEnabled)
             {

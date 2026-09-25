@@ -12,6 +12,8 @@ namespace CodexDreamSkinManager
         public bool IsPaused;
         public string StatusKind = "stopped";
         public string StatusMessage = "";
+        public string RendererStatus = "unavailable";
+        public string RendererMessage = "";
         public string ActiveThemeId = "";
         public string ActiveThemeName = "未选择";
         public string ActiveThemeImage = "";
@@ -61,6 +63,7 @@ namespace CodexDreamSkinManager
         public string SafeArea = "auto";
         public string TaskMode = "auto";
         public double BubbleOpacity;
+        public double SurfaceOpacity = 0.8;
         public string Accent = "";
         public string Category = "custom";
         public List<string> Tags = new List<string>();
@@ -221,9 +224,11 @@ namespace CodexDreamSkinManager
                 string.Equals(kind, "uninspectable", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(kind, "error", StringComparison.OrdinalIgnoreCase);
             bool stopped = string.Equals(kind, "stopped", StringComparison.OrdinalIgnoreCase);
+            bool rendererApplied = string.Equals(status.RendererStatus, "applied", StringComparison.OrdinalIgnoreCase);
+            bool rendererRemoved = string.Equals(status.RendererStatus, "removed", StringComparison.OrdinalIgnoreCase);
             ActionAvailability result = new ActionAvailability();
             result.EnableLabel = status.IsRunning ? (status.IsPaused ? "继续皮肤" : "重新应用") : "启用皮肤";
-            result.PauseLabel = status.IsRunning && status.IsPaused ? "继续" : "暂停";
+            result.PauseLabel = (status.IsRunning || rendererRemoved) && status.IsPaused ? "继续" : "暂停";
             result.RestartAfterApply = recoveryState || stopped || stale;
             result.RequiresRecovery = recoveryState;
             result.CanRestore = !busy;
@@ -232,7 +237,7 @@ namespace CodexDreamSkinManager
             result.CanSaveTheme = hasValidCustomImage;
             if (recoveryState) return result;
             result.CanEnable = true;
-            result.CanPause = status.IsRunning;
+            result.CanPause = status.IsRunning || rendererApplied || (status.IsPaused && rendererRemoved);
             result.CanReset = status.SupportedActions.Exists(action =>
                 string.Equals(action, "ResetTheme", StringComparison.OrdinalIgnoreCase));
             result.CanSaveApply = hasValidCustomImage;
@@ -263,6 +268,7 @@ namespace CodexDreamSkinManager
         public string SafeArea { get; set; }
         public string TaskMode { get; set; }
         public double BubbleOpacity { get; set; }
+        public double SurfaceOpacity { get; set; }
         public string Accent { get; set; }
 
         public ThemeOption()
@@ -286,6 +292,7 @@ namespace CodexDreamSkinManager
             SafeArea = "auto";
             TaskMode = "auto";
             BubbleOpacity = 0;
+            SurfaceOpacity = 0.8;
             Accent = "";
         }
 
@@ -443,6 +450,7 @@ namespace CodexDreamSkinManager
         public string SafeArea = "auto";
         public string TaskMode = "auto";
         public double BubbleOpacity;
+        public double SurfaceOpacity = 0.8;
         public string Accent = "";
 
         public void SetFocusPercent(double x, double y)
@@ -474,6 +482,8 @@ namespace CodexDreamSkinManager
                 throw new ArgumentException("图片移动模式无效。");
             if (double.IsNaN(BubbleOpacity) || double.IsInfinity(BubbleOpacity) || BubbleOpacity < 0 || BubbleOpacity > 1)
                 throw new ArgumentException("消息气泡不透明度必须在 0% 到 100% 之间。");
+            if (double.IsNaN(SurfaceOpacity) || double.IsInfinity(SurfaceOpacity) || SurfaceOpacity < 0 || SurfaceOpacity > 1)
+                throw new ArgumentException("面板不透明度必须在 0% 到 100% 之间。");
             Accent = ValidateAccent(Accent);
         }
 
@@ -514,6 +524,7 @@ namespace CodexDreamSkinManager
         public string SafeArea = "auto";
         public string TaskMode = "auto";
         public double BubbleOpacity;
+        public double SurfaceOpacity = 0.8;
         public string Accent = "";
 
         public void Validate()
@@ -534,6 +545,8 @@ namespace CodexDreamSkinManager
                 throw new ArgumentException("任务页模式无效。");
             if (double.IsNaN(BubbleOpacity) || double.IsInfinity(BubbleOpacity) || BubbleOpacity < 0 || BubbleOpacity > 1)
                 throw new ArgumentException("消息气泡不透明度必须在 0% 到 100% 之间。");
+            if (double.IsNaN(SurfaceOpacity) || double.IsInfinity(SurfaceOpacity) || SurfaceOpacity < 0 || SurfaceOpacity > 1)
+                throw new ArgumentException("面板不透明度必须在 0% 到 100% 之间。");
             Accent = CustomThemeOptions.ValidateAccent(Accent);
         }
     }

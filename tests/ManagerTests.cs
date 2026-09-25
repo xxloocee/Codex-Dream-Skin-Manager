@@ -773,7 +773,7 @@ namespace CodexDreamSkinManager
                 finally { window.Close(); }
             });
 
-            Run("Shows stale paused markers as stopped", delegate
+            Run("Shows stale paused markers as needing recovery", delegate
             {
                 string root = CreateLayout();
                 File.WriteAllText(Path.Combine(root, "windows", "scripts", "manager-actions.ps1"),
@@ -793,7 +793,7 @@ namespace CodexDreamSkinManager
                             refreshTask = (Task<bool>)refresh.Invoke(window, new object[] { false });
                         }));
                         AssertTrue(WaitForTask(refreshTask, window.Dispatcher));
-                        AssertEqual("皮肤未运行", GetPrivateField<TextBlock>(window, "statusText").Text);
+                        AssertEqual("状态需要恢复", GetPrivateField<TextBlock>(window, "statusText").Text);
                         Button pause = GetPrivateField<Button>(window, "pauseButton");
                         AssertTrue(!pause.IsEnabled);
                         AssertEqual("暂停", Convert.ToString(pause.Content));
@@ -1003,7 +1003,9 @@ namespace CodexDreamSkinManager
 
             Run("Publishes semantic application version", delegate
             {
-                AssertEqual("1.7.8.0", typeof(Program).Assembly.GetName().Version.ToString());
+                string versionPath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                    "..", "windows", "VERSION"));
+                AssertEqual(File.ReadAllText(versionPath).Trim() + ".0", typeof(Program).Assembly.GetName().Version.ToString());
             });
 
             Run("Converts focus percentage", delegate
@@ -1647,7 +1649,7 @@ namespace CodexDreamSkinManager
                 }
             });
 
-            Run("Bounds output drain after PowerShell exits", delegate
+            Run("Completes marked output without waiting for inherited pipes", delegate
             {
                 string script = Path.Combine(Path.GetTempPath(), "dream-skin-output-timeout-" + Guid.NewGuid().ToString("N") + ".ps1");
                 string pidPath = Path.Combine(Path.GetTempPath(), "dream-skin-output-pids-" + Guid.NewGuid().ToString("N") + ".txt");
@@ -1682,11 +1684,13 @@ namespace CodexDreamSkinManager
                         if (!parentExited) Thread.Sleep(25);
                     }
                     AssertTrue(parentExited);
-                    AssertTrue(!task.IsCompleted);
-                    AssertThrows<TimeoutException>(delegate
-                    {
-                        task.GetAwaiter().GetResult();
-                    });
+                    ScriptResult result = task.GetAwaiter().GetResult();
+                    AssertEqual("done", result.Output);
+                    // Windows PowerShell can emit an empty CLIXML header on stderr.
+                    AssertTrue(string.IsNullOrWhiteSpace(result.Error) || result.Error == "#< CLIXML");
+                    AssertTrue(result.ExitCode == 0);
+                    using (Process child = Process.GetProcessById(childPid))
+                        AssertTrue(!child.HasExited);
                     stopwatch.Stop();
                     AssertTrue(stopwatch.ElapsedMilliseconds < 8000);
                 }
@@ -1818,7 +1822,7 @@ if ((Test-Path (Join-Path $PSScriptRoot 'video')) -and -not $RestartExisting) { 
 Add-Content $log 'start'
 ");
             File.WriteAllText(Path.Combine(scripts, "manager-actions.ps1"), @"
-param($Action,$SkillRoot,$ThemeDirectory)
+param($Action,$SkillRoot,$ThemeDirectory,[switch]$DeferLiveApply)
 $ErrorActionPreference = 'Stop'
 if ($Action -eq 'Status') { Get-Content (Join-Path $PSScriptRoot 'status.json') -Raw; return }
 if ($Action -ne 'ApplyTheme') { throw 'Unexpected action' }
@@ -1826,7 +1830,7 @@ Add-Content (Join-Path $PSScriptRoot 'events.txt') 'apply'
 if ((Test-Path (Join-Path $PSScriptRoot 'video')) -and -not (Test-Path (Join-Path $PSScriptRoot 'connected'))) { throw 'No video connection' }
 if (Test-Path (Join-Path $PSScriptRoot 'reject')) { throw 'Fixture decode failure' }
 Set-Content (Join-Path $PSScriptRoot 'active.txt') 'candidate'
-'{}'
+[ordered]@{ rendererApplied = (-not $DeferLiveApply -and (Test-Path (Join-Path $PSScriptRoot 'connected'))) } | ConvertTo-Json
 ");
             MainWindow window = null;
             SynchronizationContext previousContext = SynchronizationContext.Current;

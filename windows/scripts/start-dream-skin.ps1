@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
   [int]$Port = 9335,
   [switch]$RestartExisting,
@@ -619,7 +619,12 @@ try {
         Write-Warning 'Startup rollback could not remove the partially applied live skin; reload or close Codex to clear it.'
       }
     }
-    if ($injectorStopped) { Remove-Item -LiteralPath $StatePath -Force -ErrorAction SilentlyContinue }
+    # Keep the browser identity when rollback deliberately leaves a rendered
+    # skin alive. The stopped PID correctly reports stale, while Status can
+    # still verify the renderer and the next start can reconcile this session.
+    if ($injectorStopped -and -not $skinLooksRendered) {
+      Remove-Item -LiteralPath $StatePath -Force -ErrorAction SilentlyContinue
+    }
     if ($launchedWithCdp -and -not $skinLooksRendered) {
       $rendererRollbackClosed = $false
       try {
@@ -661,6 +666,9 @@ try {
         $renderedRollbackClosed = $false
       }
       if ($renderedRollbackClosed) {
+        if ($injectorStopped) {
+          Remove-Item -LiteralPath $StatePath -Force -ErrorAction SilentlyContinue
+        }
         $appearanceRecovery = Invoke-DreamSkinStartupAppearanceRecovery `
           -Transaction $appearanceTransaction -ConfigPath $ConfigPath -BackupPath $BackupPath
         try { $null = Start-DreamSkinCodex -Codex $codex } catch {
@@ -674,8 +682,8 @@ try {
       # The skin is on screen and only an inconclusive probe failed. Force-
       # restarting Codex here would take a working window away from the user
       # and leave them with the stock appearance, which is worse than the
-      # unverified state we are in. The injector is already stopped and the
-      # state file removed, so nothing claims this session is verified; Codex
+      # unverified state we are in. The injector is already stopped; its stale
+      # state retains the browser identity without claiming a healthy watcher. Codex
       # keeps running with its debug port until the user closes it (#267).
       if ($null -ne $appearanceTransaction) {
         try {

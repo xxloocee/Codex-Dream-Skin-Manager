@@ -131,6 +131,7 @@ namespace CodexDreamSkinManager
         private ComboBox savedSafeAreaCombo;
         private ComboBox savedTaskModeCombo;
         private Slider savedBubbleOpacitySlider;
+        private Slider savedSurfaceOpacitySlider;
         private Slider savedFocusXSlider;
         private Slider savedFocusYSlider;
         private Slider savedPositionXSlider;
@@ -142,6 +143,7 @@ namespace CodexDreamSkinManager
         private TextBlock savedPositionYValue;
         private TextBlock savedZoomValue;
         private TextBlock savedBubbleOpacityValue;
+        private TextBlock savedSurfaceOpacityValue;
         private ListBox savedPositionModeSegment;
         private CheckBox savedFramingEnabled;
         private TextBox savedAccentBox;
@@ -160,7 +162,9 @@ namespace CodexDreamSkinManager
         private ComboBox safeAreaCombo;
         private ComboBox taskModeCombo;
         private Slider bubbleOpacitySlider;
+        private Slider surfaceOpacitySlider;
         private TextBlock bubbleOpacityValue;
+        private TextBlock surfaceOpacityValue;
         private Button browseImageButton;
         private DreamSkinStatus currentStatus = new DreamSkinStatus();
         private readonly SemaphoreSlim statusRefreshLock = new SemaphoreSlim(1, 1);
@@ -632,6 +636,13 @@ namespace CodexDreamSkinManager
             bubbleOpacitySlider.ValueChanged += FramingChanged;
             fields.Children.Add(bubbleOpacitySlider);
 
+            surfaceOpacityValue = new TextBlock { Text = "80%", Foreground = MutedBrush, HorizontalAlignment = HorizontalAlignment.Right };
+            fields.Children.Add(SliderLabel("面板不透明度（输入框、工具面板等）", surfaceOpacityValue));
+            surfaceOpacitySlider = CreateSlider(0, 100, 80, 1, "SurfaceOpacitySlider");
+            surfaceOpacitySlider.ToolTip = "0% 完全透明，100% 不透明；不影响文字和消息气泡。保存主题后生效。";
+            surfaceOpacitySlider.ValueChanged += FramingChanged;
+            fields.Children.Add(surfaceOpacitySlider);
+
             fields.Children.Add(FieldLabel("主题强调色"));
             Grid colorRow = new Grid();
             colorRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -733,6 +744,13 @@ namespace CodexDreamSkinManager
             savedBubbleOpacitySlider = CreateSlider(0, 100, 0, 1, "SavedBubbleOpacitySlider");
             savedBubbleOpacitySlider.ValueChanged += SavedThemeFramingChanged;
             fields.Children.Add(savedBubbleOpacitySlider);
+
+            savedSurfaceOpacityValue = new TextBlock { Text = "80%", Foreground = MutedBrush, HorizontalAlignment = HorizontalAlignment.Right };
+            fields.Children.Add(SliderLabel("面板不透明度（输入框、工具面板等）", savedSurfaceOpacityValue));
+            savedSurfaceOpacitySlider = CreateSlider(0, 100, 80, 1, "SavedSurfaceOpacitySlider");
+            savedSurfaceOpacitySlider.ToolTip = "0% 完全透明，100% 不透明；不影响文字和消息气泡。保存主题后生效。";
+            savedSurfaceOpacitySlider.ValueChanged += SavedThemeFramingChanged;
+            fields.Children.Add(savedSurfaceOpacitySlider);
 
             fields.Children.Add(FieldLabel("主题强调色"));
             Grid colorRow = new Grid();
@@ -910,11 +928,12 @@ namespace CodexDreamSkinManager
             if (status == null) status = new DreamSkinStatus();
             bool unhealthy = status.StatusKind == "mismatch" ||
                 status.StatusKind == "uninspectable" || status.StatusKind == "error" ||
-                status.StatusKind == "degraded";
+                status.StatusKind == "degraded" || status.StatusKind == "stale";
+            bool appliedWithoutWatcher = !status.IsRunning && status.RendererStatus == "applied";
             bool pausedWhileRunning = status.IsRunning && status.IsPaused;
-            statusText.Text = unhealthy ? "状态需要恢复" : pausedWhileRunning ? "皮肤已暂停" : status.IsRunning ? "皮肤运行中" : "皮肤未运行";
-            statusText.Foreground = unhealthy ? DangerBrush : status.IsRunning ? pausedWhileRunning ? WarningBrush : SuccessBrush : MutedBrush;
-            statusDot.Background = unhealthy ? DangerBrush : status.IsRunning ? pausedWhileRunning ? WarningBrush : SuccessBrush : MutedBrush;
+            statusText.Text = appliedWithoutWatcher ? "皮肤仍在显示，需重新连接" : unhealthy ? "状态需要恢复" : pausedWhileRunning ? "皮肤已暂停" : status.IsRunning ? "皮肤运行中" : "皮肤未运行";
+            statusText.Foreground = appliedWithoutWatcher ? WarningBrush : unhealthy ? DangerBrush : status.IsRunning ? pausedWhileRunning ? WarningBrush : SuccessBrush : MutedBrush;
+            statusDot.Background = statusText.Foreground;
             statusText.ToolTip = BuildStatusDetails(status);
             activeThemeText.Text = string.IsNullOrWhiteSpace(status.ActiveThemeName) ? "未选择" : CleanThemeName(status.ActiveThemeName);
         }
@@ -1013,6 +1032,7 @@ namespace CodexDreamSkinManager
             savedSafeAreaCombo.SelectedIndex = SafeAreaIndex(theme.SafeArea);
             savedTaskModeCombo.SelectedIndex = TaskModeIndex(theme.TaskMode);
             savedBubbleOpacitySlider.Value = ClampPercent(theme.BubbleOpacity * 100, 0, 100);
+            savedSurfaceOpacitySlider.Value = ClampPercent(theme.SurfaceOpacity * 100, 0, 100);
             savedAccentBox.Text = theme.Accent ?? "";
             savedFramingEnabled.IsChecked = theme.FramingEnabled;
             savedPositionXSlider.Value = ClampPercent(theme.PositionX * 100, -100, 100);
@@ -1032,6 +1052,8 @@ namespace CodexDreamSkinManager
             savedPositionYValue.Text = FormatSignedPercent(savedPositionYSlider.Value);
             savedZoomValue.Text = Math.Round(savedZoomSlider.Value) + "%";
             savedBubbleOpacityValue.Text = Math.Round(savedBubbleOpacitySlider.Value) + "%";
+            if (savedSurfaceOpacityValue != null && savedSurfaceOpacitySlider != null)
+                savedSurfaceOpacityValue.Text = Math.Round(savedSurfaceOpacitySlider.Value) + "%";
         }
 
         private void UpdateSavedFramingEnabledState()
@@ -1052,6 +1074,7 @@ namespace CodexDreamSkinManager
             if (savedSafeAreaCombo != null) savedSafeAreaCombo.IsEnabled = enabled;
             if (savedTaskModeCombo != null) savedTaskModeCombo.IsEnabled = enabled;
             if (savedBubbleOpacitySlider != null) savedBubbleOpacitySlider.IsEnabled = enabled;
+            if (savedSurfaceOpacitySlider != null) savedSurfaceOpacitySlider.IsEnabled = enabled;
             if (savedAccentBox != null) savedAccentBox.IsEnabled = enabled;
             if (savedFramingEnabled != null) savedFramingEnabled.IsEnabled = enabled;
             if (savedPositionXSlider != null) savedPositionXSlider.IsEnabled = enabled;
@@ -1171,8 +1194,12 @@ namespace CodexDreamSkinManager
                     needsStart = needsStart || restartAuthorized;
                     if (needsStart && video)
                         await service.ConnectAsync(restartAuthorized);
-                    await service.ApplyThemeAsync(theme);
-                    if (needsStart) await service.StartAsync(restartAuthorized);
+                    // A degraded session must not fail live apply before StartAsync
+                    // gets the chance to reconcile its browser/watcher identity.
+                    bool rendererApplied = await service.ApplyThemeAsync(theme, needsStart);
+                    // The watcher can also exit between Status and ApplyTheme.
+                    // Persisting a theme alone is not successful application.
+                    if (needsStart || !rendererApplied) await service.StartAsync(restartAuthorized);
                 }
                 SetExpectedRuntimeState(true, false);
             }, "主题已应用。");
@@ -1230,7 +1257,9 @@ namespace CodexDreamSkinManager
                     string.Equals(currentStatus.StatusKind, "degraded", StringComparison.OrdinalIgnoreCase))
                     await service.StartAsync(restartAuthorized);
                 else if (currentStatus.IsPaused)
-                    await service.SetPausedAsync(false);
+                {
+                    if (!await service.SetPausedAsync(false)) await service.StartAsync(restartAuthorized);
+                }
                 SetExpectedRuntimeState(true, false);
             }, "皮肤已启用。");
         }
@@ -1254,12 +1283,31 @@ namespace CodexDreamSkinManager
 
         private async Task TogglePauseAsync()
         {
-            bool pause = !currentStatus.IsPaused;
             await RunOperationAsync(async delegate
             {
-                await service.SetPausedAsync(pause);
-                SetExpectedRuntimeState(currentStatus.IsRunning, pause);
-            }, pause ? "皮肤已暂停。" : "皮肤已继续显示。");
+                currentStatus = await service.GetStatusAsync();
+                ActionAvailability availability = ActionAvailability.FromStatus(currentStatus, false, false, false);
+                if (availability.RequiresRecovery)
+                    throw new InvalidOperationException("皮肤状态已变化，请先应用主题恢复连接。");
+                if (currentStatus.IsPaused)
+                {
+                    bool restartAuthorized = await ConfirmStartupIfRequiredAsync("继续皮肤", false);
+                    if (restartAuthorized || !currentStatus.IsRunning ||
+                        string.Equals(currentStatus.StatusKind, "degraded", StringComparison.OrdinalIgnoreCase))
+                        await service.StartAsync(restartAuthorized);
+                    else if (!await service.SetPausedAsync(false))
+                        await service.StartAsync(restartAuthorized);
+                    SetExpectedRuntimeState(true, false);
+                }
+                else
+                {
+                    if (!availability.CanPause)
+                        throw new InvalidOperationException("当前没有可确认的皮肤会话，请先应用主题。");
+                    if (!await service.SetPausedAsync(true))
+                        throw new InvalidOperationException("已记录暂停，但无法确认当前窗口已卸下皮肤，请刷新状态后重试。");
+                    SetExpectedRuntimeState(currentStatus.IsRunning, true);
+                }
+            }, "皮肤显示状态已更新。");
         }
 
         private async Task ResetSkinAsync()
@@ -1311,6 +1359,7 @@ namespace CodexDreamSkinManager
             options.SafeArea = MapSafeArea(safeAreaCombo.SelectedIndex);
             options.TaskMode = MapTaskMode(taskModeCombo.SelectedIndex);
             options.BubbleOpacity = bubbleOpacitySlider == null ? 0 : bubbleOpacitySlider.Value / 100.0;
+            options.SurfaceOpacity = surfaceOpacitySlider == null ? 0.8 : surfaceOpacitySlider.Value / 100.0;
             options.Accent = accentBox.Text.Trim();
             return options;
         }
@@ -1341,6 +1390,7 @@ namespace CodexDreamSkinManager
             options.SafeArea = MapSafeArea(savedSafeAreaCombo.SelectedIndex);
             options.TaskMode = MapTaskMode(savedTaskModeCombo.SelectedIndex);
             options.BubbleOpacity = savedBubbleOpacitySlider.Value / 100.0;
+            options.SurfaceOpacity = savedSurfaceOpacitySlider.Value / 100.0;
             options.Accent = savedAccentBox.Text.Trim();
             return options;
         }
@@ -1351,6 +1401,8 @@ namespace CodexDreamSkinManager
             currentStatus.IsPaused = paused;
             currentStatus.StatusKind = running ? (paused ? "paused" : "running") : "stopped";
             currentStatus.StatusMessage = "";
+            currentStatus.RendererStatus = "unavailable";
+            currentStatus.RendererMessage = "";
         }
 
         private async Task RunOperationAsync(Func<Task> action, string success)
@@ -1530,7 +1582,7 @@ namespace CodexDreamSkinManager
                 FocusX = data.FocusX, FocusY = data.FocusY, SafeArea = data.SafeArea,
                 PositionX = data.PositionX, PositionY = data.PositionY, Zoom = data.Zoom,
                 PositionMode = data.PositionMode, FramingEnabled = data.FramingEnabled,
-                TaskMode = data.TaskMode, BubbleOpacity = data.BubbleOpacity,
+                TaskMode = data.TaskMode, BubbleOpacity = data.BubbleOpacity, SurfaceOpacity = data.SurfaceOpacity,
                 Accent = data.Accent, Category = data.Category,
                 Tags = new List<string>(data.Tags ?? new List<string>()),
                 SafeCssPath = data.SafeCssPath, LicensePath = data.LicensePath
@@ -1668,7 +1720,7 @@ namespace CodexDreamSkinManager
                     FocusX = theme.FocusX, FocusY = theme.FocusY, SafeArea = theme.SafeArea,
                     PositionX = theme.PositionX, PositionY = theme.PositionY, Zoom = theme.Zoom,
                     PositionMode = theme.PositionMode, FramingEnabled = theme.FramingEnabled,
-                    TaskMode = theme.TaskMode, BubbleOpacity = theme.BubbleOpacity, Accent = theme.Accent
+                    TaskMode = theme.TaskMode, BubbleOpacity = theme.BubbleOpacity, SurfaceOpacity = theme.SurfaceOpacity, Accent = theme.Accent
                 };
                 if (!string.IsNullOrWhiteSpace(theme.ThemeDirectory)) {
                     string css = Path.Combine(theme.ThemeDirectory, "theme.css");
@@ -1712,6 +1764,8 @@ namespace CodexDreamSkinManager
             positionYValue.Text = FormatSignedPercent(positionYSlider.Value);
             zoomValue.Text = Math.Round(zoomSlider.Value) + "%";
             bubbleOpacityValue.Text = Math.Round(bubbleOpacitySlider.Value) + "%";
+            if (surfaceOpacityValue != null && surfaceOpacitySlider != null)
+                surfaceOpacityValue.Text = Math.Round(surfaceOpacitySlider.Value) + "%";
             UpdateCustomPreview();
         }
 
@@ -1816,6 +1870,8 @@ namespace CodexDreamSkinManager
         {
             List<string> lines = new List<string>();
             if (!string.IsNullOrWhiteSpace(status.StatusMessage)) lines.Add(status.StatusMessage);
+            if (!string.IsNullOrWhiteSpace(status.RendererMessage) && status.RendererMessage != status.StatusMessage)
+                lines.Add(status.RendererMessage);
             if (!string.IsNullOrWhiteSpace(status.ManagerApiVersion)) lines.Add("管理接口：" + status.ManagerApiVersion);
             if (!string.IsNullOrWhiteSpace(status.NodeVersion)) lines.Add("Node.js：" + status.NodeVersion);
             if (!string.IsNullOrWhiteSpace(status.CodexVersion)) lines.Add("Codex：" + status.CodexVersion);

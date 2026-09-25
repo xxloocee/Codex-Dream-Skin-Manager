@@ -166,7 +166,10 @@ function Invoke-DreamSkinNative {
 function Write-DreamSkinUtf8FileAtomically { param([string]$Path, [string]$Content) }
 function Get-Date {
   $script:dateCall += 1
-  return [DateTime]::new(2026, 7, 25, 0, 0, 0, [DateTimeKind]::Utc).AddSeconds(120 * $script:dateCall)
+  # Let both probes run within their shared budget, then expire the retry window.
+  $elapsedSeconds = $script:dateCall
+  if ($script:onceCalls -gt 0) { $elapsedSeconds += 120 }
+  return [DateTime]::new(2026, 7, 25, 0, 0, 0, [DateTimeKind]::Utc).AddSeconds($elapsedSeconds)
 }
 function Start-Sleep { param([int]$Milliseconds, [int]$Seconds) }
 function Stop-Process {
