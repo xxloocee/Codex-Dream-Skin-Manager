@@ -27,6 +27,8 @@ param(
   [ValidateRange(0.0, 1.0)][double]$SurfaceOpacity = 0.8,
   [ValidatePattern('^$|^#[0-9A-Fa-f]{6}$')][string]$Accent = '',
   [switch]$KeepCurrent,
+  # The manager will reconcile/start the session after committing this theme.
+  [switch]$DeferLiveApply,
   # Keep lock waiting below the manager's 30-second whole-operation budget.
   [ValidateRange(1, 30)][int]$LockTimeoutSeconds = 5
 )
@@ -954,7 +956,10 @@ function Invoke-ManagerLiveApplyIfRunning {
   $identity = Get-ManagerInjectorStatus -State $state
   if (-not $identity.Running) { return $false }
   $live = Invoke-DreamSkinLiveApply -StateRoot $StateRoot
-  if (-not $live.Applied) { throw $live.Message }
+  # Only this failure means the theme was committed but the live session did
+  # not apply it. Callers may reconcile startup; validation/write errors must
+  # keep failing without being mistaken for a recoverable connection race.
+  if (-not $live.Applied) { throw "DREAM_SKIN_LIVE_APPLY_FAILED: $($live.Message)" }
   return $true
 }
 
@@ -1153,11 +1158,23 @@ switch ($Action) {
     $rendererMessage = ''
     $statusKind = if ($identity.Running -and $paused) { 'paused' } else { $identity.Kind }
     $statusMessage = $identity.Message
-    if ($identity.Running) {
-      $renderer = Get-DreamSkinLiveRendererStatus -StateRoot $StateRoot -Paused $paused
+    # A dead/outdated watcher does not remove the CSS already in Codex. Probe
+    # the recorded browser independently without adopting an unverified PID.
+    if ($identity.Running -or ($state -and $state.port -and $state.browserId)) {
+      try {
+        $renderer = Get-DreamSkinLiveRendererStatus -StateRoot $StateRoot -Paused $paused
+      } catch {
+        # A missing/replaced runtime must not discard the process diagnosis or
+        # theme list. Failed probing is unknown renderer health, never success.
+        $renderer = [pscustomobject]@{
+          Verified = $false
+          Status = 'degraded'
+          Message = "无法检查 Codex 皮肤显示状态：$($_.Exception.Message)"
+        }
+      }
       $rendererStatus = "$($renderer.Status)"
       $rendererMessage = "$($renderer.Message)"
-      if (-not $renderer.Verified) {
+      if ($identity.Running -and -not $renderer.Verified) {
         $statusKind = 'degraded'
         $statusMessage = $rendererMessage
       }
@@ -1280,7 +1297,7 @@ switch ($Action) {
       } else { throw 'ApplyTheme requires ThemeDirectory or ImagePath.' }
       Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
       Remove-ManagerDuplicateImageArchives
-      $rendererApplied = Invoke-ManagerLiveApplyIfRunning
+      $rendererApplied = if ($DeferLiveApply) { $false } else { Invoke-ManagerLiveApplyIfRunning }
       [ordered]@{
         id = if ($result.Theme.id) { "$($result.Theme.id)" } else { '' }
         name = "$($result.Theme.name)"
@@ -1444,7 +1461,9 @@ switch ($Action) {
       $identity = Get-ManagerInjectorStatus -State $state
       Set-DreamSkinPaused -Paused $true -StateRoot $StateRoot | Out-Null
       $rendererRemoved = $false
-      if ($identity.Running) {
+      # The renderer may retain a skin after its watcher exits. Live remove
+      # verifies the recorded browser identity and does not act on that PID.
+      if ($identity.Running -or ($state -and $state.port -and $state.browserId)) {
         $removal = Invoke-DreamSkinLiveRemove -StateRoot $StateRoot
         if (-not $removal.Removed) { throw $removal.Message }
         $rendererRemoved = $true

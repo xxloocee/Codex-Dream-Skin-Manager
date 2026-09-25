@@ -52,6 +52,8 @@ namespace CodexDreamSkinManager
             status.IsPaused = ReadBool(data, "isPaused");
             status.StatusKind = ReadString(data, "statusKind", status.IsRunning ? "running" : "stopped");
             status.StatusMessage = ReadString(data, "statusMessage", "");
+            status.RendererStatus = ReadString(data, "rendererStatus", "unavailable");
+            status.RendererMessage = ReadString(data, "rendererMessage", "");
             status.ActiveThemeId = ReadString(data, "activeThemeId", "");
             status.ActiveThemeName = ReadString(data, "activeTheme", "未选择");
             status.ActiveThemeImage = ReadString(data, "activeImage", "");
@@ -282,13 +284,30 @@ namespace CodexDreamSkinManager
             }
         }
 
-        public Task ApplyThemeAsync(ThemeOption theme)
+        public async Task<bool> ApplyThemeAsync(ThemeOption theme, bool deferLiveApply = false)
         {
             List<ScriptArgument> args = new List<ScriptArgument>();
             args.Add(P("-Action")); args.Add(V("ApplyTheme"));
             args.Add(P("-SkillRoot")); args.Add(V(Path.Combine(rootDirectory, "windows")));
             AddThemeArguments(args, theme);
-            return RunManagerAsync(args);
+            if (deferLiveApply) args.Add(P("-DeferLiveApply"));
+            EnsureManagerAvailable();
+            ScriptResult result;
+            try
+            {
+                result = await PowerShellRunner.RunAsync(managerScript, args, 30000);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // A healthy status can race a lost CDP connection. Only the
+                // explicit post-commit live failure is eligible for startup.
+                if (ex.Message.StartsWith("DREAM_SKIN_LIVE_APPLY_FAILED:", StringComparison.Ordinal))
+                    return false;
+                throw;
+            }
+            Dictionary<string, object> data = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(result.Output);
+            if (data == null) throw new FormatException("应用主题结果为空。");
+            return ReadBool(data, "rendererApplied");
         }
 
         public Task UpdateThemeAsync(ThemeOption theme, SavedThemeEditOptions options)
@@ -459,10 +478,15 @@ namespace CodexDreamSkinManager
             return RunManagerAsync(args);
         }
 
-        public Task SetPausedAsync(bool paused)
+        public async Task<bool> SetPausedAsync(bool paused)
         {
-            return RunManagerAsync(new[] { P("-Action"), V(paused ? "Pause" : "Resume"),
-                P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")) });
+            EnsureManagerAvailable();
+            ScriptResult result = await PowerShellRunner.RunAsync(managerScript,
+                new[] { P("-Action"), V(paused ? "Pause" : "Resume"),
+                    P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")) }, 30000);
+            Dictionary<string, object> data = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(result.Output);
+            if (data == null) throw new FormatException("暂停/继续结果为空。");
+            return ReadBool(data, paused ? "rendererRemoved" : "rendererApplied");
         }
 
         public Task ResetThemeAsync()

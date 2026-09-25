@@ -928,11 +928,12 @@ namespace CodexDreamSkinManager
             if (status == null) status = new DreamSkinStatus();
             bool unhealthy = status.StatusKind == "mismatch" ||
                 status.StatusKind == "uninspectable" || status.StatusKind == "error" ||
-                status.StatusKind == "degraded";
+                status.StatusKind == "degraded" || status.StatusKind == "stale";
+            bool appliedWithoutWatcher = !status.IsRunning && status.RendererStatus == "applied";
             bool pausedWhileRunning = status.IsRunning && status.IsPaused;
-            statusText.Text = unhealthy ? "状态需要恢复" : pausedWhileRunning ? "皮肤已暂停" : status.IsRunning ? "皮肤运行中" : "皮肤未运行";
-            statusText.Foreground = unhealthy ? DangerBrush : status.IsRunning ? pausedWhileRunning ? WarningBrush : SuccessBrush : MutedBrush;
-            statusDot.Background = unhealthy ? DangerBrush : status.IsRunning ? pausedWhileRunning ? WarningBrush : SuccessBrush : MutedBrush;
+            statusText.Text = appliedWithoutWatcher ? "皮肤仍在显示，需重新连接" : unhealthy ? "状态需要恢复" : pausedWhileRunning ? "皮肤已暂停" : status.IsRunning ? "皮肤运行中" : "皮肤未运行";
+            statusText.Foreground = appliedWithoutWatcher ? WarningBrush : unhealthy ? DangerBrush : status.IsRunning ? pausedWhileRunning ? WarningBrush : SuccessBrush : MutedBrush;
+            statusDot.Background = statusText.Foreground;
             statusText.ToolTip = BuildStatusDetails(status);
             activeThemeText.Text = string.IsNullOrWhiteSpace(status.ActiveThemeName) ? "未选择" : CleanThemeName(status.ActiveThemeName);
         }
@@ -1193,8 +1194,12 @@ namespace CodexDreamSkinManager
                     needsStart = needsStart || restartAuthorized;
                     if (needsStart && video)
                         await service.ConnectAsync(restartAuthorized);
-                    await service.ApplyThemeAsync(theme);
-                    if (needsStart) await service.StartAsync(restartAuthorized);
+                    // A degraded session must not fail live apply before StartAsync
+                    // gets the chance to reconcile its browser/watcher identity.
+                    bool rendererApplied = await service.ApplyThemeAsync(theme, needsStart);
+                    // The watcher can also exit between Status and ApplyTheme.
+                    // Persisting a theme alone is not successful application.
+                    if (needsStart || !rendererApplied) await service.StartAsync(restartAuthorized);
                 }
                 SetExpectedRuntimeState(true, false);
             }, "主题已应用。");
@@ -1252,7 +1257,9 @@ namespace CodexDreamSkinManager
                     string.Equals(currentStatus.StatusKind, "degraded", StringComparison.OrdinalIgnoreCase))
                     await service.StartAsync(restartAuthorized);
                 else if (currentStatus.IsPaused)
-                    await service.SetPausedAsync(false);
+                {
+                    if (!await service.SetPausedAsync(false)) await service.StartAsync(restartAuthorized);
+                }
                 SetExpectedRuntimeState(true, false);
             }, "皮肤已启用。");
         }
@@ -1276,12 +1283,31 @@ namespace CodexDreamSkinManager
 
         private async Task TogglePauseAsync()
         {
-            bool pause = !currentStatus.IsPaused;
             await RunOperationAsync(async delegate
             {
-                await service.SetPausedAsync(pause);
-                SetExpectedRuntimeState(currentStatus.IsRunning, pause);
-            }, pause ? "皮肤已暂停。" : "皮肤已继续显示。");
+                currentStatus = await service.GetStatusAsync();
+                ActionAvailability availability = ActionAvailability.FromStatus(currentStatus, false, false, false);
+                if (availability.RequiresRecovery)
+                    throw new InvalidOperationException("皮肤状态已变化，请先应用主题恢复连接。");
+                if (currentStatus.IsPaused)
+                {
+                    bool restartAuthorized = await ConfirmStartupIfRequiredAsync("继续皮肤", false);
+                    if (restartAuthorized || !currentStatus.IsRunning ||
+                        string.Equals(currentStatus.StatusKind, "degraded", StringComparison.OrdinalIgnoreCase))
+                        await service.StartAsync(restartAuthorized);
+                    else if (!await service.SetPausedAsync(false))
+                        await service.StartAsync(restartAuthorized);
+                    SetExpectedRuntimeState(true, false);
+                }
+                else
+                {
+                    if (!availability.CanPause)
+                        throw new InvalidOperationException("当前没有可确认的皮肤会话，请先应用主题。");
+                    if (!await service.SetPausedAsync(true))
+                        throw new InvalidOperationException("已记录暂停，但无法确认当前窗口已卸下皮肤，请刷新状态后重试。");
+                    SetExpectedRuntimeState(currentStatus.IsRunning, true);
+                }
+            }, "皮肤显示状态已更新。");
         }
 
         private async Task ResetSkinAsync()
@@ -1375,6 +1401,8 @@ namespace CodexDreamSkinManager
             currentStatus.IsPaused = paused;
             currentStatus.StatusKind = running ? (paused ? "paused" : "running") : "stopped";
             currentStatus.StatusMessage = "";
+            currentStatus.RendererStatus = "unavailable";
+            currentStatus.RendererMessage = "";
         }
 
         private async Task RunOperationAsync(Func<Task> action, string success)
@@ -1842,6 +1870,8 @@ namespace CodexDreamSkinManager
         {
             List<string> lines = new List<string>();
             if (!string.IsNullOrWhiteSpace(status.StatusMessage)) lines.Add(status.StatusMessage);
+            if (!string.IsNullOrWhiteSpace(status.RendererMessage) && status.RendererMessage != status.StatusMessage)
+                lines.Add(status.RendererMessage);
             if (!string.IsNullOrWhiteSpace(status.ManagerApiVersion)) lines.Add("管理接口：" + status.ManagerApiVersion);
             if (!string.IsNullOrWhiteSpace(status.NodeVersion)) lines.Add("Node.js：" + status.NodeVersion);
             if (!string.IsNullOrWhiteSpace(status.CodexVersion)) lines.Add("Codex：" + status.CodexVersion);

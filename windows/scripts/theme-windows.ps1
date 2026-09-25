@@ -2490,7 +2490,7 @@ function Get-DreamSkinLiveRendererStatus {
     return [pscustomobject]@{
       Verified = $false
       Status = 'degraded'
-      Message = '皮肤进程仍在运行，但没有可验证的 Codex 渲染会话。'
+      Message = '没有可验证的 Codex 渲染会话，无法确认皮肤显示状态。'
     }
   }
 
@@ -2507,7 +2507,7 @@ function Get-DreamSkinLiveRendererStatus {
       return [pscustomobject]@{
         Verified = $false
         Status = 'degraded'
-        Message = '皮肤进程仍在运行，但活动主题目录不存在。'
+        Message = '活动主题目录不存在，无法确认皮肤显示状态。'
       }
     }
     $argumentList += @('--theme-dir', $session.Paths.Active)
@@ -2520,7 +2520,7 @@ function Get-DreamSkinLiveRendererStatus {
     Message = if ($verified) {
       if ($Paused) { '当前 Codex 渲染器已卸下皮肤。' } else { '当前 Codex 渲染器已应用活动主题。' }
     } else {
-      '皮肤进程仍在运行，但当前 Codex 渲染状态未通过校验。'
+      '当前 Codex 渲染状态未通过校验，无法确认活动主题是否已显示。'
     }
   }
 }

@@ -12,6 +12,8 @@ namespace CodexDreamSkinManager
         public bool IsPaused;
         public string StatusKind = "stopped";
         public string StatusMessage = "";
+        public string RendererStatus = "unavailable";
+        public string RendererMessage = "";
         public string ActiveThemeId = "";
         public string ActiveThemeName = "未选择";
         public string ActiveThemeImage = "";
@@ -222,9 +224,11 @@ namespace CodexDreamSkinManager
                 string.Equals(kind, "uninspectable", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(kind, "error", StringComparison.OrdinalIgnoreCase);
             bool stopped = string.Equals(kind, "stopped", StringComparison.OrdinalIgnoreCase);
+            bool rendererApplied = string.Equals(status.RendererStatus, "applied", StringComparison.OrdinalIgnoreCase);
+            bool rendererRemoved = string.Equals(status.RendererStatus, "removed", StringComparison.OrdinalIgnoreCase);
             ActionAvailability result = new ActionAvailability();
             result.EnableLabel = status.IsRunning ? (status.IsPaused ? "继续皮肤" : "重新应用") : "启用皮肤";
-            result.PauseLabel = status.IsRunning && status.IsPaused ? "继续" : "暂停";
+            result.PauseLabel = (status.IsRunning || rendererRemoved) && status.IsPaused ? "继续" : "暂停";
             result.RestartAfterApply = recoveryState || stopped || stale;
             result.RequiresRecovery = recoveryState;
             result.CanRestore = !busy;
@@ -233,7 +237,7 @@ namespace CodexDreamSkinManager
             result.CanSaveTheme = hasValidCustomImage;
             if (recoveryState) return result;
             result.CanEnable = true;
-            result.CanPause = status.IsRunning;
+            result.CanPause = status.IsRunning || rendererApplied || (status.IsPaused && rendererRemoved);
             result.CanReset = status.SupportedActions.Exists(action =>
                 string.Equals(action, "ResetTheme", StringComparison.OrdinalIgnoreCase));
             result.CanSaveApply = hasValidCustomImage;
