@@ -1466,7 +1466,8 @@ try {
   }
   if (-not $startSource.Contains('Invoke-DreamSkinCodexWindowActivation -Codex $codex') -or
     -not $startSource.Contains("'--once'") -or
-    -not $startSource.Contains("'--timeout-ms', '15000'")) {
+    -not $startSource.Contains('$onceTimeoutMs = [Math]::Min(15000, $remainingVerifyMs)') -or
+    -not $startSource.Contains('''--timeout-ms'', "$onceTimeoutMs"')) {
     throw 'Start no longer mirrors macOS by activating Codex and force-injecting once after an initial visible-verification miss.'
   }
   if (-not (Get-Command Invoke-DreamSkinCodexWindowActivation -CommandType Function -ErrorAction SilentlyContinue)) {

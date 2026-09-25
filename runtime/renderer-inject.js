@@ -379,15 +379,18 @@
     };
   };
 
+  const surfaceOpacity = typeof ART.surfaceOpacity === "number" && Number.isFinite(ART.surfaceOpacity)
+    ? clamp(ART.surfaceOpacity, 0, 1) : 0.8;
+
   const readableAccentInk = (accent, panel) => {
     // The send button sits on the composer surface, which renders panel RGB
-    // at 94% regardless of the panel color's declared alpha. Compare against
+    // at the configured surface opacity, not the panel color's alpha. Compare against
     // both possible backdrop extremes so artwork cannot flip the decision.
     const luminances = [0, 255].map((backdrop) => {
       const surface = compositeColor(
         panel,
         { r: backdrop, g: backdrop, b: backdrop },
-        0.94,
+        surfaceOpacity,
       );
       return relativeLuminance(compositeColor(accent, surface));
     });
@@ -594,8 +597,6 @@
       ? ART.taskMode : profile?.taskMode || "ambient";
     const bubbleOpacity = typeof ART.bubbleOpacity === "number"
       ? clamp(ART.bubbleOpacity, 0, 1) : 0;
-    const surfaceOpacity = typeof ART.surfaceOpacity === "number" && Number.isFinite(ART.surfaceOpacity)
-      ? clamp(ART.surfaceOpacity, 0, 1) : 0.8;
     const wide = artMediaType === "video" || profile?.wide ||
       profile?.aspect === "wide" || profile?.aspect === "ultrawide";
     const aspect = profile?.aspect || "unknown";

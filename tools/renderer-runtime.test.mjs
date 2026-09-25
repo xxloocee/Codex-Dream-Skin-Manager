@@ -491,8 +491,8 @@ export async function runRendererRuntimeTest(assetRoot) {
   assert.match(css, /background-image:\s*var\(--ds-task-full-veil\),\s*var\(--dream-skin-art\)/);
   assert.match(
     css,
-    /(?:__DREAM_SELECTOR_COMPOSER_CHROME__|:is\(\.composer-surface-chrome,[^)]*\)|\.composer-surface-chrome)\s*\{[^}]*background:\s*rgb\(var\(--ds-panel-rgb\) \/ \.94\)/,
-    "Accent foreground contrast must model the composer panel's 94% RGB surface",
+    /(?:__DREAM_SELECTOR_COMPOSER_CHROME__|:is\(\.composer-surface-chrome,[^)]*\)|\.composer-surface-chrome)\s*\{[^}]*background:\s*var\(--ds-surface-background\)/,
+    "The composer must use the configurable shared panel surface",
   );
   assert.match(
     css,
