@@ -6,6 +6,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 VERSION_PATH="$ROOT/VERSION"
 REPOSITORY="xxloocee/Codex-Dream-Skin-Manager"
 RELEASE_URL="https://github.com/$REPOSITORY/releases/latest"
+UPDATE_MANIFEST_URL="$RELEASE_URL/download/update.json"
 JSON="false"
 INTERACTIVE="false"
 
@@ -26,7 +27,7 @@ normalize_version() {
   local value="$1"
   value="${value#v}"
   value="${value#V}"
-  printf '%s' "$value" | /usr/bin/grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
+  printf '%s' "$value" | /usr/bin/grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
     || return 1
   printf '%s\n' "$value"
 }
@@ -54,7 +55,7 @@ CURRENT_VERSION="$(normalize_version "$CURRENT_RAW")" \
 
 TMP="$(/usr/bin/mktemp -d /tmp/codex-dream-skin-update.XXXXXX)"
 trap '/bin/rm -rf "$TMP"' EXIT
-RESPONSE="$TMP/release.json"
+RESPONSE="$TMP/update.json"
 REDIRECT_HEADERS="$TMP/release.headers"
 if [ -n "${CODEX_DREAM_SKIN_TEST_REDIRECT_HEADERS_FILE:-}" ]; then
   [ -f "$CODEX_DREAM_SKIN_TEST_REDIRECT_HEADERS_FILE" ] \
@@ -65,13 +66,15 @@ elif [ -n "${CODEX_DREAM_SKIN_TEST_RESPONSE_FILE:-}" ]; then
     || fail "Test response does not exist."
   /bin/cp "$CODEX_DREAM_SKIN_TEST_RESPONSE_FILE" "$RESPONSE"
 else
-  if ! /usr/bin/curl --proto '=https' --tlsv1.2 --fail --silent --show-error \
+  if ! /usr/bin/curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error \
+    --location --max-redirs 5 \
     --connect-timeout 5 --max-time 12 --max-filesize 1048576 \
-    --header 'Accept: application/vnd.github+json' \
-    --header 'X-GitHub-Api-Version: 2022-11-28' \
+    --header 'Accept: application/json' --header 'Cache-Control: no-cache' \
     --user-agent 'CodexDreamSkin-UpdateCheck' \
-    "https://api.github.com/repos/$REPOSITORY/releases/latest" \
-    --output "$RESPONSE" 2>"$TMP/api-error.log"; then
+    "$UPDATE_MANIFEST_URL" \
+    --output "$RESPONSE" 2>"$TMP/manifest-error.log"; then
+    # Older releases have no update.json. The public release-page redirect
+    # remains a fallback for the manual-download macOS updater; no API is used.
     /usr/bin/curl --proto '=https' --tlsv1.2 --fail --silent --show-error \
       --connect-timeout 5 --max-time 12 --head \
       --dump-header "$REDIRECT_HEADERS" --output /dev/null \
@@ -105,11 +108,19 @@ else
   RESPONSE_BYTES="$(/usr/bin/stat -f '%z' "$RESPONSE")"
   [ "$RESPONSE_BYTES" -gt 0 ] && [ "$RESPONSE_BYTES" -le 1048576 ] \
     || fail "GitHub returned an invalid response size."
+  SCHEMA_VERSION="$(/usr/bin/plutil -extract schemaVersion raw -o - "$RESPONSE" 2>/dev/null || true)"
+  IS_DRAFT="$(/usr/bin/plutil -extract draft raw -o - "$RESPONSE" 2>/dev/null || true)"
+  IS_PRERELEASE="$(/usr/bin/plutil -extract prerelease raw -o - "$RESPONSE" 2>/dev/null || true)"
+  [ "$SCHEMA_VERSION" = "1" ] || fail "Unsupported update manifest schema."
+  [ "$IS_DRAFT" = "false" ] && [ "$IS_PRERELEASE" = "false" ] \
+    || fail "The update manifest must describe a stable published release."
   LATEST_TAG="$(/usr/bin/plutil -extract tag_name raw -o - "$RESPONSE" 2>/dev/null || true)"
   [ -n "$LATEST_TAG" ] || fail "GitHub response does not contain a release tag."
 fi
 LATEST_VERSION="$(normalize_version "$LATEST_TAG")" \
   || fail "GitHub returned an unsupported release tag: $LATEST_TAG"
+[ "$LATEST_TAG" = "v$LATEST_VERSION" ] \
+  || fail "GitHub returned a non-canonical release tag: $LATEST_TAG"
 
 UPDATE_AVAILABLE="false"
 if version_is_newer "$LATEST_VERSION" "$CURRENT_VERSION"; then

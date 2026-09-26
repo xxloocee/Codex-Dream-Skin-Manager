@@ -9,7 +9,7 @@ param(
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 $script:DreamSkinRepository = 'xxloocee/Codex-Dream-Skin-Manager'
-$script:DreamSkinReleaseApi = "https://api.github.com/repos/$script:DreamSkinRepository/releases/latest"
+$script:DreamSkinUpdateManifestUrl = "https://github.com/$script:DreamSkinRepository/releases/latest/download/update.json"
 $script:DreamSkinReleasePage = "https://github.com/$script:DreamSkinRepository/releases/latest"
 $script:DreamSkinMaximumChecksumBytes = 1MB
 $script:DreamSkinMaximumInstallerBytes = 512MB
@@ -68,7 +68,14 @@ function Get-DreamSkinReleaseAsset {
   }
   $url = "$($assets[0].browser_download_url)"
   Assert-DreamSkinReleaseAssetUrl -Url $url -Tag $Tag -AssetName $Name
-  return [pscustomobject]@{ Name = $Name; Url = $url }
+  $sha256 = ''
+  if ($null -ne $Release.PSObject.Properties['schemaVersion']) {
+    $sha256 = "$($assets[0].sha256)"
+    if ($sha256 -cnotmatch '^[0-9a-f]{64}$') {
+      throw "The update manifest contains an invalid SHA-256 for '$Name'."
+    }
+  }
+  return [pscustomobject]@{ Name = $Name; Url = $url; Sha256 = $sha256 }
 }
 
 function ConvertTo-DreamSkinUpdateResult {
@@ -100,6 +107,7 @@ function ConvertTo-DreamSkinUpdateResult {
   $installerName = ''
   $installerUrl = ''
   $checksumUrl = ''
+  $installerSha256 = ''
   if ($updateAvailable) {
     $installerName = "CodexDreamSkinManager-$normalizedTag-windows-x64-setup.exe"
     $installer = Get-DreamSkinReleaseAsset -Release $Release -Name $installerName `
@@ -108,6 +116,7 @@ function ConvertTo-DreamSkinUpdateResult {
       -Label 'checksum manifest' -Tag $tag
     $installerUrl = $installer.Url
     $checksumUrl = $checksum.Url
+    $installerSha256 = $installer.Sha256
   }
 
   return [pscustomobject][ordered]@{
@@ -118,6 +127,7 @@ function ConvertTo-DreamSkinUpdateResult {
     installerAssetName = $installerName
     installerAssetUrl = $installerUrl
     checksumAssetUrl = $checksumUrl
+    installerSha256 = $installerSha256
     installerStarted = $false
     installerProcessId = 0
   }
@@ -193,8 +203,25 @@ function Invoke-DreamSkinUpdateDownload {
 }
 
 function Get-DreamSkinLatestRelease {
-  $headers = @{ Accept = 'application/vnd.github+json'; 'User-Agent' = 'CodexDreamSkinManager' }
-  return Invoke-RestMethod -Uri $script:DreamSkinReleaseApi -Headers $headers -Method Get -TimeoutSec 12
+  $headers = @{ Accept = 'application/json'; 'User-Agent' = 'CodexDreamSkinManager'; 'Cache-Control' = 'no-cache' }
+  try {
+    $response = Invoke-WebRequest -Uri $script:DreamSkinUpdateManifestUrl -Headers $headers `
+      -Method Get -UseBasicParsing -TimeoutSec 12 -MaximumRedirection 5
+  } catch {
+    throw "Could not download update.json. Please check for updates at $script:DreamSkinReleasePage . $($_.Exception.Message)"
+  }
+  if ($response.RawContentLength -le 0 -or $response.RawContentLength -gt 1MB) {
+    throw 'The update manifest size is outside the allowed range.'
+  }
+  # Release attachments may be served as application/octet-stream.
+  $content = $response.Content
+  if ($content -is [byte[]]) { $content = [System.Text.Encoding]::UTF8.GetString($content) }
+  $release = $content | ConvertFrom-Json
+  if ($release.schemaVersion -ne 1) { throw 'Unsupported update manifest schema.' }
+  if ($release.draft -isnot [bool] -or $release.prerelease -isnot [bool]) {
+    throw 'The update manifest must declare its release status.'
+  }
+  return $release
 }
 
 function Install-DreamSkinUpdate {
@@ -230,6 +257,9 @@ function Install-DreamSkinUpdate {
     }
     $manifest = [System.IO.File]::ReadAllText($checksumItem.FullName, [System.Text.Encoding]::UTF8)
     $expectedHash = Get-DreamSkinExpectedChecksum -Manifest $manifest -AssetName $Result.installerAssetName
+    if ($Result.installerSha256 -and $expectedHash -cne $Result.installerSha256) {
+      throw 'The installer checksum in update.json does not match SHA256SUMS.txt.'
+    }
     Invoke-DreamSkinUpdateDownload -Url $Result.installerAssetUrl -Destination $installerDownload -TimeoutSeconds 180
     Assert-DreamSkinInstallerChecksum -Path $installerDownload -ExpectedHash $expectedHash
     Move-Item -LiteralPath $installerDownload -Destination $installerPath

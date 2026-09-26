@@ -1,4 +1,7 @@
 {
+  "schemaVersion": 1,
+  "draft": false,
+  "prerelease": false,
   "tag_name": "v9.8.7",
   "html_url": "https://example.invalid/ignored"
 }
