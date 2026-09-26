@@ -325,4 +325,3 @@ struct ManagerView: View {
     } catch { model.message = "保存失败：\(error.localizedDescription)" }
   }
 }
-
