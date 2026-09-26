@@ -97,6 +97,7 @@
     "--ds-theme-image-focus-y", "--ds-theme-image-zoom",
     "--ds-theme-image-dim", "--ds-theme-image-task-intensity",
     "--ds-theme-density-scale", "--ds-theme-motion-level",
+    "--ds-global-opacity", "--ds-header-opacity",
   ];
   const selectorByKey = new Map(SELECTOR_CONTRACT.selectors.map((entry) => [entry.key, entry]));
   const stableTestidSelector = (testid) => SELECTOR_CONTRACT.stableTestids?.includes(testid)
@@ -381,6 +382,10 @@
 
   const surfaceOpacity = typeof ART.surfaceOpacity === "number" && Number.isFinite(ART.surfaceOpacity)
     ? clamp(ART.surfaceOpacity, 0, 1) : 0.8;
+  const globalOpacity = typeof ART.globalOpacity === "number" && Number.isFinite(ART.globalOpacity)
+    ? clamp(ART.globalOpacity, 0, 1) : 1;
+  const headerOpacity = typeof ART.headerOpacity === "number" && Number.isFinite(ART.headerOpacity)
+    ? clamp(ART.headerOpacity, 0, 1) : 0.8;
 
   const readableAccentInk = (accent, panel) => {
     // The send button sits on the composer surface, which renders panel RGB
@@ -640,7 +645,9 @@
     setStyleProperty(root, "--dream-art-framing-position", framingPosition);
     setStyleProperty(root, "--dream-art-background-size", backgroundSize);
     setStyleProperty(root, "--ds-bubble-opacity", String(Number(bubbleOpacity.toFixed(4))));
-    setStyleProperty(root, "--ds-surface-opacity", String(Number(surfaceOpacity.toFixed(4))));
+    setStyleProperty(root, "--ds-global-opacity", String(Number(globalOpacity.toFixed(4))));
+    setStyleProperty(root, "--ds-header-opacity", String(Number(headerOpacity.toFixed(4))));
+    setStyleProperty(root, "--ds-surface-opacity", String(Number((surfaceOpacity * globalOpacity).toFixed(4))));
     setStyleProperty(root, "--ds-theme-image-focus-x", String(Number(focusX.toFixed(4))));
     setStyleProperty(root, "--ds-theme-image-focus-y", String(Number(focusY.toFixed(4))));
   };

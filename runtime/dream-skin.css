@@ -19,6 +19,8 @@
   /* Shared interface surface settings. Change background alpha, never element
      opacity: text, icons, images and semantic highlights must stay opaque. */
   --ds-surface-opacity: .80;
+  --ds-global-opacity: 1;
+  --ds-header-opacity: .80;
   --ds-surface-blur: 10px;
   --ds-surface-background: rgb(var(--ds-panel-rgb) / var(--ds-surface-opacity));
   --ds-surface-filter: blur(var(--ds-surface-blur)) saturate(106%);
@@ -255,7 +257,7 @@ html[data-dream-skin="active"][data-dream-shell="light"]:is([data-dream-art-safe
 }
 
 html[data-dream-skin="active"] body {
-  background: var(--ds-bg) !important;
+  background: rgb(var(--ds-bg-rgb) / var(--ds-global-opacity)) !important;
   color: var(--ds-text) !important;
 }
 
@@ -394,7 +396,7 @@ html[data-dream-skin="active"] __DREAM_SELECTOR_SHELL_MAIN__:not(:has(__DREAM_SE
   background-repeat: no-repeat;
   background-position: center, center, var(--ds-art-position);
   background-size: 100% 100%, 100% 100%, cover;
-  opacity: .78;
+  opacity: calc(.78 * var(--ds-global-opacity));
 }
 
 html[data-dream-skin="active"][data-dream-shell="light"] __DREAM_SELECTOR_SHELL_MAIN__:not(:has(__DREAM_SELECTOR_HOME_ROUTE_CSS__))::before {
@@ -612,7 +614,7 @@ html[data-dream-skin="active"][data-dream-shell="light"] __DREAM_SELECTOR_HOME_R
 
 html[data-dream-skin="active"] __DREAM_SELECTOR_SHELL_MAIN__ > __DREAM_SELECTOR_HEADER_TINT__ {
   /* Preserve Codex's native fixed header geometry and side-panel controls. */
-  background: transparent !important;
+  background: rgb(var(--ds-panel-rgb) / var(--ds-header-opacity)) !important;
   border-bottom: 0 !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
@@ -682,7 +684,7 @@ html[data-dream-skin="active"][data-dream-shell="light"]
 html[data-dream-skin="active"]
   :is([class~="group/application-menu-top-bar"], [class*="_ApplicationMenuTopBar_"]) {
   color: var(--ds-text) !important;
-  background: transparent !important;
+  background: rgb(var(--ds-panel-rgb) / var(--ds-header-opacity)) !important;
   border-bottom: 0 !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
@@ -1034,7 +1036,7 @@ html[data-dream-skin="active"]:not(:has(__DREAM_SELECTOR_SHELL_MAIN__))
   position: relative !important;
   isolation: isolate;
   overflow: hidden !important;
-  background: var(--ds-bg) !important;
+  background: rgb(var(--ds-bg-rgb) / var(--ds-global-opacity)) !important;
   color: var(--ds-text) !important;
   border: 1px solid var(--ds-line) !important;
   box-shadow: -8px 0 28px rgb(var(--ds-bg-rgb) / .18) !important;

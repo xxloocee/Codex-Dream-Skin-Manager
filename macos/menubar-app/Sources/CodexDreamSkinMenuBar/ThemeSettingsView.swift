@@ -19,6 +19,8 @@ struct ThemeSettingsView: View {
   @State private var zoom = 1.0
   @State private var bubble = 0.0
   @State private var surface = 0.8
+  @State private var globalOpacity = 1.0
+  @State private var headerOpacity = 0.8
   @State private var safeArea = "auto"
   @State private var taskMode = "auto"
   @State private var accent = Color.indigo
@@ -69,6 +71,8 @@ struct ThemeSettingsView: View {
             Picker("任务页模式", selection: $taskMode) { Text("自动").tag("auto"); Text("氛围").tag("ambient"); Text("横幅").tag("banner"); Text("完整").tag("full"); Text("关闭").tag("off") }
             setting("消息气泡不透明度", value: $bubble, range: 0...1)
             setting("工具面板不透明度", value: $surface, range: 0...1)
+            setting("全局皮肤不透明度", value: $globalOpacity, range: 0...1)
+            setting("顶部任务栏不透明度", value: $headerOpacity, range: 0...1)
           }
           Section("自定义取景") {
             Toggle("启用自定义取景", isOn: $framing)
@@ -108,6 +112,8 @@ struct ThemeSettingsView: View {
     positionX = art["positionX"] as? Double ?? 0; positionY = art["positionY"] as? Double ?? 0
     zoom = art["zoom"] as? Double ?? 1; bubble = art["bubbleOpacity"] as? Double ?? 0
     surface = art["surfaceOpacity"] as? Double ?? 0.8
+    globalOpacity = art["globalOpacity"] as? Double ?? 1.0
+    headerOpacity = art["headerOpacity"] as? Double ?? 0.8
     positionMode = art["positionMode"] as? String ?? "locked"
     safeArea = art["safeArea"] as? String ?? "auto"; taskMode = art["taskMode"] as? String ?? "auto"
     framing = art["framingEnabled"] as? Bool ?? ["positionX", "positionY", "zoom", "positionMode"].contains { art[$0] != nil }
@@ -129,6 +135,7 @@ struct ThemeSettingsView: View {
     var art = theme.config["art"] as? [String: Any] ?? [:]
     art["focusX"] = focusX; art["focusY"] = focusY; art["safeArea"] = safeArea; art["taskMode"] = taskMode
     art["bubbleOpacity"] = bubble; art["surfaceOpacity"] = surface; art["framingEnabled"] = framing
+    art["globalOpacity"] = globalOpacity; art["headerOpacity"] = headerOpacity
     for key in ["positionX", "positionY", "zoom", "positionMode"] { art.removeValue(forKey: key) }
     if framing { art["positionX"] = positionX; art["positionY"] = positionY; art["zoom"] = zoom; art["positionMode"] = positionMode }
     config["art"] = art

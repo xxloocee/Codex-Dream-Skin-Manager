@@ -141,6 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     migrateLegacySwiftBarIfNeeded()
     installBundledEngineIfNeeded(force: false)
     refreshStatus()
+    restorePersistedSkinIfNeeded()
     refreshTimer = Timer.scheduledTimer(
       timeInterval: 10,
       target: self,
@@ -163,6 +164,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     // first check.
     DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
       self?.performBackgroundUpdateCheck()
+    }
+  }
+
+  private func restorePersistedSkinIfNeeded() {
+    let stateURL = stateRootURL.appendingPathComponent("state.json")
+    guard let data = try? Data(contentsOf: stateURL),
+          let state = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+          state["session"] as? String == "active",
+          let themeID = state["appliedThemeId"] as? String, !themeID.isEmpty,
+          fileManager.fileExists(atPath: themesURL.appendingPathComponent(themeID).path) else { return }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+      guard let self, !self.operationInFlight, !self.engineInstallInFlight,
+            let script = self.installedScript(named: "start-dream-skin-macos.sh") else { return }
+      self.operationInFlight = true
+      self.managerModel.message = "正在恢复上次应用的皮肤…"
+      self.rebuildMenu()
+      ScriptRunner.run(script: script, arguments: ["--restart-existing"]) { [weak self] result in
+        guard let self else { return }
+        self.operationInFlight = false
+        self.refreshStatus()
+        self.rebuildMenu()
+        if !result.succeeded { self.managerModel.message = "皮肤自动恢复失败，请点击“应用皮肤”重试。" }
+      }
     }
   }
 

@@ -32,7 +32,7 @@ function normalized(raw) {
   theme.appearance??='auto';if(!['auto','light','dark'].includes(theme.appearance)) throw Error('外观参数无效。');
   theme.art??={};const a=theme.art;
   if(!a||typeof a!=='object'||Array.isArray(a)) throw Error('取景参数无效。');
-  for(const [key,min,max] of [['focusX',0,1],['focusY',0,1],['positionX',-1,1],['positionY',-1,1],['zoom',1,2],['bubbleOpacity',0,1],['surfaceOpacity',0,1]]) {
+  for(const [key,min,max] of [['focusX',0,1],['focusY',0,1],['positionX',-1,1],['positionY',-1,1],['zoom',1,2],['bubbleOpacity',0,1],['surfaceOpacity',0,1],['globalOpacity',0,1],['headerOpacity',0,1]]) {
     if(a[key]!==undefined && (typeof a[key]!=='number'||!Number.isFinite(a[key])||a[key]<min||a[key]>max)) throw Error(`${key} 超出范围。`);
   }
   for(const [key,values] of [['positionMode',['locked','free']],['safeArea',['auto','left','right','center','none']],['taskMode',['auto','ambient','banner','full','off']]]) if(a[key]!==undefined&&!values.includes(a[key])) throw Error(`${key} 无效。`);
@@ -62,7 +62,7 @@ function fingerprint(theme,media,css) {
     framing,positionX:framing?(a.positionX??0):0,positionY:framing?(a.positionY??0):0,
     zoom:framing?(a.zoom??1):1,positionMode:framing?(a.positionMode??'locked'):'locked',
     safeArea:a.safeArea??'auto',taskMode:a.taskMode??'auto',bubbleOpacity:a.bubbleOpacity??0,
-    surfaceOpacity:a.surfaceOpacity??0.8,accent:(theme.colors?.accent??'').toUpperCase()};
+    surfaceOpacity:a.surfaceOpacity??0.8,globalOpacity:a.globalOpacity??1,headerOpacity:a.headerOpacity??0.8,accent:(theme.colors?.accent??'').toUpperCase()};
   return createHash('sha256').update(JSON.stringify(render)).update(media).update(css??'').digest('hex');
 }
 async function duplicate(theme,media,css) {
