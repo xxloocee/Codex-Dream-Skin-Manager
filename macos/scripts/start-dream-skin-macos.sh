@@ -58,7 +58,6 @@ RESTART_EXISTING="false"
 PROMPT_RESTART="false"
 FOREGROUND_INJECTOR="false"
 THEME_STAGED="false"
-CONNECT_ONLY="false"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --port) PORT="${2:-}"; PORT_EXPLICIT="true"; shift 2 ;;
@@ -66,7 +65,6 @@ while [ "$#" -gt 0 ]; do
     --prompt-restart) PROMPT_RESTART="true"; shift ;;
     --foreground-injector) FOREGROUND_INJECTOR="true"; shift ;;
     --theme-staged) THEME_STAGED="true"; shift ;;
-    --connect-only) CONNECT_ONLY="true"; shift ;;
     *) fail "Unknown start argument: $1" ;;
   esac
 done
@@ -74,7 +72,7 @@ case "$PORT" in ''|*[!0-9]*) fail "Invalid port: $PORT" ;; esac
 [ "$PORT" -ge 1024 ] && [ "$PORT" -le 65535 ] || fail "Port must be between 1024 and 65535."
 
 ensure_state_root
-if [ "$FOREGROUND_INJECTOR" != "true" ] && [ "$CONNECT_ONLY" != "true" ]; then
+if [ "$FOREGROUND_INJECTOR" != "true" ]; then
   OPERATION_TOKEN="$(new_operation_token)"
   write_operation_state applying "$(dreamskin_text applying_skin)" "$OPERATION_TOKEN" \
     || fail "Could not publish the apply operation state."
@@ -128,13 +126,6 @@ APPLESCRIPT
   fi
 fi
 
-if [ "$CONNECT_ONLY" = "true" ] && [ "$DEBUG_READY" = "true" ]; then
-  activate_codex_window
-  OPERATION_FINISHED="true"
-  printf '{"port":%s}\n' "$PORT"
-  exit 0
-fi
-
 if [ -f "$STATE_PATH" ]; then
   stop_recorded_injector
 fi
@@ -144,15 +135,13 @@ if [ "$DEBUG_READY" = "false" ]; then
   # Codex is closed on this path (never started, or stopped just above), so it
   # is safe to sync the appearanceTheme pin to the staged theme before launch.
   # Best-effort: a config we refuse to rewrite should not block starting.
-  if [ "$CONNECT_ONLY" != "true" ]; then
-    sync_appearance_pin >/dev/null \
-      || printf 'Warning: could not sync Codex appearanceTheme to the active theme; native menus may keep the previous appearance.\n' >&2
-  fi
+  sync_appearance_pin >/dev/null \
+    || printf 'Warning: could not sync Codex appearanceTheme to the active theme; native menus may keep the previous appearance.\n' >&2
   PORT="$(select_available_port "$PORT")"
   printf 'Launching ChatGPT with skin debug port %s…\n' "$PORT" >&2
   launch_codex_with_cdp "$PORT"
   # Start probing immediately instead of waiting for the native window to finish loading.
-  if [ "$FOREGROUND_INJECTOR" != "true" ] && [ "$CONNECT_ONLY" != "true" ]; then
+  if [ "$FOREGROUND_INJECTOR" != "true" ]; then
     INJECTOR_PID="$(launch_injector_daemon "$PORT")"
   fi
   if ! wait_for_cdp "$PORT"; then
@@ -165,14 +154,6 @@ fi
 # Do not use -n here: a second instance can arrive before ChatGPT has registered
 # its reopen handler and leave a debuggable renderer without a native window.
 activate_codex_window
-
-if [ "$CONNECT_ONLY" = "true" ]; then
-  # Video validation needs a renderer before a new theme may be published.
-  # Do not inject an old/missing theme or claim an active skin at this stage.
-  OPERATION_FINISHED="true"
-  printf '{"port":%s}\n' "$PORT"
-  exit 0
-fi
 
 if [ "$FOREGROUND_INJECTOR" = "true" ]; then
   exec "$NODE" "$INJECTOR" --watch --port "$PORT" --theme-dir "$THEME_DIR" \

@@ -140,37 +140,7 @@ case "$THEME_IMAGE" in
 esac
 [ "$THEME_BYTES" -gt 0 ] && [ "$THEME_BYTES" -le "$MAX_THEME_BYTES" ] \
   || fail "Theme media must be non-empty and no larger than $MAX_THEME_LABEL."
-VIDEO_STATE="$STATE_PATH"
-VIDEO_WAIT="false"
-case "$THEME_IMAGE" in
-  *.[mM][pP]4)
-    if [ "$APPLY_NOW" = "true" ]; then
-      if ! verified_cdp_endpoint "$PORT"; then
-        progress '正在连接 Codex，以验证并应用动态主题…'
-        if CONNECTION_RESULT="$("$SCRIPT_DIR/start-dream-skin-macos.sh" --port "$PORT" --prompt-restart --connect-only)"; then
-          PORT="$("$NODE" -e 'const p=JSON.parse(process.argv[1]).port;if(!Number.isInteger(p)||p<1024||p>65535)process.exit(1);process.stdout.write(String(p));' "$CONNECTION_RESULT")"
-        else
-          connection_code=$?
-          # A cancelled restart must not publish the selected video theme.
-          [ "$connection_code" -ne 20 ] || { write_operation_state cancelled "$(dreamskin_text restart_cancelled)" "$OPERATION_TOKEN"; exit 20; }
-          exit "$connection_code"
-        fi
-      fi
-      # A fresh endpoint can exist before a state.json or main renderer exists.
-      VIDEO_STATE="$stage/.video-runtime.json"
-      printf '{"port":%s}\n' "$PORT" > "$VIDEO_STATE"
-      VIDEO_WAIT="true"
-      write_operation_state applying "$(dreamskin_text validating_theme_content)" "$OPERATION_TOKEN"
-      begin_client_operation "$PORT" switch 3000 "$OPERATION_TOKEN" >/dev/null 2>&1 || true
-    fi
-    ;;
-esac
-if [ "$VIDEO_WAIT" = "true" ]; then
-  "$NODE" "$SCRIPT_DIR/validate-video-file.mjs" "$stage/$THEME_IMAGE" "$VIDEO_STATE" --wait-for-renderer >/dev/null
-else
-  "$NODE" "$SCRIPT_DIR/validate-video-file.mjs" "$stage/$THEME_IMAGE" "$VIDEO_STATE" >/dev/null
-fi
-[ "$VIDEO_STATE" = "$STATE_PATH" ] || /bin/rm -f "$VIDEO_STATE"
+"$NODE" "$SCRIPT_DIR/validate-video-file.mjs" "$stage/$THEME_IMAGE" "$STATE_PATH" >/dev/null
 SAFE_CSS_NAME=""
 [ ! -f "$stage/theme.css" ] || SAFE_CSS_NAME="theme.css"
 /bin/chmod 600 "$stage/"*
