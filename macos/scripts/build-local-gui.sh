@@ -20,11 +20,14 @@ FLAGS=(-O -sdk "$SDK" -target "$ARCH-apple-macosx13.0")
 SWIFT_INCLUDE="$(xcode-select -p)/usr/include/swift"
 if [ -f "$SWIFT_INCLUDE/module.modulemap" ] && [ -f "$SWIFT_INCLUDE/bridging.modulemap" ] && grep -q '^module SwiftBridging {' "$SWIFT_INCLUDE/module.modulemap" && grep -q '^module SwiftBridging {' "$SWIFT_INCLUDE/bridging.modulemap"; then
   : > "$TEMP_BUILD/empty.modulemap"
-  /usr/bin/python3 - "$SWIFT_INCLUDE/module.modulemap" "$TEMP_BUILD" <<'PY'
-import json, pathlib, sys
-out = pathlib.Path(sys.argv[2])
-(out / 'overlay.json').write_text(json.dumps({'version': 0, 'roots': [{'type': 'file', 'name': sys.argv[1], 'external-contents': str(out / 'empty.modulemap')}]}))
-PY
+  "$BASE/Contents/Resources/engine/runtime/node/bin/node" - "$SWIFT_INCLUDE/module.modulemap" "$TEMP_BUILD" <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+const [moduleMap, output] = process.argv.slice(2);
+fs.writeFileSync(path.join(output, 'overlay.json'), JSON.stringify({version: 0, roots: [
+  {type: 'file', name: moduleMap, 'external-contents': path.join(output, 'empty.modulemap')},
+]}));
+NODE
   FLAGS+=(-vfsoverlay "$TEMP_BUILD/overlay.json")
 fi
 SOURCES="$ROOT/menubar-app/Sources"

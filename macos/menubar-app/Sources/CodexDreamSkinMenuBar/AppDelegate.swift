@@ -1407,7 +1407,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     guard !operationInFlight, !updateCheckInFlight, !engineInstallInFlight, !themeRecoveryInFlight, !snapshot.busy,
           let script = bundledScript(named: "gui-update.sh") else { return }
     updateCheckInFlight = true
-    if interactive { managerModel.message = "正在检查 Mac GUI 更新…" }
+    if interactive { managerModel.message = "正在检查更新…" }
     ScriptRunner.run(script: script, arguments: ["check"]) { [weak self] result in
       guard let self else { return }
       self.updateCheckInFlight = false
@@ -1423,21 +1423,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         }
         return
       }
-      if object["configured"] as? Bool == false {
-        if interactive { self.managerModel.message = "此构建尚未配置更新发布者。请配置仓库和发布签名密钥后重新构建。" }
-        return
-      }
+      let manualDownload = object["manualDownload"] as? Bool == true
+      let product = manualDownload ? "Codex Dream Skin" : "Mac GUI"
       self.availableUpdate = available ? (latest, releaseURL) : nil
       self.rebuildMenu()
       if !available {
-        if interactive { self.managerModel.message = "Mac GUI " + current + " 已是最新发布版本。" }
+        if interactive { self.managerModel.message = product + " " + current + " 已是最新发布版本。" }
         return
       }
       if interactive {
         let alert = NSAlert()
-        alert.messageText = "发现 Mac GUI " + latest
-        alert.informativeText = "下载后会校验发布者签名和 SHA-256，再替换并重启主题管理器。不会重启 Codex 或改动主题库，旧版 App 将保留备份。"
-        alert.addButton(withTitle: "下载并更新"); alert.addButton(withTitle: "稍后")
+        alert.messageText = "发现 " + product + " " + latest
+        alert.informativeText = manualDownload
+          ? "将打开发布页，请选择适合本机架构的 macOS DMG，下载后退出管理器并覆盖安装。此通道不会自动替换应用，主题库会保留。"
+          : "下载后会校验发布者签名和 SHA-256，再替换并重启主题管理器。不会重启 Codex 或改动主题库，旧版 App 将保留备份。"
+        alert.addButton(withTitle: manualDownload ? "前往下载" : "下载并更新"); alert.addButton(withTitle: "稍后")
         self.showManager()
         self.activateForUserInteraction()
         guard let window = self.managerWindow else {
@@ -1446,12 +1446,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         }
         alert.beginSheetModal(for: window) { [weak self] response in
           guard let self, response == .alertFirstButtonReturn else { return }
+          if manualDownload {
+            guard let url = URL(string: releaseURL) else {
+              self.managerModel.message = "发布页地址无效，请重新检查更新。"
+              return
+            }
+            self.managerModel.message = NSWorkspace.shared.open(url)
+              ? "已打开发布页，请下载 macOS 安装包。" : "无法打开发布页，请稍后重试。"
+            return
+          }
           self.managerModel.message = "已确认更新，正在准备下载 Mac GUI " + latest + "…"
           self.prepareGUIUpdate(latest)
         }
-      } else if UserDefaults.standard.string(forKey: "guiUpdateNotifiedVersion") != latest {
-        self.postUpdateAvailableNotification(version: latest, releaseURL: releaseURL)
-        UserDefaults.standard.set(latest, forKey: "guiUpdateNotifiedVersion")
+      } else {
+        let notificationKey = manualDownload ? "releaseUpdateNotifiedVersion" : "guiUpdateNotifiedVersion"
+        if UserDefaults.standard.string(forKey: notificationKey) != latest {
+          self.postUpdateAvailableNotification(version: latest, releaseURL: releaseURL, manualDownload: manualDownload)
+          UserDefaults.standard.set(latest, forKey: notificationKey)
+        }
       }
     }
   }
@@ -1512,19 +1524,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     }
   }
 
-  private func postUpdateAvailableNotification(version: String, releaseURL: String) {
+  private func postUpdateAvailableNotification(version: String, releaseURL: String, manualDownload: Bool) {
     let content = UNMutableNotificationContent()
     if copy.resolvedLanguage == .chinese {
-      content.title = "Mac GUI 有新版本"
-      content.body = "Mac GUI \(version) 已发布，点按校验并安装。"
+      content.title = manualDownload ? "Codex Dream Skin 有新版本" : "Mac GUI 有新版本"
+      content.body = manualDownload
+        ? "Codex Dream Skin \(version) 已发布，点按查看并前往下载。"
+        : "Mac GUI \(version) 已发布，点按校验并安装。"
     } else {
       content.title = "Codex Dream Skin update available"
-      content.body = "Mac GUI \(version) is available. Click to verify and install."
+      content.body = manualDownload
+        ? "Codex Dream Skin \(version) is available. Click to review and download."
+        : "Mac GUI \(version) is available. Click to verify and install."
     }
     content.sound = .default
     content.userInfo = ["releaseURL": releaseURL]
+    let notificationChannel = manualDownload ? "release" : "gui"
     let request = UNNotificationRequest(
-      identifier: "dreamskin-update-\(version)",
+      identifier: "dreamskin-update-\(notificationChannel)-\(version)",
       content: content,
       trigger: nil
     )

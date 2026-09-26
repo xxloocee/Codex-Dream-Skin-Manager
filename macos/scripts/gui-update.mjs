@@ -6,11 +6,20 @@ import {verify,createHash} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 const run=promisify(execFile),root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const channel=JSON.parse(await fs.readFile(path.join(root,'updater/channel.json'),'utf8'));
-if(channel.enabled===false){console.log(JSON.stringify({configured:false,currentVersion:channel.version,latestVersion:channel.version,updateAvailable:false,releaseUrl:''}));process.exit(0);}
-const publicKey=await fs.readFile(path.join(root,'updater/public-key.pem'),'utf8');
 const [action,argument]=process.argv.slice(2);
 const MB=1024*1024;
+const channel=JSON.parse(await fs.readFile(path.join(root,'updater/channel.json'),'utf8'));
+if(channel.enabled===false) {
+  // Ordinary DMGs have no GUI signing channel. Keep their static release
+  // check available, but never use that channel for automatic installation.
+  try {
+    if(action!=='check')throw Error('此构建使用手动更新，请前往发布页下载安装包。');
+    const {stdout}=await run('/bin/bash',[path.join(root,'scripts/check-update-macos.sh'),'--json'],{timeout:45000,maxBuffer:MB});
+    console.log(JSON.stringify({...JSON.parse(stdout),manualDownload:true}));
+  } catch(error) {console.error(error.stderr?.trim()||error.message);process.exitCode=1;}
+  process.exit(process.exitCode??0);
+}
+const publicKey=await fs.readFile(path.join(root,'updater/public-key.pem'),'utf8');
 const stateRoot=path.join(process.env.HOME,'Library/Application Support/CodexDreamSkinStudio');
 const semver=v=>typeof v==='string'&&/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(v);
 const compare=(a,b)=>{const x=a.split('.').map(Number),y=b.split('.').map(Number);for(let i=0;i<3;i++){if(x[i]!==y[i])return x[i]>y[i]?1:-1;}return 0;};
