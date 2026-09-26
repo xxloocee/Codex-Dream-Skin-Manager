@@ -20,7 +20,7 @@ struct ThemeSettingsView: View {
   @State private var bubble = 0.0
   @State private var surface = 0.8
   @State private var globalOpacity = 1.0
-  @State private var headerOpacity = 0.8
+  @State private var transparentHeader = false
   @State private var safeArea = "auto"
   @State private var taskMode = "auto"
   @State private var accent = Color.indigo
@@ -72,7 +72,8 @@ struct ThemeSettingsView: View {
             setting("消息气泡不透明度", value: $bubble, range: 0...1)
             setting("工具面板不透明度", value: $surface, range: 0...1)
             setting("全局皮肤不透明度", value: $globalOpacity, range: 0...1)
-            setting("顶部任务栏不透明度", value: $headerOpacity, range: 0...1)
+            Toggle("顶部背景透明", isOn: $transparentHeader)
+              .help("开启后顶部直接显示皮肤原画；关闭后使用默认背景遮罩。")
           }
           Section("自定义取景") {
             Toggle("启用自定义取景", isOn: $framing)
@@ -113,7 +114,7 @@ struct ThemeSettingsView: View {
     zoom = art["zoom"] as? Double ?? 1; bubble = art["bubbleOpacity"] as? Double ?? 0
     surface = art["surfaceOpacity"] as? Double ?? 0.8
     globalOpacity = art["globalOpacity"] as? Double ?? 1.0
-    headerOpacity = art["headerOpacity"] as? Double ?? 0.8
+    transparentHeader = (art["headerOpacity"] as? Double ?? 0.8) == 0
     positionMode = art["positionMode"] as? String ?? "locked"
     safeArea = art["safeArea"] as? String ?? "auto"; taskMode = art["taskMode"] as? String ?? "auto"
     framing = art["framingEnabled"] as? Bool ?? ["positionX", "positionY", "zoom", "positionMode"].contains { art[$0] != nil }
@@ -135,7 +136,9 @@ struct ThemeSettingsView: View {
     var art = theme.config["art"] as? [String: Any] ?? [:]
     art["focusX"] = focusX; art["focusY"] = focusY; art["safeArea"] = safeArea; art["taskMode"] = taskMode
     art["bubbleOpacity"] = bubble; art["surfaceOpacity"] = surface; art["framingEnabled"] = framing
-    art["globalOpacity"] = globalOpacity; art["headerOpacity"] = headerOpacity
+    art["globalOpacity"] = globalOpacity
+    // Retain the theme-package field for compatibility; the UI has two states.
+    art["headerOpacity"] = transparentHeader ? 0.0 : 0.8
     for key in ["positionX", "positionY", "zoom", "positionMode"] { art.removeValue(forKey: key) }
     if framing { art["positionX"] = positionX; art["positionY"] = positionY; art["zoom"] = zoom; art["positionMode"] = positionMode }
     config["art"] = art

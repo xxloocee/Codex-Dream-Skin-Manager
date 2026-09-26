@@ -97,7 +97,7 @@
     "--ds-theme-image-focus-y", "--ds-theme-image-zoom",
     "--ds-theme-image-dim", "--ds-theme-image-task-intensity",
     "--ds-theme-density-scale", "--ds-theme-motion-level",
-    "--ds-global-opacity", "--ds-header-opacity",
+    "--ds-global-opacity", "--ds-header-opacity", "--ds-main-header-height",
   ];
   const selectorByKey = new Map(SELECTOR_CONTRACT.selectors.map((entry) => [entry.key, entry]));
   const stableTestidSelector = (testid) => SELECTOR_CONTRACT.stableTestids?.includes(testid)
@@ -384,8 +384,8 @@
     ? clamp(ART.surfaceOpacity, 0, 1) : 0.8;
   const globalOpacity = typeof ART.globalOpacity === "number" && Number.isFinite(ART.globalOpacity)
     ? clamp(ART.globalOpacity, 0, 1) : 1;
-  const headerOpacity = typeof ART.headerOpacity === "number" && Number.isFinite(ART.headerOpacity)
-    ? clamp(ART.headerOpacity, 0, 1) : 0.8;
+  // Legacy zero means transparent; all other saved values use the default tint.
+  const headerOpacity = ART.headerOpacity === 0 ? 0 : 0.8;
 
   const readableAccentInk = (accent, panel) => {
     // The send button sits on the composer surface, which renders panel RGB
@@ -646,7 +646,9 @@
     setStyleProperty(root, "--dream-art-background-size", backgroundSize);
     setStyleProperty(root, "--ds-bubble-opacity", String(Number(bubbleOpacity.toFixed(4))));
     setStyleProperty(root, "--ds-global-opacity", String(Number(globalOpacity.toFixed(4))));
+    root.toggleAttribute("data-dream-global-transparent", globalOpacity === 0);
     setStyleProperty(root, "--ds-header-opacity", String(Number(headerOpacity.toFixed(4))));
+    root.toggleAttribute("data-dream-header-transparent", headerOpacity === 0);
     setStyleProperty(root, "--ds-surface-opacity", String(Number((surfaceOpacity * globalOpacity).toFixed(4))));
     setStyleProperty(root, "--ds-theme-image-focus-x", String(Number(focusX.toFixed(4))));
     setStyleProperty(root, "--ds-theme-image-focus-y", String(Number(focusY.toFixed(4))));
@@ -991,7 +993,7 @@
   };
   const refreshSurfaces = (parts, composerNodes) => {
     const shellParts = new Set(["root", "main", "home", "thread", "sidebar", "header"]);
-    const sceneNodes = [...parts].filter(([, part]) => part === "main" || part === "home")
+    const sceneNodes = [...parts].filter(([, part]) => part === "main" || part === "home" || part === "thread" || part === "header")
       .map(([node]) => node);
     const candidates = new Set([
       ...genericNodes(NEUTRAL_SURFACE_SELECTOR), ...genericNodes(SURFACE_BOUNDARIES),
@@ -1024,12 +1026,28 @@
     }
   };
 
+  const refreshHeaderGeometry = () => {
+    const main = resolvedMainNode();
+    let height = 0;
+    if (main?.getBoundingClientRect) {
+      const bounds = main.getBoundingClientRect();
+      for (const header of selectorNodes("header-tint")) {
+        if (!main.contains?.(header)) continue;
+        const rect = header.getBoundingClientRect();
+        if (rect.height > 0 && rect.top <= bounds.top + 2) {
+          height = Math.max(height, Math.min(bounds.height, rect.bottom - bounds.top));
+        }
+      }
+    }
+    setStyleProperty(document.documentElement, "--ds-main-header-height", `${Math.max(0, height)}px`);
+  };
   const refreshParts = () => {
     metrics.partPasses += 1;
     const desired = new Map();
     addPart(desired, "root", [document.documentElement]);
     addPart(desired, "sidebar", [...selectorNodes("left-panel"), ...fallbackSidebarNodes()]);
-    addPart(desired, "header", selectorNodes("header-tint"));
+    addPart(desired, "header", [...selectorNodes("header-tint"),
+      ...genericNodes('[class~="group/application-menu-top-bar"], [class*="_ApplicationMenuTopBar_"]')]);
     // Route-specific parts win when a generic shell collapses home and main
     // onto the same element.
     addPart(desired, "home", selectorNodes("home-route"));
@@ -1061,6 +1079,7 @@
       }
       partNodes.add(node);
     }
+    refreshHeaderGeometry();
     refreshComposerBorders(composerNodes);
     refreshSurfaces(desired, composerNodes);
   };
@@ -1130,6 +1149,7 @@
   };
 
   const cleanup = () => {
+    window.removeEventListener?.("resize", refreshHeaderGeometry);
     const state = window[STATE_KEY];
     if (state?.installToken !== installToken) return false;
     window[DISABLED_KEY] = true;
@@ -1275,6 +1295,7 @@
     revision: PAYLOAD_REVISION,
     detectShellAppearance,
   };
+  window.addEventListener?.("resize", refreshHeaderGeometry);
   const firstEnsureStartedAt = now();
   ensure({ root: true, parts: true });
   const initialScope = refreshScope();

@@ -113,6 +113,16 @@ injector_identity_matches() {
 if /usr/bin/pgrep -x ChatGPT >/dev/null 2>&1 || /usr/bin/pgrep -x Codex >/dev/null 2>&1; then
   CODEX_RUNNING="true"
 fi
+if [ "$CODEX_RUNNING" = "false" ]; then
+  # macOS can expose a truncated executable path as the process name.
+  # Match the complete main executable, excluding helper processes.
+  while IFS= read -r command_line; do
+    case "$command_line" in
+      */ChatGPT.app/Contents/MacOS/ChatGPT|*/ChatGPT.app/Contents/MacOS/ChatGPT\ *|*/Codex.app/Contents/MacOS/Codex|*/Codex.app/Contents/MacOS/Codex\ *)
+        CODEX_RUNNING="true"; break ;;
+    esac
+  done < <(/bin/ps -axo command=)
+fi
 
 if [ -f "$STATE_PATH" ]; then
   STATE_SNAPSHOT="$(/bin/cat "$STATE_PATH" 2>/dev/null)"

@@ -443,8 +443,9 @@ APPLESCRIPT
   case "$outcome" in
     cancelled) return 20 ;;
     timed-out)
-      printf 'ChatGPT quit timed out; restart was stopped without forcing it to close.\n' >&2
-      return 124
+      # A successful exit can prevent the AppleEvent reply from arriving.
+      # Confirm process exit below; never force termination on a timeout.
+      printf 'ChatGPT quit reply timed out; checking whether it has exited.\n' >&2
       ;;
     requested) ;;
     *)
@@ -642,6 +643,18 @@ write_state() {
       injectorMode: "full",
       createdAt: new Date().toISOString()
     };
+    if (session === "applying") {
+      // Retain the last verified theme during reconnection so a failed
+      // attempt remains eligible for recovery; never mark it verified here.
+      try {
+        const previous = JSON.parse(fs.readFileSync(file, "utf8"));
+        const theme = JSON.parse(fs.readFileSync(`${themeDir}/theme.json`, "utf8"));
+        if (["active", "stale"].includes(previous.session) && previous.appliedThemeId === theme.id) {
+          state.appliedThemeId = previous.appliedThemeId;
+          state.appliedThemeName = previous.appliedThemeName;
+        }
+      } catch {}
+    }
     if (session === "active") {
       try {
         const theme = JSON.parse(fs.readFileSync(`${themeDir}/theme.json`, "utf8"));

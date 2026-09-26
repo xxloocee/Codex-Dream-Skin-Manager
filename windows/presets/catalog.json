@@ -6,7 +6,12 @@
       "name": "浪漫玫瑰",
       "image": "romantic-rose.jpg",
       "category": "dream",
-      "tags": ["风景", "玫瑰", "庭院", "花房"],
+      "tags": [
+        "风景",
+        "玫瑰",
+        "庭院",
+        "花房"
+      ],
       "appearance": "auto",
       "focusX": 0.74,
       "focusY": 0.5,
@@ -19,7 +24,12 @@
       "name": "樱花黎明",
       "image": "sakura-dawn.jpg",
       "category": "dream",
-      "tags": ["风景", "樱花", "晨光", "粉色"],
+      "tags": [
+        "风景",
+        "樱花",
+        "晨光",
+        "粉色"
+      ],
       "appearance": "auto",
       "focusX": 0.72,
       "focusY": 0.47,
@@ -32,7 +42,12 @@
       "name": "云端遐想",
       "image": "cloud-reverie.jpg",
       "category": "dream",
-      "tags": ["风景", "云层", "柔光", "蓝粉"],
+      "tags": [
+        "风景",
+        "云层",
+        "柔光",
+        "蓝粉"
+      ],
       "appearance": "auto",
       "focusX": 0.64,
       "focusY": 0.45,
@@ -45,7 +60,12 @@
       "name": "月光花园",
       "image": "moonlit-garden.jpg",
       "category": "dream",
-      "tags": ["风景", "月光", "花园", "静谧"],
+      "tags": [
+        "风景",
+        "月光",
+        "花园",
+        "静谧"
+      ],
       "appearance": "auto",
       "focusX": 0.66,
       "focusY": 0.48,
@@ -58,7 +78,12 @@
       "name": "森林薄雾",
       "image": "forest-mist.jpg",
       "category": "nature",
-      "tags": ["风景", "森林", "薄雾", "光束"],
+      "tags": [
+        "风景",
+        "森林",
+        "薄雾",
+        "光束"
+      ],
       "appearance": "auto",
       "focusX": 0.76,
       "focusY": 0.45,
@@ -71,7 +96,12 @@
       "name": "山巅晨光",
       "image": "alpine-dawn.jpg",
       "category": "nature",
-      "tags": ["风景", "山峰", "晨光", "云海"],
+      "tags": [
+        "风景",
+        "山峰",
+        "晨光",
+        "云海"
+      ],
       "appearance": "auto",
       "focusX": 0.66,
       "focusY": 0.47,
@@ -84,7 +114,12 @@
       "name": "海面玻璃",
       "image": "ocean-glass.jpg",
       "category": "nature",
-      "tags": ["风景", "海面", "清透", "蓝色"],
+      "tags": [
+        "风景",
+        "海面",
+        "清透",
+        "蓝色"
+      ],
       "appearance": "auto",
       "focusX": 0.65,
       "focusY": 0.52,
@@ -97,7 +132,12 @@
       "name": "竹林听雨",
       "image": "bamboo-rain.jpg",
       "category": "nature",
-      "tags": ["风景", "竹林", "雨", "青绿"],
+      "tags": [
+        "风景",
+        "竹林",
+        "雨",
+        "青绿"
+      ],
       "appearance": "auto",
       "focusX": 0.66,
       "focusY": 0.5,
@@ -110,7 +150,13 @@
       "name": "赛博霓虹",
       "image": "cyber-neon.jpg",
       "category": "cyber",
-      "tags": ["科技", "城市", "霓虹", "赛博", "都市"],
+      "tags": [
+        "科技",
+        "城市",
+        "霓虹",
+        "赛博",
+        "都市"
+      ],
       "appearance": "auto",
       "focusX": 0.74,
       "focusY": 0.48,
@@ -123,7 +169,13 @@
       "name": "全息都市",
       "image": "hologram-city.jpg",
       "category": "cyber",
-      "tags": ["科技", "城市", "都市", "玻璃", "未来"],
+      "tags": [
+        "科技",
+        "城市",
+        "都市",
+        "玻璃",
+        "未来"
+      ],
       "appearance": "auto",
       "focusX": 0.67,
       "focusY": 0.5,
@@ -136,7 +188,12 @@
       "name": "霓虹电路",
       "image": "neon-circuit.jpg",
       "category": "cyber",
-      "tags": ["科技", "艺术", "电路", "蓝光"],
+      "tags": [
+        "科技",
+        "艺术",
+        "电路",
+        "蓝光"
+      ],
       "appearance": "auto",
       "focusX": 0.66,
       "focusY": 0.5,
@@ -149,7 +206,13 @@
       "name": "合成波网格",
       "image": "synthwave-grid.jpg",
       "category": "cyber",
-      "tags": ["科技", "艺术", "网格", "落日", "复古未来"],
+      "tags": [
+        "科技",
+        "艺术",
+        "网格",
+        "落日",
+        "复古未来"
+      ],
       "appearance": "auto",
       "focusX": 0.66,
       "focusY": 0.54,
@@ -162,7 +225,12 @@
       "name": "纸上微光",
       "image": "paper-light.jpg",
       "category": "minimal",
-      "tags": ["艺术", "纸张", "白色", "微光"],
+      "tags": [
+        "艺术",
+        "纸张",
+        "白色",
+        "微光"
+      ],
       "appearance": "auto",
       "focusX": 0.64,
       "focusY": 0.48,
@@ -175,7 +243,12 @@
       "name": "玻璃工作台",
       "image": "glass-workspace.jpg",
       "category": "minimal",
-      "tags": ["艺术", "玻璃", "工作台", "清透"],
+      "tags": [
+        "艺术",
+        "玻璃",
+        "工作台",
+        "清透"
+      ],
       "appearance": "auto",
       "focusX": 0.67,
       "focusY": 0.52,
@@ -188,7 +261,12 @@
       "name": "柔和几何",
       "image": "soft-geometry.jpg",
       "category": "minimal",
-      "tags": ["艺术", "几何", "柔和", "珊瑚"],
+      "tags": [
+        "艺术",
+        "几何",
+        "柔和",
+        "珊瑚"
+      ],
       "appearance": "auto",
       "focusX": 0.68,
       "focusY": 0.5,
@@ -201,7 +279,12 @@
       "name": "单色线条",
       "image": "monochrome-lines.jpg",
       "category": "minimal",
-      "tags": ["艺术", "单色", "线条", "石材"],
+      "tags": [
+        "艺术",
+        "单色",
+        "线条",
+        "石材"
+      ],
       "appearance": "auto",
       "focusX": 0.7,
       "focusY": 0.5,
@@ -214,7 +297,12 @@
       "name": "午夜极光",
       "image": "midnight-aurora.jpg",
       "category": "dark",
-      "tags": ["风景", "极光", "雪山", "湖泊"],
+      "tags": [
+        "风景",
+        "极光",
+        "雪山",
+        "湖泊"
+      ],
       "appearance": "auto",
       "focusX": 0.72,
       "focusY": 0.42,
@@ -227,7 +315,12 @@
       "name": "黑曜微光",
       "image": "obsidian-glow.jpg",
       "category": "dark",
-      "tags": ["艺术", "黑曜石", "微光", "青色"],
+      "tags": [
+        "艺术",
+        "黑曜石",
+        "微光",
+        "青色"
+      ],
       "appearance": "auto",
       "focusX": 0.7,
       "focusY": 0.5,
@@ -240,7 +333,12 @@
       "name": "静谧星海",
       "image": "starfield.jpg",
       "category": "dark",
-      "tags": ["风景", "星空", "宇宙", "静谧"],
+      "tags": [
+        "风景",
+        "星空",
+        "宇宙",
+        "静谧"
+      ],
       "appearance": "auto",
       "focusX": 0.68,
       "focusY": 0.47,
@@ -253,7 +351,11 @@
       "name": "雨夜窗景",
       "image": "rainy-night.jpg",
       "category": "dark",
-      "tags": ["城市", "雨夜", "窗景"],
+      "tags": [
+        "城市",
+        "雨夜",
+        "窗景"
+      ],
       "appearance": "auto",
       "focusX": 0.68,
       "focusY": 0.5,
@@ -266,7 +368,12 @@
       "name": "琥珀黄昏",
       "image": "amber-dusk.jpg",
       "category": "warm",
-      "tags": ["城市", "书房", "落日", "暖色"],
+      "tags": [
+        "城市",
+        "书房",
+        "落日",
+        "暖色"
+      ],
       "appearance": "auto",
       "focusX": 0.72,
       "focusY": 0.48,
@@ -279,7 +386,12 @@
       "name": "蜜桃日出",
       "image": "peach-sunrise.jpg",
       "category": "warm",
-      "tags": ["风景", "日出", "蜜桃", "山峦"],
+      "tags": [
+        "风景",
+        "日出",
+        "蜜桃",
+        "山峦"
+      ],
       "appearance": "auto",
       "focusX": 0.68,
       "focusY": 0.48,
@@ -292,7 +404,12 @@
       "name": "烛光工坊",
       "image": "candle-atelier.jpg",
       "category": "warm",
-      "tags": ["城市", "烛光", "工坊", "陶器"],
+      "tags": [
+        "城市",
+        "烛光",
+        "工坊",
+        "陶器"
+      ],
       "appearance": "auto",
       "focusX": 0.69,
       "focusY": 0.51,
@@ -305,7 +422,12 @@
       "name": "秋日窗边",
       "image": "autumn-window.jpg",
       "category": "warm",
-      "tags": ["城市", "秋日", "窗边", "阅读角"],
+      "tags": [
+        "城市",
+        "秋日",
+        "窗边",
+        "阅读角"
+      ],
       "appearance": "auto",
       "focusX": 0.68,
       "focusY": 0.5,
@@ -318,7 +440,11 @@
       "name": "桥本有菜",
       "image": "arina-hashimoto.jpg",
       "category": "dream",
-      "tags": ["人物", "玫瑰", "柔光"],
+      "tags": [
+        "人物",
+        "玫瑰",
+        "柔光"
+      ],
       "appearance": "auto",
       "focusX": 0.72,
       "focusY": 0.45,
@@ -331,7 +457,13 @@
       "name": "二狗子 · 灵感纸飞机 · 浅色",
       "image": "ergouzi-paper-comet-light.jpg",
       "category": "dream",
-      "tags": ["动漫", "萌宠", "二狗子", "纸飞机", "灵感"],
+      "tags": [
+        "动漫",
+        "萌宠",
+        "二狗子",
+        "纸飞机",
+        "灵感"
+      ],
       "appearance": "auto",
       "focusX": 0.75,
       "focusY": 0.44,
@@ -344,7 +476,13 @@
       "name": "二狗子 · 灵感纸飞机 · 深色",
       "image": "ergouzi-paper-comet-dark.jpg",
       "category": "dream",
-      "tags": ["动漫", "萌宠", "二狗子", "纸飞机", "灵感"],
+      "tags": [
+        "动漫",
+        "萌宠",
+        "二狗子",
+        "纸飞机",
+        "灵感"
+      ],
       "appearance": "auto",
       "focusX": 0.75,
       "focusY": 0.44,
@@ -357,7 +495,13 @@
       "name": "人民的AI",
       "image": "people-ai-red-horizon.jpg",
       "category": "cyber",
-      "tags": ["科技", "城市", "人民AI", "红白", "未来城市"],
+      "tags": [
+        "科技",
+        "城市",
+        "人民AI",
+        "红白",
+        "未来城市"
+      ],
       "appearance": "auto",
       "focusX": 0.78,
       "focusY": 0.5,
@@ -370,7 +514,13 @@
       "name": "二狗子 · 信号星 · 浅色",
       "image": "ergouzi-signal-star-light.jpg",
       "category": "cyber",
-      "tags": ["动漫", "人物", "二狗子", "信号", "星光"],
+      "tags": [
+        "动漫",
+        "人物",
+        "二狗子",
+        "信号",
+        "星光"
+      ],
       "appearance": "auto",
       "focusX": 0.76,
       "focusY": 0.45,
@@ -383,7 +533,13 @@
       "name": "二狗子 · 信号星 · 深色",
       "image": "ergouzi-signal-star-dark.jpg",
       "category": "cyber",
-      "tags": ["动漫", "人物", "二狗子", "信号", "星光"],
+      "tags": [
+        "动漫",
+        "人物",
+        "二狗子",
+        "信号",
+        "星光"
+      ],
       "appearance": "auto",
       "focusX": 0.76,
       "focusY": 0.45,
@@ -396,7 +552,12 @@
       "name": "紫电神影",
       "image": "violet-thunder.png",
       "category": "dark",
-      "tags": ["动漫", "人物", "紫电", "幻想"],
+      "tags": [
+        "动漫",
+        "人物",
+        "紫电",
+        "幻想"
+      ],
       "appearance": "auto",
       "focusX": 0.52,
       "focusY": 0.43,
@@ -409,7 +570,11 @@
       "name": "晴日倚窗",
       "image": "sunlit-window.jpg",
       "category": "warm",
-      "tags": ["人物", "室内", "日光"],
+      "tags": [
+        "人物",
+        "室内",
+        "日光"
+      ],
       "appearance": "auto",
       "focusX": 0.72,
       "focusY": 0.48,
@@ -422,7 +587,11 @@
       "name": "暖光凝眸",
       "image": "warm-gaze.jpg",
       "category": "dream",
-      "tags": ["人物", "近景", "暖光"],
+      "tags": [
+        "人物",
+        "近景",
+        "暖光"
+      ],
       "appearance": "auto",
       "focusX": 0.62,
       "focusY": 0.46,
@@ -435,7 +604,11 @@
       "name": "墨羽流光",
       "image": "ink-feather-glow.mp4",
       "category": "dream",
-      "tags": ["动态", "人物", "幻想"],
+      "tags": [
+        "动态",
+        "人物",
+        "幻想"
+      ],
       "appearance": "auto",
       "focusX": 0.5,
       "focusY": 0.5,
@@ -445,23 +618,38 @@
     },
     {
       "id": "silver-glass-dream",
-      "name": "银璃幻梦",
+      "name": "银璃幻梦 · 4K原速循环",
       "image": "silver-glass-dream.mp4",
       "category": "cyber",
-      "tags": ["动态", "人物", "科技", "银白"],
+      "tags": [
+        "动态",
+        "人物",
+        "科技",
+        "银白",
+        "4K"
+      ],
       "appearance": "auto",
       "focusX": 0.5,
       "focusY": 0.5,
       "safeArea": "auto",
       "taskMode": "auto",
-      "accent": "#FF80C0"
+      "accent": "#FF80C0",
+      "globalOpacity": 0.0,
+      "headerOpacity": 0.0,
+      "surfaceOpacity": 0.4984725050916497,
+      "bubbleOpacity": 0.49567209775967414
     },
     {
       "id": "lamplit-leisure",
       "name": "灯下闲居",
       "image": "lamplit-leisure.jpg",
       "category": "warm",
-      "tags": ["人物", "萌宠", "居家", "灯光"],
+      "tags": [
+        "人物",
+        "萌宠",
+        "居家",
+        "灯光"
+      ],
       "appearance": "auto",
       "focusX": 0.5,
       "focusY": 0.5,

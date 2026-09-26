@@ -59,6 +59,7 @@ PROMPT_RESTART="false"
 FOREGROUND_INJECTOR="false"
 THEME_STAGED="false"
 CONNECT_ONLY="false"
+RESTORE_IF_RUNNING="false"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --port) PORT="${2:-}"; PORT_EXPLICIT="true"; shift 2 ;;
@@ -67,6 +68,7 @@ while [ "$#" -gt 0 ]; do
     --foreground-injector) FOREGROUND_INJECTOR="true"; shift ;;
     --theme-staged) THEME_STAGED="true"; shift ;;
     --connect-only) CONNECT_ONLY="true"; shift ;;
+    --restore-if-running) RESTORE_IF_RUNNING="true"; shift ;;
     *) fail "Unknown start argument: $1" ;;
   esac
 done
@@ -74,6 +76,15 @@ case "$PORT" in ''|*[!0-9]*) fail "Invalid port: $PORT" ;; esac
 [ "$PORT" -ge 1024 ] && [ "$PORT" -le 65535 ] || fail "Port must be between 1024 and 65535."
 
 ensure_state_root
+if [ "$RESTORE_IF_RUNNING" = "true" ]; then
+  discover_codex_app
+  codex_is_running || { OPERATION_FINISHED="true"; exit 0; }
+  require_signed_node_runtime
+  case "$(state_field session 2>/dev/null || true)" in
+    active|stale) ;;
+    *) OPERATION_FINISHED="true"; exit 0 ;;
+  esac
+fi
 if [ "$FOREGROUND_INJECTOR" != "true" ] && [ "$CONNECT_ONLY" != "true" ]; then
   OPERATION_TOKEN="$(new_operation_token)"
   write_operation_state applying "$(dreamskin_text applying_skin)" "$OPERATION_TOKEN" \
@@ -100,6 +111,12 @@ if [ "$DEBUG_READY" = "false" ]; then
   verify_macos_app_signature deep
 else
   verify_macos_app_signature quick
+fi
+
+if [ "$RESTORE_IF_RUNNING" = "true" ] && ! codex_is_running; then
+  # Signature validation may take several seconds. Respect a user quit
+  # during that interval instead of reopening the app afterward.
+  cancel_start
 fi
 
 if codex_is_running && [ "$DEBUG_READY" = "false" ]; then

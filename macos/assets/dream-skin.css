@@ -38,35 +38,37 @@
   --ds-focus-y: var(--dream-skin-focus-y, var(--dream-art-focus-y, 50%));
   --ds-art-position: var(--dream-art-position, var(--dream-skin-art-position, var(--ds-focus-x) var(--ds-focus-y)));
   --ds-safe-side: left;
+  /* Scene veils preserve the original home/thread contrast independently
+     of the global UI surface control and the transparent-header switch. */
   --ds-hero-scrim: linear-gradient(90deg,
-    rgb(var(--ds-bg-rgb) / .90) 0%,
-    rgb(var(--ds-bg-rgb) / .76) 50%,
-    rgb(var(--ds-bg-rgb) / .18) 84%,
+    rgb(var(--ds-bg-rgb) / calc(.90 * var(--ds-global-opacity))) 0%,
+    rgb(var(--ds-bg-rgb) / calc(.76 * var(--ds-global-opacity))) 50%,
+    rgb(var(--ds-bg-rgb) / calc(.18 * var(--ds-global-opacity))) 84%,
     transparent 100%);
   --ds-task-shade: linear-gradient(90deg,
-    rgb(var(--ds-bg-rgb) / .56) 0%,
-    rgb(var(--ds-bg-rgb) / .36) 48%,
-    rgb(var(--ds-bg-rgb) / .12) 100%);
+    rgb(var(--ds-bg-rgb) / calc(.56 * var(--ds-global-opacity))) 0%,
+    rgb(var(--ds-bg-rgb) / calc(.36 * var(--ds-global-opacity))) 48%,
+    rgb(var(--ds-bg-rgb) / calc(.12 * var(--ds-global-opacity))) 100%);
   --ds-task-fade: linear-gradient(180deg,
-    rgb(var(--ds-bg-rgb) / .10) 0%,
-    rgb(var(--ds-bg-rgb) / .18) 32%,
-    rgb(var(--ds-bg-rgb) / .76) 68%,
+    rgb(var(--ds-bg-rgb) / calc(.10 * var(--ds-global-opacity))) 0%,
+    rgb(var(--ds-bg-rgb) / calc(.18 * var(--ds-global-opacity))) 32%,
+    rgb(var(--ds-bg-rgb) / calc(.76 * var(--ds-global-opacity))) 68%,
     rgb(var(--ds-bg-rgb) / 1) 100%);
   --ds-task-full-veil: linear-gradient(
-    rgb(var(--ds-bg-rgb) / .10),
-    rgb(var(--ds-bg-rgb) / .10));
-  --ds-immersive-edge: rgb(var(--ds-bg-rgb) / .40);
-  --ds-immersive-mid: rgb(var(--ds-bg-rgb) / .26);
-  --ds-immersive-far: rgb(var(--ds-bg-rgb) / .16);
-  --ds-immersive-sidebar: rgb(var(--ds-panel-rgb) / .46);
-  --ds-task-immersive-sidebar: rgb(var(--ds-panel-rgb) / .70);
-  --ds-immersive-chrome: rgb(var(--ds-panel-rgb) / .28);
+    rgb(var(--ds-bg-rgb) / calc(.10 * var(--ds-global-opacity))),
+    rgb(var(--ds-bg-rgb) / calc(.10 * var(--ds-global-opacity))));
+  --ds-immersive-edge: rgb(var(--ds-bg-rgb) / calc(.40 * var(--ds-global-opacity)));
+  --ds-immersive-mid: rgb(var(--ds-bg-rgb) / calc(.26 * var(--ds-global-opacity)));
+  --ds-immersive-far: rgb(var(--ds-bg-rgb) / calc(.16 * var(--ds-global-opacity)));
+  --ds-immersive-sidebar: rgb(var(--ds-panel-rgb) / calc(.46 * var(--ds-global-opacity)));
+  --ds-task-immersive-sidebar: rgb(var(--ds-panel-rgb) / calc(.70 * var(--ds-global-opacity)));
+  --ds-immersive-chrome: rgb(var(--ds-panel-rgb) / calc(.28 * var(--ds-global-opacity)));
   --ds-immersive-composer: var(--ds-surface-background);
   --ds-immersive-composer-solid: var(--ds-surface-background);
   --ds-immersive-line: rgb(var(--ds-muted-rgb) / .42);
-  --ds-task-immersive-edge: rgb(var(--ds-bg-rgb) / .82);
-  --ds-task-immersive-mid: rgb(var(--ds-bg-rgb) / .74);
-  --ds-task-immersive-far: rgb(var(--ds-bg-rgb) / .60);
+  --ds-task-immersive-edge: rgb(var(--ds-bg-rgb) / calc(.82 * var(--ds-global-opacity)));
+  --ds-task-immersive-mid: rgb(var(--ds-bg-rgb) / calc(.74 * var(--ds-global-opacity)));
+  --ds-task-immersive-far: rgb(var(--ds-bg-rgb) / calc(.60 * var(--ds-global-opacity)));
 }
 
 html[data-dream-skin="active"][data-dream-shell="light"] {
@@ -88,33 +90,33 @@ html[data-dream-skin="active"][data-dream-shell="light"] {
   --ds-on-accent: rgb(var(--ds-panel-rgb) / 1);
   --ds-hero-scrim: linear-gradient(90deg,
     rgb(var(--ds-panel-rgb) / .96) 0%,
-    rgb(var(--ds-panel-rgb) / .82) 50%,
+    rgb(var(--ds-panel-rgb) / calc(.82 * var(--ds-global-opacity))) 50%,
     rgb(var(--ds-panel-rgb) / .20) 84%,
     transparent 100%);
   --ds-task-shade: linear-gradient(90deg,
     rgb(var(--ds-bg-rgb) / .68) 0%,
-    rgb(var(--ds-bg-rgb) / .40) 48%,
-    rgb(var(--ds-bg-rgb) / .12) 100%);
+    rgb(var(--ds-bg-rgb) / calc(.40 * var(--ds-global-opacity))) 48%,
+    rgb(var(--ds-bg-rgb) / calc(.12 * var(--ds-global-opacity))) 100%);
   --ds-task-fade: linear-gradient(180deg,
     rgb(var(--ds-bg-rgb) / .08) 0%,
-    rgb(var(--ds-bg-rgb) / .22) 34%,
-    rgb(var(--ds-bg-rgb) / .78) 70%,
+    rgb(var(--ds-bg-rgb) / calc(.22 * var(--ds-global-opacity))) 34%,
+    rgb(var(--ds-bg-rgb) / calc(.78 * var(--ds-global-opacity))) 70%,
     rgb(var(--ds-bg-rgb) / 1) 100%);
   --ds-task-full-veil: linear-gradient(
-    rgb(var(--ds-panel-rgb) / .10),
-    rgb(var(--ds-panel-rgb) / .10));
-  --ds-immersive-edge: rgb(var(--ds-panel-rgb) / .44);
-  --ds-immersive-mid: rgb(var(--ds-panel-rgb) / .28);
-  --ds-immersive-far: rgb(var(--ds-panel-rgb) / .14);
-  --ds-immersive-sidebar: rgb(var(--ds-panel-rgb) / .48);
+    rgb(var(--ds-panel-rgb) / calc(.10 * var(--ds-global-opacity))),
+    rgb(var(--ds-panel-rgb) / calc(.10 * var(--ds-global-opacity))));
+  --ds-immersive-edge: rgb(var(--ds-panel-rgb) / calc(.44 * var(--ds-global-opacity)));
+  --ds-immersive-mid: rgb(var(--ds-panel-rgb) / calc(.28 * var(--ds-global-opacity)));
+  --ds-immersive-far: rgb(var(--ds-panel-rgb) / calc(.14 * var(--ds-global-opacity)));
+  --ds-immersive-sidebar: rgb(var(--ds-panel-rgb) / calc(.48 * var(--ds-global-opacity)));
   --ds-task-immersive-sidebar: rgb(var(--ds-panel-rgb) / .72);
-  --ds-immersive-chrome: rgb(var(--ds-panel-rgb) / .34);
+  --ds-immersive-chrome: rgb(var(--ds-panel-rgb) / calc(.34 * var(--ds-global-opacity)));
   --ds-immersive-composer: var(--ds-surface-background);
   --ds-immersive-composer-solid: var(--ds-surface-background);
   --ds-immersive-line: rgb(var(--ds-accent-rgb) / .24);
-  --ds-task-immersive-edge: rgb(var(--ds-panel-rgb) / .86);
-  --ds-task-immersive-mid: rgb(var(--ds-panel-rgb) / .78);
-  --ds-task-immersive-far: rgb(var(--ds-panel-rgb) / .66);
+  --ds-task-immersive-edge: rgb(var(--ds-panel-rgb) / calc(.86 * var(--ds-global-opacity)));
+  --ds-task-immersive-mid: rgb(var(--ds-panel-rgb) / calc(.78 * var(--ds-global-opacity)));
+  --ds-task-immersive-far: rgb(var(--ds-panel-rgb) / calc(.66 * var(--ds-global-opacity)));
 }
 
 /* Native token surfaces (dropdown/popover) resolve from Codex's own
@@ -397,11 +399,11 @@ html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surfa
   background-repeat: no-repeat;
   background-position: center, center, var(--ds-art-position);
   background-size: 100% 100%, 100% 100%, cover;
-  opacity: calc(.78 * var(--ds-global-opacity));
+  opacity: 1;
 }
 
 html[data-dream-skin="active"][data-dream-shell="light"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]):not(:has([role="main"]))::before {
-  opacity: calc(.72 * var(--ds-global-opacity));
+  opacity: 1;
 }
 
 html[data-dream-skin="active"]:is([data-dream-art-wide="true"], [data-dream-art-aspect="wide"], [data-dream-art-aspect="ultrawide"])
@@ -420,7 +422,7 @@ html[data-dream-skin="active"]:is([data-dream-task-mode="full"], [data-dream-art
   background-image: var(--ds-task-full-veil), var(--dream-skin-art);
   background-position: center, var(--ds-art-position);
   background-size: 100% 100%, cover;
-  opacity: var(--ds-global-opacity);
+  opacity: 1;
 }
 
 html[data-dream-skin="active"]:is([data-dream-task-mode="ambient"], [data-dream-art-task-mode="ambient"], [data-dream-task-mode="banner"], [data-dream-art-task-mode="banner"])
@@ -604,7 +606,7 @@ html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surfa
 }
 
 html[data-dream-skin="active"][data-dream-shell="light"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]):not(:has([role="main"])) article {
-  background: rgb(var(--ds-panel-rgb) / calc(.72 * var(--ds-global-opacity)));
+  background: rgb(var(--ds-panel-rgb) / calc(.18 + .54 * var(--ds-global-opacity)));
 }
 
 html[data-dream-skin="active"][data-dream-shell="light"]
@@ -1055,7 +1057,7 @@ html[data-dream-skin="active"]:not(:has(main:is(.main-surface, [data-app-shell-m
   background-repeat: no-repeat;
   background-position: center, center, var(--ds-art-position);
   background-size: 100% 100%, 100% 100%, cover;
-  opacity: calc(.78 * var(--ds-global-opacity));
+  opacity: 1;
 }
 
 html[data-dream-skin="active"]:not(:has(main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]))) [data-ds-part="main"] > *,
@@ -1313,10 +1315,13 @@ html[data-dream-skin="active"] :is(.composer-surface-chrome, [class*="_ComposerL
 }
 
 /* Codex 26.818 places two opaque fades around the sticky thread composer.
+   26.924 replaces h-full with -top-8/bottom-0 on its aria-hidden backdrop.
    Match their complete utility signatures inside non-Home main surfaces so
    unrelated application gradients keep their native paint. */
 html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]):not(:has([role="main"]))
   [class~="pointer-events-none"][class~="bottom-0"][class~="h-full"][class~="bg-gradient-to-t"][class~="from-surface"][class~="via-surface"],
+html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]):not(:has([role="main"]))
+  [aria-hidden="true"][class~="pointer-events-none"][class~="absolute"][class~="inset-x-0"][class~="-top-8"][class~="bottom-0"][class~="bg-gradient-to-t"][class~="from-surface"][class~="via-surface"],
 html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]):not(:has([role="main"]))
   [class~="pointer-events-none"][class~="-bottom-1"][class~="h-7"][class~="bg-gradient-to-t"][class~="from-surface"][class~="to-transparent"] {
   background: transparent !important;
@@ -1550,5 +1555,68 @@ html[data-dream-skin="active"] [data-ds-part="message"] { border-radius: 16px; }
       animation-duration: .01ms !important;
       animation-iteration-count: 1 !important;
     }
+  }
+}
+
+/* Keep the wide artwork visible at full strength. Paint the existing veil
+   below the header so headerOpacity is independent of the conversation veil. */
+@layer dreamskin-surfaces {
+  /* Codex 26.924 paints an opaque pseudo-element inside MainContentSurface
+     when the unified tab strip is enabled. The outer surface already owns
+     the home/thread veil; this inner paint must not cover the artwork again. */
+  html[data-dream-skin="active"][data-dream-art-wide="true"]
+    main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"])[data-app-shell-main-surface="default"]
+    [class*="_WorkspaceContent_"]::before {
+    background: transparent !important;
+  }
+
+  /* Native edge-scroll toolbars paint their direct children separately from
+     the header. Let the header own the tint so zero really clears the band. */
+  html[data-dream-skin="active"][data-dream-art-wide="true"]
+    [data-app-shell-header-edge-scroll="true"]:not([data-app-shell-tab-row], [data-app-shell-workspace-layout="split"])
+    [class*="_Toolbar_"] > :not([data-app-shell-thread-content-overlap]) {
+    background: transparent !important;
+  }
+
+  html[data-dream-skin="active"][data-dream-art-wide="true"][data-dream-header-transparent="true"] :is(main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]), [data-ds-part="main"]) {
+    background-size: cover !important;
+    background-position: var(--ds-art-position) !important;
+  }
+
+  html[data-dream-skin="active"][data-dream-art-wide="true"] :is(
+    main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]), [data-ds-part="main"]
+  ) {
+    background-size: 100% calc(100% - var(--ds-main-header-height, 0px)) !important;
+    background-position: left bottom !important;
+    background-repeat: no-repeat !important;
+  }
+  html[data-dream-skin="active"] :is(
+    [data-ds-part="header"],
+    [class~="group/application-menu-top-bar"], [class*="_ApplicationMenuTopBar_"]
+  ) {
+    background: rgb(var(--ds-panel-rgb) / var(--ds-header-opacity)) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+}
+
+@layer dreamskin-surfaces { html[data-dream-skin="active"][data-dream-header-transparent="true"] :is([data-ds-part="header"], [class~="group/application-menu-top-bar"], [class*="_ApplicationMenuTopBar_"]) { background: transparent !important; } }
+
+/* A zero global value is the explicit "original video" mode. Clear every
+   scene veil and native shell paint; controls retain their own readable surfaces. */
+@layer dreamskin-surfaces {
+  html[data-dream-skin="active"][data-dream-global-transparent="true"]
+    :is(main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]), [data-ds-part="main"], [data-ds-part="home"], aside.app-shell-left-panel) {
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+  html[data-dream-skin="active"][data-dream-global-transparent="true"]
+    :is(main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]), [data-ds-part="main"], [data-ds-part="home"])::before,
+  html[data-dream-skin="active"][data-dream-global-transparent="true"]
+    :is(main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]), [data-ds-part="main"], [data-ds-part="home"])::after {
+    content: none !important;
+    background: transparent !important;
   }
 }
