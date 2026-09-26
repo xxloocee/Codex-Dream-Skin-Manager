@@ -5,6 +5,14 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 NODE="${NODE:-$ROOT/runtime/node/bin/node}"
 [ -x "$NODE" ] || { printf 'Test Node.js was not found: %s. Prepare the bundled runtime or set NODE for development.\n' "$NODE" >&2; exit 1; }
 
+report_test_failure() {
+  local status="$?"
+  printf 'FAIL: macOS test command at line %s exited with %s: %s\n' \
+    "${BASH_LINENO[0]:-$LINENO}" "$status" "${BASH_COMMAND:-unknown}" >&2
+  return "$status"
+}
+trap report_test_failure ERR
+
 while IFS= read -r file; do /bin/bash -n "$file"; done < <(
   /usr/bin/find "$ROOT" -type f \( -name '*.sh' -o -name '*.command' \) \
     ! -path '*/release/*' -print
