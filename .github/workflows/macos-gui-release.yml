@@ -1,0 +1,54 @@
+name: Native macOS GUI release
+on:
+  push:
+    tags: ['gui-v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'GUI version matching macos/GUI_VERSION (for example 0.1.0)'
+        required: true
+permissions:
+  contents: write
+concurrency:
+  group: macos-gui-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Prepare publisher configuration
+        env:
+          SIGNING_KEY: ${{ secrets.DREAMSKIN_GUI_SIGNING_KEY }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < macos/GUI_VERSION)"
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            test "$GITHUB_REF_NAME" = "gui-v$version"
+          else
+            test "$REQUESTED_VERSION" = "$version"
+          fi
+          test -n "$SIGNING_KEY"
+          umask 077
+          printf '%s\n' "$SIGNING_KEY" > "$RUNNER_TEMP/gui-signing-key.pem"
+          echo "DREAMSKIN_GUI_SIGNING_KEY_FILE=$RUNNER_TEMP/gui-signing-key.pem" >> "$GITHUB_ENV"
+          echo "GUI_VERSION=$version" >> "$GITHUB_ENV"
+      - name: Build universal native manager (no tests)
+        run: |
+          DREAMSKIN_ARCHS='arm64 x86_64' bash macos/scripts/build-menubar-app.sh --skip-tests --output "$RUNNER_TEMP/package/Codex Dream Skin GUI.app"
+      - name: Package and sign update manifest
+        run: |
+          mkdir -p dist-gui
+          ditto -c -k --keepParent "$RUNNER_TEMP/package/Codex Dream Skin GUI.app" "dist-gui/CodexDreamSkinGUI-$GUI_VERSION-arm64.zip"
+          cp "dist-gui/CodexDreamSkinGUI-$GUI_VERSION-arm64.zip" "dist-gui/CodexDreamSkinGUI-$GUI_VERSION-x64.zip"
+          "$RUNNER_TEMP/package/Codex Dream Skin GUI.app/Contents/Resources/engine/runtime/node/bin/node" macos/scripts/publish-gui-manifest.mjs "$GUI_VERSION" dist-gui
+      - name: Publish complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "gui-v$GUI_VERSION" dist-gui/* --target "$GITHUB_SHA" --title "Mac GUI $GUI_VERSION" --notes "Native macOS GUI update. Includes signed update metadata and universal app archives. Theme data is stored separately and preserved." --latest
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/gui-signing-key.pem"

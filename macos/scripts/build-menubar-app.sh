@@ -86,6 +86,12 @@ fi
 /usr/bin/plutil -lint "$CONTENTS/Info.plist" >/dev/null
 
 RUNTIME_SCRIPTS=(
+  gui-update.sh
+  gui-update.mjs
+  gui-install-update.sh
+  gui-library.sh
+  gui-library.mjs
+  gui-package.mjs
   apply-from-menubar-macos.sh
   apply-community-theme-macos.sh
   check-image-dimensions.mjs
@@ -154,6 +160,7 @@ for animated_preset in preset-ink-feather-glow preset-silver-glass-dream; do
   /bin/mkdir -p "$ENGINE/presets/$animated_preset"
   /usr/bin/rsync -a "$ROOT/presets/$animated_preset/" "$ENGINE/presets/$animated_preset/"
 done
+/bin/cp "$ROOT/../windows/presets/catalog.json" "$RESOURCES/manager-catalog.json"
 /bin/cp "$ROOT/VERSION" "$ENGINE/VERSION"
 /bin/cp "$ROOT/LICENSE" "$RESOURCES/LICENSE.txt"
 /bin/cp "$ROOT/NOTICE.md" "$RESOURCES/NOTICE.md"
@@ -167,6 +174,9 @@ done
 "$ROOT/scripts/generate-app-icon.sh" "$RESOURCES/DreamSkin.icns"
 [ -s "$RESOURCES/DreamSkin.icns" ] \
   || { printf 'App icon is missing after generation: %s\n' "$RESOURCES/DreamSkin.icns" >&2; exit 1; }
+GUI_VERSION="$(/usr/bin/tr -d '[:space:]' < "$ROOT/GUI_VERSION")"
+/usr/libexec/PlistBuddy -c "Add :DreamSkinGUIVersion string $GUI_VERSION" "$CONTENTS/Info.plist"
+"$ENGINE/runtime/node/bin/node" "$ROOT/scripts/configure-gui-updater.mjs" "$ENGINE" "$ROOT/GUI_VERSION"
 /usr/bin/codesign --force --deep --sign - --timestamp=none "$APP"
 /usr/bin/codesign --verify --deep --strict "$APP"
 

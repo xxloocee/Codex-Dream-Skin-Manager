@@ -8,6 +8,10 @@ This project injects through **local loopback CDP**. It does **not** modify the 
 
 > Not affiliated with OpenAI. Codex is a trademark of its respective owners.
 
+## Native GUI
+
+The native AppKit/SwiftUI manager now includes a theme library, parameter editor, `.cdskin` import/export, safe batch imports, and a publisher-signed update channel. See [GUI usage](GUI使用说明.md) and [publisher setup](UPDATER.md). Unconfigured developer builds keep updating disabled.
+
 ## Requirements
 
 - macOS 13 Ventura or newer (the native DMG app declares macOS 13 as its minimum)

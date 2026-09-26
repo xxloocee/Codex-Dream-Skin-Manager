@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import CryptoKit
 import DreamSkinCore
 import ServiceManagement
@@ -16,6 +17,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
       return false
     }
   }
+
+  private let managerModel = ManagerModel()
+  private var managerWindow: NSWindow?
 
   private let fileManager = FileManager.default
   private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -127,9 +131,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
   }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
-    NSApp.setActivationPolicy(.accessory)
+    NSApp.setActivationPolicy(.regular)
     configureStatusItem()
     ensureUserDirectories()
+    configureManager()
+    showManager()
     cleanupStalePrivateOperationDirectories()
     migrateLegacySwiftBarIfNeeded()
     installBundledEngineIfNeeded(force: false)
@@ -157,6 +163,224 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
       self?.performBackgroundUpdateCheck()
     }
+  }
+
+  private func configureManager() {
+    let mainMenu = NSMenu()
+    let appItem = NSMenuItem()
+    let appMenu = NSMenu()
+    let quitItem = NSMenuItem(title: "退出 Codex Dream Skin", action: #selector(quit), keyEquivalent: "q")
+    quitItem.target = self
+    appMenu.addItem(quitItem)
+    appItem.submenu = appMenu
+    mainMenu.addItem(appItem)
+    let editItem = NSMenuItem()
+    let editMenu = NSMenu(title: "编辑")
+    for (title, action, key) in [("撤销", "undo:", "z"), ("剪切", "cut:", "x"), ("复制", "copy:", "c"), ("粘贴", "paste:", "v"), ("全选", "selectAll:", "a")] {
+      editMenu.addItem(NSMenuItem(title: title, action: Selector(action), keyEquivalent: key))
+    }
+    editItem.submenu = editMenu
+    mainMenu.addItem(editItem)
+    NSApp.mainMenu = mainMenu
+    managerModel.libraryAction = { [weak self] action, arguments, completion in
+      self?.runLibraryAction(action, arguments: arguments, completion: completion)
+    }
+    managerModel.action = { [weak self] action, id in
+      guard let self else { return }
+      if action == "refresh" { self.refreshStatus(); return }
+      guard !self.operationInFlight, !self.engineInstallInFlight, !self.themeRecoveryInFlight, !self.snapshot.busy else {
+        self.managerModel.message = "有操作正在进行，请稍后再试。"
+        return
+      }
+      switch action {
+      case "apply":
+        guard let id else { return }
+        let item = NSMenuItem(); item.representedObject = id
+        self.switchSavedTheme(item)
+      case "updates": self.checkForUpdates()
+      case "restore": self.restoreFromManager()
+      case "delete": if let id { self.deleteFromManager(id) }
+      case "exportPackage": if let id { self.exportFromManager(id) }
+      case "importPackages": self.importManagerPackages()
+      case "importBatch": self.importManagerBatch()
+      case "chooseDraft": self.chooseManagerDraft()
+      case "repair": self.reinstallEngine()
+      case "pause": self.pauseSkin()
+      case "resume": self.applySkin()
+      case "importZip": self.chooseThemeArchive()
+      case "importMedia": self.importManagerMedia()
+      default: break
+      }
+    }
+  }
+
+  @objc private func showManager() {
+    managerModel.reload()
+    let updateResult = stateRootURL.appendingPathComponent("updates/result.plist")
+    if let data = try? Data(contentsOf: updateResult),
+       let value = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any],
+       let message = value["message"] as? String {
+      managerModel.message = message
+    }
+    if managerWindow == nil {
+      let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 780), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+      window.title = "Codex Dream Skin Manager"
+      window.contentView = NSHostingView(rootView: ManagerView(model: managerModel))
+      window.minSize = NSSize(width: 1060, height: 740)
+      window.isReleasedWhenClosed = false
+      window.setFrameAutosaveName("DreamSkinManager")
+      window.center()
+      managerWindow = window
+    }
+    managerWindow?.makeKeyAndOrderFront(nil)
+    NSApp.activate(ignoringOtherApps: true)
+  }
+
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    showManager()
+    return true
+  }
+
+  private func importManagerMedia() {
+    let panel = NSOpenPanel()
+    panel.allowedContentTypes = [.png, .jpeg, .webP, .gif, .mpeg4Movie]
+    panel.canChooseDirectories = false
+    panel.title = "导入图片或视频到主题库"
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    runInstalledScript(named: "load-image-theme-macos.sh", arguments: ["--file", url.path, "--name", url.deletingPathExtension().lastPathComponent, "--no-apply"], operation: "导入素材")
+  }
+
+  private func appendManagerLog(_ text: String) {
+    managerModel.log += "[" + DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium) + "] " + text + "\n"
+    if managerModel.log.count > 64000 { managerModel.log = String(managerModel.log.suffix(64000)) }
+  }
+
+  private func runLibraryAction(_ action: String, arguments: [String], completion: @escaping ([String: Any]?) -> Void) {
+    guard !operationInFlight, !engineInstallInFlight, !themeRecoveryInFlight, !snapshot.busy else {
+      managerModel.message = "有操作正在进行，请稍后重试。"; completion(nil); return
+    }
+    let scriptName = action == "batch" ? "manager-actions-macos.sh" : action == "zip" ? "import-theme-zip-macos.sh" : "gui-library.sh"
+    guard let script = bundledScript(named: scriptName) else {
+      managerModel.message = "应用资源缺少主题管理脚本。"; completion(nil); return
+    }
+    let labels = ["delete": "删除主题", "save": "保存修改", "create": "保存主题", "import": "导入主题包", "export": "导出主题包", "batch": "批量导入", "zip": "导入 ZIP"]
+    let label = labels[action] ?? action
+    let scriptArguments = action == "batch" ? ["--action", "ImportBatch", "--request-path"] + arguments : action == "zip" ? ["--file"] + arguments : [action] + arguments
+    operationInFlight = true
+    managerModel.message = "正在" + label + "…"
+    rebuildMenu()
+    ScriptRunner.run(script: script, arguments: scriptArguments) { [weak self] result in
+      guard let self else { completion(nil); return }
+      self.operationInFlight = false
+      var payload: [String: Any]?
+      if result.succeeded { payload = (try? JSONSerialization.jsonObject(with: Data(result.output.utf8))) as? [String: Any] }
+      if let value = payload {
+        if let trashPath = value["trashPath"] as? String {
+          let url = URL(fileURLWithPath: trashPath)
+          do {
+            guard url.deletingLastPathComponent().standardizedFileURL == self.stateRootURL.standardizedFileURL,
+                  url.lastPathComponent.hasPrefix(".gui-deleted-") else { throw CocoaError(.fileReadInvalidFileName) }
+            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            self.managerModel.message = "内置主题已移入废纸篓。"
+          } catch { self.managerModel.message = "已从主题库移除，但移入废纸篓失败；素材保留在：" + trashPath }
+        } else if let results = value["results"] as? [[String: Any]] {
+          let imported = results.filter { $0["status"] as? String == "imported" }.count
+          let skipped = results.filter { $0["status"] as? String == "skipped" }.count
+          let failed = results.filter { $0["status"] as? String == "failed" }.count
+          self.managerModel.message = "批量导入：成功 \(imported)，重复跳过 \(skipped)，失败 \(failed)。详情见操作记录。"
+          for item in results { self.appendManagerLog("\(item["name"] ?? "") · \(item["status"] ?? "") · \(item["message"] ?? "")") }
+        } else {
+          self.managerModel.message = value["duplicate"] as? Bool == true || value["status"] as? String == "duplicate" ? "主题已存在，已跳过重复导入。" : label + "完成。"
+        }
+      } else {
+        self.managerModel.message = label + "失败：" + self.conciseOutput(result.output, fallback: "返回结果无效")
+      }
+      self.appendManagerLog(self.managerModel.message)
+      self.managerModel.reload()
+      self.rebuildMenu()
+      self.refreshStatus()
+      completion(payload)
+    }
+  }
+
+  private func chooseManagerDraft() {
+    let panel = NSOpenPanel()
+    panel.allowedContentTypes = [.png, .jpeg, .webP, .gif, .mpeg4Movie]
+    panel.canChooseDirectories = false
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    let name = String(url.deletingPathExtension().lastPathComponent.prefix(80))
+    let config: [String: Any] = ["schemaVersion": 1, "name": name, "image": url.lastPathComponent, "appearance": "auto", "category": "custom", "tags": [String](), "art": ["focusX": 0.5, "focusY": 0.5]]
+    managerModel.draft = ManagerTheme(id: "draft-" + UUID().uuidString, name: name, category: "custom", tags: [], directory: url.deletingLastPathComponent(), media: url, config: config)
+  }
+
+  private func importManagerBatch() {
+    let panel = NSOpenPanel()
+    panel.allowedContentTypes = [.png, .jpeg, .webP, .gif, .mpeg4Movie]
+    panel.canChooseDirectories = false; panel.allowsMultipleSelection = true
+    panel.title = "批量添加图片 / 视频（最多 50 项）"
+    guard panel.runModal() == .OK else { return }
+    guard panel.urls.count <= 50 else { managerModel.message = "每批最多导入 50 项。"; return }
+    let requestURL = stateRootURL.appendingPathComponent("requests/gui-batch-" + UUID().uuidString + ".json")
+    do {
+      try FileManager.default.createDirectory(at: requestURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+      let items = panel.urls.map { ["imagePath": $0.path, "name": String($0.deletingPathExtension().lastPathComponent.prefix(80))] }
+      try JSONSerialization.data(withJSONObject: ["schemaVersion": 1, "items": items]).write(to: requestURL, options: .atomic)
+      runLibraryAction("batch", arguments: [requestURL.path]) { _ in try? FileManager.default.removeItem(at: requestURL) }
+    } catch { managerModel.message = "创建导入请求失败：" + error.localizedDescription }
+  }
+
+  private func importManagerPackages() {
+    let panel = NSOpenPanel()
+    panel.allowedContentTypes = [.zip, UTType(filenameExtension: "cdskin") ?? .data]
+    panel.canChooseDirectories = false; panel.allowsMultipleSelection = true
+    panel.title = "导入 Windows .cdskin / macOS ZIP 主题包"
+    guard panel.runModal() == .OK else { return }
+    let urls = panel.urls
+    guard urls.count <= 50 else { managerModel.message = "每次最多导入 50 个主题包。"; return }
+    func next(_ index: Int, successes: Int) {
+      guard index < urls.count else {
+        self.managerModel.message = "主题包导入结束：成功或已存在 \(successes)，失败 \(urls.count - successes)。详情见操作记录。"
+        return
+      }
+      let url = urls[index]
+      self.appendManagerLog("导入：" + url.lastPathComponent)
+      self.runLibraryAction(url.pathExtension.lowercased() == "cdskin" ? "import" : "zip", arguments: [url.path]) { result in
+        next(index + 1, successes: successes + (result == nil ? 0 : 1))
+      }
+    }
+    next(0, successes: 0)
+  }
+
+  private func exportFromManager(_ id: String) {
+    guard let theme = managerModel.themes.first(where: { $0.id == id }) else { return }
+    let panel = NSSavePanel()
+    panel.allowedContentTypes = [UTType(filenameExtension: "cdskin") ?? .data]
+    panel.nameFieldStringValue = theme.name.replacingOccurrences(of: "/", with: "-") + ".cdskin"
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    runLibraryAction("export", arguments: [id, url.path]) { _ in }
+  }
+
+  private func deleteFromManager(_ id: String) {
+    guard let theme = managerModel.themes.first(where: { $0.id == id }) else { return }
+    guard id != snapshot.themeID, id != snapshot.appliedThemeID, id != "preset-gothic-void-crusade" else {
+      managerModel.message = "当前主题和默认恢复主题不能删除。"; return
+    }
+    let alert = NSAlert()
+    alert.messageText = "删除“" + theme.name + "”？"
+    alert.informativeText = theme.isPreset ? "这款内置主题及其素材将移入废纸篓。" : "这款自定义主题及其本地素材将永久删除，无法撤销。"
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "取消"); alert.addButton(withTitle: "删除")
+    guard alert.runModal() == .alertSecondButtonReturn else { return }
+    runLibraryAction("delete", arguments: [id]) { _ in }
+  }
+
+  private func restoreFromManager() {
+    let alert = NSAlert()
+    alert.messageText = "恢复 Codex 原始外观？"
+    alert.informativeText = "将停止换肤并重启 Codex，请先保存未完成的输入。主题库会保留。"
+    alert.addButton(withTitle: "取消"); alert.addButton(withTitle: "恢复并重启")
+    guard alert.runModal() == .alertSecondButtonReturn else { return }
+    runInstalledScript(named: "restore-dream-skin-macos.sh", arguments: ["--restore-base-theme", "--restart-codex"], operation: "恢复原貌")
   }
 
   func applicationWillTerminate(_ notification: Notification) {
@@ -281,7 +505,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
   }
 
   private func rebuildMenu() {
+    managerModel.status = snapshot.title + (snapshot.appliedThemeName.isEmpty ? "" : " · " + snapshot.appliedThemeName)
+    managerModel.pendingID = snapshot.themeID
+    managerModel.currentID = snapshot.session == "active" ? snapshot.appliedThemeID : ""
+    managerModel.busy = operationInFlight || engineInstallInFlight || themeRecoveryInFlight || snapshot.busy
     menu.removeAllItems()
+    addActionItem("打开主题管理器…", action: #selector(showManager))
+    menu.addItem(.separator())
     addDisabledItem(copy.statusTitle(session: snapshot.session, operation: snapshot.operation))
     if !snapshot.appliedThemeName.isEmpty && snapshot.session == "active" {
       addDisabledItem(copy.format(.appliedTheme, cleanMenuText(snapshot.appliedThemeName)))
@@ -563,6 +793,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         self.statusItem.button?.toolTip = "Codex Dream Skin · \(self.copy.statusTitle(session: parsed.session, operation: parsed.operation))"
         self.statusItem.button?.appearsDisabled = parsed.session == "unknown" || parsed.session == "stale"
         self.rebuildMenu()
+      } else {
+        self.managerModel.status = "状态读取失败"
+        self.managerModel.message = self.conciseOutput(result.output, fallback: "无法读取运行状态，请尝试安装 / 修复引擎。")
       }
     }
   }
@@ -587,7 +820,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     panel.canChooseDirectories = false
     panel.canChooseFiles = true
     panel.allowsMultipleSelection = false
-    var imageTypes: [UTType] = [.png, .jpeg, .webP, .gif, .mpeg4Movie, .heic, .tiff]
+    var imageTypes: [UTType] = [.png, .jpeg, .webP, .gif, .mpeg4Movie]
     if let apng = UTType(filenameExtension: "apng") { imageTypes.append(apng) }
     panel.allowedContentTypes = imageTypes
     activateForUserInteraction()
@@ -1063,6 +1296,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
   }
 
   private func finishThemeOperation(cleanupRoot: URL? = nil) {
+    managerModel.reload()
     if let cleanupRoot { try? fileManager.removeItem(at: cleanupRoot) }
     communityBaselineThemeID = ""
     communityStageMessage = ""
@@ -1149,110 +1383,114 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
   }
 
   @objc private func checkForUpdates() {
-    guard !operationInFlight, !updateCheckInFlight else { return }
-    // Bundled first, unlike every other script. check-update reads its own
-    // $ROOT/VERSION to report "the version you are running", and the deployed
-    // engine's VERSION is not that: the engine is installed asynchronously
-    // after launch and the install refuses outright while Codex is open
-    // ("Close Codex before installation so config.toml cannot be rewritten").
-    // Whenever that refusal sticks, the app is already the new version while
-    // the engine is still the old one, so the installed script reports the old
-    // number as current and the client announces an update to the very version
-    // it is running. The app bundle is the only source that cannot be stale.
-    guard let script = bundledScript(named: "check-update-macos.sh")
-      ?? installedScript(named: "check-update-macos.sh") else {
-      showError(title: copy.text(.updateMissingTitle), message: copy.text(.updateMissingMessage))
-      return
-    }
-    operationInFlight = true
+    checkGUIUpdate(interactive: true)
+  }
+
+  private func performBackgroundUpdateCheck() {
+    checkGUIUpdate(interactive: false)
+  }
+
+  private func checkGUIUpdate(interactive: Bool) {
+    guard !operationInFlight, !updateCheckInFlight, !engineInstallInFlight, !themeRecoveryInFlight, !snapshot.busy,
+          let script = bundledScript(named: "gui-update.sh") else { return }
     updateCheckInFlight = true
-    rebuildMenu()
-    ScriptRunner.run(script: script, arguments: ["--json"]) { [weak self] result in
+    if interactive { managerModel.message = "正在检查 Mac GUI 更新…" }
+    ScriptRunner.run(script: script, arguments: ["check"]) { [weak self] result in
       guard let self else { return }
-      self.operationInFlight = false
       self.updateCheckInFlight = false
-      self.rebuildMenu()
       guard result.succeeded,
-            let data = result.output.data(using: .utf8),
-            let object = try? JSONSerialization.jsonObject(with: data),
-            let value = object as? [String: Any],
-            let current = value["currentVersion"] as? String,
-            let latest = value["latestVersion"] as? String,
-            let available = value["updateAvailable"] as? Bool else {
-        self.showError(
-          title: self.copy.text(.updateFailedTitle),
-          message: self.conciseOutput(result.output, fallback: self.copy.text(.updateFailedMessage))
-        )
+            let object = (try? JSONSerialization.jsonObject(with: Data(result.output.utf8))) as? [String: Any],
+            let current = object["currentVersion"] as? String,
+            let latest = object["latestVersion"] as? String,
+            let available = object["updateAvailable"] as? Bool,
+            let releaseURL = object["releaseUrl"] as? String else {
+        if interactive {
+          self.managerModel.message = "更新检查失败：" + self.conciseOutput(result.output, fallback: "更新服务不可用")
+          self.appendManagerLog(self.managerModel.message)
+        }
         return
       }
-      if available {
+      if object["configured"] as? Bool == false {
+        if interactive { self.managerModel.message = "此构建尚未配置更新发布者。请配置仓库和发布签名密钥后重新构建。" }
+        return
+      }
+      self.availableUpdate = available ? (latest, releaseURL) : nil
+      self.rebuildMenu()
+      if !available {
+        if interactive { self.managerModel.message = "Mac GUI " + current + " 已是最新发布版本。" }
+        return
+      }
+      if interactive {
         let alert = NSAlert()
-        alert.messageText = self.copy.format(.newVersionTitle, latest)
-        alert.informativeText = self.copy.format(.newVersionMessage, current)
-        alert.addButton(withTitle: self.copy.text(.downloadNow))
-        alert.addButton(withTitle: self.copy.text(.later))
+        alert.messageText = "发现 Mac GUI " + latest
+        alert.informativeText = "下载后会校验发布者签名和 SHA-256，再替换并重启主题管理器。不会重启 Codex 或改动主题库，旧版 App 将保留备份。"
+        alert.addButton(withTitle: "下载并更新"); alert.addButton(withTitle: "稍后")
         self.activateForUserInteraction()
-        if alert.runModal() == .alertFirstButtonReturn,
-           let url = URL(string: "https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases/latest") {
-          NSWorkspace.shared.open(url)
-        }
-      } else {
-        self.showInfo(
-          title: self.copy.text(.upToDateTitle),
-          message: self.copy.format(.upToDateMessage, current)
-        )
+        if alert.runModal() == .alertFirstButtonReturn { self.prepareGUIUpdate(latest) }
+      } else if UserDefaults.standard.string(forKey: "guiUpdateNotifiedVersion") != latest {
+        self.postUpdateAvailableNotification(version: latest, releaseURL: releaseURL)
+        UserDefaults.standard.set(latest, forKey: "guiUpdateNotifiedVersion")
       }
     }
   }
 
-  /// Silent counterpart to `checkForUpdates()`: runs on a timer, never shows a
-  /// modal, and only surfaces a system notification the first time a given
-  /// version is seen so a user who dismisses it isn't renotified every day.
-  private func performBackgroundUpdateCheck() {
-    guard !operationInFlight, !updateCheckInFlight,
-          // Bundled first for the same reason as the manual check above: a
-          // stale deployed engine must not make the app notify about itself.
-          let script = bundledScript(named: "check-update-macos.sh")
-            ?? installedScript(named: "check-update-macos.sh") else { return }
-    updateCheckInFlight = true
-    ScriptRunner.run(script: script, arguments: ["--json"]) { [weak self] result in
+  private func prepareGUIUpdate(_ version: String) {
+    guard !operationInFlight, !engineInstallInFlight, !themeRecoveryInFlight, !snapshot.busy,
+          let script = bundledScript(named: "gui-update.sh") else { return }
+    let target = Bundle.main.bundleURL
+    guard target.pathExtension == "app", FileManager.default.isWritableFile(atPath: target.deletingLastPathComponent().path),
+          !target.path.hasPrefix("/Volumes/") else {
+      managerModel.message = "请先将 App 放入可写的应用程序文件夹或本地文件夹，再进行更新。"; return
+    }
+    operationInFlight = true
+    managerModel.message = "正在下载并校验 Mac GUI " + version + "…"
+    rebuildMenu()
+    ScriptRunner.run(script: script, arguments: ["prepare", version]) { [weak self] result in
       guard let self else { return }
-      defer { self.updateCheckInFlight = false }
+      defer { self.operationInFlight = false; self.rebuildMenu() }
       guard result.succeeded,
-            let data = result.output.data(using: .utf8),
-            let object = try? JSONSerialization.jsonObject(with: data),
-            let value = object as? [String: Any],
-            let latest = value["latestVersion"] as? String,
-            let available = value["updateAvailable"] as? Bool else {
-        // A transient network/API failure here just means we try again on the
-        // next timer tick; unlike the manual check, there's no button press
-        // waiting on an answer, so staying quiet is correct.
-        return
+            let object = (try? JSONSerialization.jsonObject(with: Data(result.output.utf8))) as? [String: Any],
+            let stagedPath = object["stagedApp"] as? String,
+            let stagePath = object["stage"] as? String,
+            let installer = self.bundledScript(named: "gui-install-update.sh") else {
+        self.managerModel.message = "更新未安装：" + self.conciseOutput(result.output, fallback: "下载或校验失败")
+        self.appendManagerLog(self.managerModel.message); return
       }
-      guard available else {
-        self.availableUpdate = nil
-        self.rebuildMenu()
-        return
+      do {
+        let stage = URL(fileURLWithPath: stagePath)
+        let expectedRoot = self.stateRootURL.appendingPathComponent("updates").resolvingSymlinksInPath()
+        guard stage.deletingLastPathComponent().resolvingSymlinksInPath() == expectedRoot,
+              URL(fileURLWithPath: stagedPath).standardizedFileURL.path.hasPrefix(stage.standardizedFileURL.path + "/") else { throw CocoaError(.fileReadInvalidFileName) }
+        let helper = stage.appendingPathComponent("install.sh")
+        try self.fileManager.copyItem(at: installer, to: helper)
+        let logURL = stage.appendingPathComponent("install.log")
+        self.fileManager.createFile(atPath: logURL.path, contents: nil)
+        let log = try FileHandle(forWritingTo: logURL)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [helper.path, stagedPath, target.path, String(ProcessInfo.processInfo.processIdentifier), version,
+                             self.stateRootURL.appendingPathComponent("updates/result.plist").path, Bundle.main.bundleIdentifier ?? "cc.dreamskin.menubar"]
+        process.standardOutput = log; process.standardError = log; process.standardInput = FileHandle.nullDevice
+        process.currentDirectoryURL = stage
+        try process.run()
+        try? log.close()
+        self.operationInFlight = false
+        NSApp.terminate(nil)
+      } catch {
+        self.managerModel.message = "无法启动更新安装器：" + error.localizedDescription
+        self.appendManagerLog(self.managerModel.message)
       }
-      let releaseURL = (value["releaseUrl"] as? String)
-        ?? "https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases/latest"
-      self.availableUpdate = (version: latest, releaseURL: releaseURL)
-      self.rebuildMenu()
-      let lastNotifiedKey = "lastNotifiedUpdateVersion"
-      guard UserDefaults.standard.string(forKey: lastNotifiedKey) != latest else { return }
-      UserDefaults.standard.set(latest, forKey: lastNotifiedKey)
-      self.postUpdateAvailableNotification(version: latest, releaseURL: releaseURL)
     }
   }
 
   private func postUpdateAvailableNotification(version: String, releaseURL: String) {
     let content = UNMutableNotificationContent()
     if copy.resolvedLanguage == .chinese {
-      content.title = "Codex Dream Skin 有新版本"
-      content.body = "\(version) 已发布，点按前往下载页面。"
+      content.title = "Mac GUI 有新版本"
+      content.body = "Mac GUI \(version) 已发布，点按校验并安装。"
     } else {
       content.title = "Codex Dream Skin update available"
-      content.body = "\(version) is available. Click to open the download page."
+      content.body = "Mac GUI \(version) is available. Click to verify and install."
     }
     content.sound = .default
     content.userInfo = ["releaseURL": releaseURL]
@@ -1265,9 +1503,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
   }
 
   @objc private func openAvailableUpdate() {
-    guard let url = URL(string: availableUpdate?.releaseURL
-      ?? "https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases/latest") else { return }
-    NSWorkspace.shared.open(url)
+    checkForUpdates()
   }
 
   func userNotificationCenter(
@@ -1283,9 +1519,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     didReceive response: UNNotificationResponse,
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
-    if let urlString = response.notification.request.content.userInfo["releaseURL"] as? String,
-       let url = URL(string: urlString) {
-      NSWorkspace.shared.open(url)
+    if response.notification.request.content.userInfo["releaseURL"] != nil {
+      checkForUpdates()
     }
     completionHandler()
   }
@@ -1394,16 +1629,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     arguments: [String] = [],
     operation: String
   ) {
-    guard !operationInFlight else { return }
-    guard let script = installedScript(named: name) else {
+    guard !operationInFlight, !engineInstallInFlight, !themeRecoveryInFlight, !snapshot.busy else { return }
+    guard let script = bundledScript(named: name) ?? installedScript(named: name) else {
+      managerModel.message = "换肤引擎尚未就绪，请点击安装 / 修复引擎。"
       showError(title: copy.text(.missingEngineTitle), message: copy.text(.missingEngineRetryMessage))
       return
     }
     operationInFlight = true
+    managerModel.message = "正在" + operation + "…"
     rebuildMenu()
     ScriptRunner.run(script: script, arguments: arguments) { [weak self] result in
       guard let self else { return }
       self.operationInFlight = false
+      self.managerModel.reload()
+      self.managerModel.message = result.succeeded ? operation + "完成" : (result.exitCode == 20 ? "操作已取消" : operation + "失败：" + self.conciseOutput(result.output, fallback: "未知错误"))
+      self.appendManagerLog(self.managerModel.message)
       self.refreshStatus()
       self.rebuildMenu()
       // These entry points reserve 20 for a cancelled restart, not a failure.
@@ -1638,7 +1878,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     NSApp.activate(ignoringOtherApps: true)
   }
 
-  /// DreamSkin is an LSUIElement with no Dock icon or regular window, so
   /// macOS does not automatically return focus to Codex once this app's own
   /// alert closes. Without this, `document.visibilityState` in the Codex
   /// renderer stays "hidden" for the confirm dialog's caller, so the

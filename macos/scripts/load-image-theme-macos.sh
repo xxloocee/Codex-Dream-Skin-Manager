@@ -58,7 +58,10 @@ case "$FRAMING_ENABLED" in true|false) ;; *) fail "Invalid framing flag: $FRAMIN
 ensure_state_root
 IMAGES_DIR="$STATE_ROOT/images"
 THEMES_ROOT="$STATE_ROOT/themes"
-/bin/mkdir -p "$IMAGES_DIR" "$THEMES_ROOT" "$THEME_DIR"
+/bin/mkdir -p "$IMAGES_DIR" "$THEMES_ROOT"
+# Stage imports outside the watched active directory, even for --no-apply.
+THEME_DIR="$(/usr/bin/mktemp -d "$STATE_ROOT/.media-import.XXXXXX")"
+trap '/bin/rm -rf "$THEME_DIR"' EXIT
 
 if [ -n "$FROM_LIBRARY" ]; then
   [ "$(/usr/bin/basename "$FROM_LIBRARY")" = "$FROM_LIBRARY" ] \
@@ -128,35 +131,23 @@ process.stdout.write(value.animated ? "true" : "false");
 ' "$image_metadata")"
 
 ext="$(printf '%s' "$IMAGE" | /usr/bin/tr '[:upper:]' '[:lower:]')"
-if [ "$animated" = "true" ]; then
-  case "$ext" in
-    *.gif|*.png|*.apng|*.webp|*.mp4) image_name="background.${ext##*.}" ;;
-    *) fail "Unsupported animated image type: $IMAGE" ;;
-  esac
-else
-  image_name="background.jpg"
-fi
+image_name="background.${ext##*.}"
 temporary="$THEME_DIR/.${image_name}.$$"
 prepared="$THEME_DIR/$image_name"
-cleanup_temporary() { /bin/rm -f "$temporary"; }
-trap cleanup_temporary EXIT
-
-# Preserve animated formats byte-for-byte; static sources retain the existing
-# JPEG normalization used by the macOS client.
-if [ "$animated" = "true" ]; then
-  /bin/cp -f "$IMAGE" "$temporary"
-else
-  case "$ext" in
-    *.jpg|*.jpeg)
-    /bin/cp -f "$IMAGE" "$temporary"
+# Preserve Windows-supported media byte-for-byte. Legacy HEIC/TIFF inputs
+# need a lossless PNG for Chromium; retain their original alongside it.
+ORIGINAL_IMAGE=""
+case "$ext" in
+  *.heic|*.tif|*.tiff)
+    ORIGINAL_IMAGE="original.${ext##*.}"
+    /bin/cp "$IMAGE" "$THEME_DIR/$ORIGINAL_IMAGE"
+    image_name="background.png"
+    temporary="$THEME_DIR/.background.png.$$"
+    prepared="$THEME_DIR/$image_name"
+    /usr/bin/sips -s format png "$IMAGE" --out "$temporary" >/dev/null
     ;;
-    *)
-    /usr/bin/sips -s format jpeg -s formatOptions 82 -Z 2400 "$IMAGE" --out "$temporary" >/dev/null \
-      || fail "Could not convert image. Use PNG/APNG/JPEG/GIF/HEIC/TIFF/WebP or MP4."
-    [ -s "$temporary" ] || fail "Converted image is empty."
-    ;;
-  esac
-fi
+  *) /bin/cp "$IMAGE" "$temporary" ;;
+esac
 [ -s "$temporary" ] || fail "Prepared image is empty."
 PREPARED_BYTES="$(/usr/bin/stat -f '%z' "$temporary")"
 case "$image_name" in
@@ -189,12 +180,15 @@ theme_args=(
 [ -n "$FOCUS_Y" ] && theme_args+=(--focus-y "$FOCUS_Y")
 [ "$FRAMING_ENABLED" = "true" ] && theme_args+=(--position-x "${POSITION_X:-0}" --position-y "${POSITION_Y:-0}" --zoom "${ZOOM:-1}" --position-mode "$POSITION_MODE" --framing "true")
 "$NODE" "$SCRIPT_DIR/write-theme.mjs" "${theme_args[@]}" >/dev/null
+if [ -n "$ORIGINAL_IMAGE" ]; then
+  "$NODE" -e 'const fs=require("node:fs");const p=process.argv[1],t=JSON.parse(fs.readFileSync(p,"utf8"));t.originalImage=process.argv[2];fs.writeFileSync(p,JSON.stringify(t,null,2)+"\n");' "$THEME_DIR/theme.json" "$ORIGINAL_IMAGE"
+fi
 /usr/bin/find "$THEME_DIR" -maxdepth 1 -type f -name 'background.*' ! -name "$image_name" -delete
-trap - EXIT
+
 
 lib_dir="$THEMES_ROOT/$theme_id"
-/bin/mkdir -p "$lib_dir"
-/bin/cp -f "$THEME_DIR/$image_name" "$THEME_DIR/theme.json" "$lib_dir/"
+[ ! -e "$lib_dir" ] && [ ! -L "$lib_dir" ] || fail "Theme id already exists: $theme_id"
+/bin/mv "$THEME_DIR" "$lib_dir"
 /bin/chmod 600 "$lib_dir/"* 2>/dev/null || true
 
 dest_lib_img="$IMAGES_DIR/$(/usr/bin/basename "$IMAGE")"
@@ -209,26 +203,5 @@ if [ "$APPLY_NOW" != "true" ]; then
   exit 0
 fi
 
-PORT=9341
-if [ -f "$STATE_PATH" ]; then
-  saved="$(state_field port 2>/dev/null || true)"
-  [ -n "${saved:-}" ] && PORT="$saved"
-fi
-
-progress "$(dreamskin_text hot_reload)"
-if hot_reapply_theme "$PORT" 8000; then
-  progress "$(dreamskin_text skin_applied): ${THEME_NAME}"
-  exit 0
-fi
-
-progress "$(dreamskin_text starting_chatgpt_for_apply)"
-if "$SCRIPT_DIR/start-dream-skin-macos.sh" --port "$PORT" --restart-existing --theme-staged; then
-  progress "$(dreamskin_text skin_applied): ${THEME_NAME}"
-  exit 0
-else
-  start_code=$?
-  [ "$start_code" -ne 20 ] || exit 20
-fi
-
-alert_user "$(dreamskin_text image_saved_apply_failed)"
-exit 1
+# The switcher owns active-directory publication, locking and restart prompts.
+"$SCRIPT_DIR/switch-theme-macos.sh" --id "$theme_id"
