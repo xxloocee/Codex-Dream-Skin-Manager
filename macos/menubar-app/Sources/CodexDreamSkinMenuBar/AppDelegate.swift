@@ -1435,8 +1435,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
       }
       if interactive {
         let alert = NSAlert()
+        let target = self.guiUpdateDestination()
         alert.messageText = "发现 Mac GUI " + latest
         alert.informativeText = "下载后会校验发布者签名和 SHA-256，再替换并重启主题管理器。不会重启 Codex 或改动主题库，旧版 App 将保留备份。"
+        if target != Bundle.main.bundleURL {
+          alert.informativeText += "\n当前应用从临时或只读位置运行。更新将安装到：\n" + target.path
+        }
         alert.addButton(withTitle: "下载并更新"); alert.addButton(withTitle: "稍后")
         self.showManager()
         self.activateForUserInteraction()
@@ -1447,7 +1451,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         alert.beginSheetModal(for: window) { [weak self] response in
           guard let self, response == .alertFirstButtonReturn else { return }
           self.managerModel.message = "已确认更新，正在准备下载 Mac GUI " + latest + "…"
-          self.prepareGUIUpdate(latest)
+          DispatchQueue.main.async { self.prepareGUIUpdate(latest, target: target) }
         }
       } else if UserDefaults.standard.string(forKey: "guiUpdateNotifiedVersion") != latest {
         self.postUpdateAvailableNotification(version: latest, releaseURL: releaseURL)
@@ -1456,18 +1460,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     }
   }
 
-  private func prepareGUIUpdate(_ version: String) {
+  private func guiUpdateDestination() -> URL {
+    let current = Bundle.main.bundleURL
+    if current.pathComponents.contains("AppTranslocation") || current.path.hasPrefix("/Volumes/") ||
+        !fileManager.isWritableFile(atPath: current.deletingLastPathComponent().path) {
+      return homeURL.appendingPathComponent("Applications/Codex Dream Skin.app", isDirectory: true)
+    }
+    return current
+  }
+
+  private func reportGUIUpdateFailure(_ message: String) {
+    managerModel.message = message
+    appendManagerLog(message)
+    guard let window = managerWindow else { return }
+    let alert = NSAlert()
+    alert.alertStyle = .warning
+    alert.messageText = "更新未完成"
+    alert.informativeText = message
+    alert.addButton(withTitle: "好")
+    alert.beginSheetModal(for: window)
+  }
+
+  private func prepareGUIUpdate(_ version: String, target: URL) {
     guard !operationInFlight, !engineInstallInFlight, !themeRecoveryInFlight, !snapshot.busy,
           let script = bundledScript(named: "gui-update.sh") else {
-      managerModel.message = "当前有其他操作或更新组件缺失，暂时无法开始更新。"
-      appendManagerLog(managerModel.message)
+      reportGUIUpdateFailure("当前有其他操作或更新组件缺失，暂时无法开始更新。")
       return
     }
-    let target = Bundle.main.bundleURL
-    guard target.pathExtension == "app", FileManager.default.isWritableFile(atPath: target.deletingLastPathComponent().path),
-          !target.path.hasPrefix("/Volumes/") else {
-      managerModel.message = "请先将 App 放入可写的应用程序文件夹或本地文件夹，再进行更新。"
-      appendManagerLog(managerModel.message)
+    do {
+      try fileManager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+      if fileManager.fileExists(atPath: target.path) {
+        let values = try target.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        guard values.isDirectory == true, values.isSymbolicLink != true,
+              Bundle(url: target)?.bundleIdentifier == Bundle.main.bundleIdentifier else {
+          reportGUIUpdateFailure("安装位置已有其他应用或链接，请先处理：" + target.path)
+          return
+        }
+      }
+    } catch {
+      reportGUIUpdateFailure("无法准备更新安装目录：" + error.localizedDescription)
+      return
+    }
+    guard target.pathExtension == "app", fileManager.isWritableFile(atPath: target.deletingLastPathComponent().path) else {
+      reportGUIUpdateFailure("更新安装目录不可写：" + target.deletingLastPathComponent().path)
       return
     }
     operationInFlight = true
@@ -1482,8 +1517,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             let stagedPath = object["stagedApp"] as? String,
             let stagePath = object["stage"] as? String,
             let installer = self.bundledScript(named: "gui-install-update.sh") else {
-        self.managerModel.message = "更新未安装：" + self.conciseOutput(result.output, fallback: "下载或校验失败")
-        self.appendManagerLog(self.managerModel.message); return
+        self.reportGUIUpdateFailure("更新未安装：" + self.conciseOutput(result.output, fallback: "下载或校验失败")); return
       }
       do {
         let stage = URL(fileURLWithPath: stagePath)
@@ -1506,8 +1540,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         self.operationInFlight = false
         NSApp.terminate(nil)
       } catch {
-        self.managerModel.message = "无法启动更新安装器：" + error.localizedDescription
-        self.appendManagerLog(self.managerModel.message)
+        self.reportGUIUpdateFailure("无法启动更新安装器：" + error.localizedDescription)
       }
     }
   }

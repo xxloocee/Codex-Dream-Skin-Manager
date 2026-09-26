@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -42,32 +41,20 @@ await fs.mkdir(imagesRoot, { recursive: true });
 const imagePath = path.join(imagesRoot, "fixture.jpg");
 await fs.writeFile(imagePath, Buffer.from("fixture-image-bytes"));
 
-// A fake loader records argv and emits a valid theme pack. This isolates the
-// batch manager contract from macOS sips and from a live ChatGPT process.
-const loaderModulePath = path.join(tempRoot, "fake-loader.mjs");
-await fs.writeFile(loaderModulePath, `#!/usr/bin/env node
-import fs from "node:fs/promises";
-import path from "node:path";
-const args = process.argv.slice(2);
-const get = (name) => args[args.indexOf(name) + 1];
-const home = process.env.HOME;
-const id = get("--theme-id");
-const root = path.join(home, "Library", "Application Support", "CodexDreamSkinStudio", "themes", id);
-await fs.mkdir(root, { recursive: true });
-await fs.writeFile(path.join(root, "background.jpg"), Buffer.from("prepared-image"));
-const tags = JSON.parse(get("--tags-json"));
-const theme = { schemaVersion: 1, id, name: get("--name"), image: "background.jpg", category: get("--category"), tags, appearance: get("--appearance"), colors: { accent: get("--accent") }, art: { safeArea: get("--safe-area"), taskMode: get("--task-mode"), focusX: Number(get("--focus-x")), focusY: Number(get("--focus-y")), positionX: Number(get("--position-x")), positionY: Number(get("--position-y")), zoom: Number(get("--zoom")), positionMode: get("--position-mode"), framingEnabled: args.includes("--framing") } };
-await fs.writeFile(path.join(root, "theme.json"), JSON.stringify(theme));
-await fs.appendFile(process.env.LOADER_LOG, JSON.stringify(args) + "\\n");
-`);
-const loaderPath = process.platform === "win32"
-  ? path.join(tempRoot, "fake-loader.cmd")
-  : path.join(tempRoot, "fake-loader.sh");
-if (process.platform === "win32") {
-  await fs.writeFile(loaderPath, `@"${process.execPath}" "%~dp0fake-loader.mjs" %*\r\n`);
-} else {
-  await fs.writeFile(loaderPath, `#!/bin/sh\nexec "${process.execPath}" "$(dirname "$0")/fake-loader.mjs" "$@"\n`, { mode: 0o700 });
+// Exercise the current library backend; only media decoding is isolated from
+// the live renderer. Batch import must preserve source bytes and render options.
+const scriptsRoot = path.join(tempRoot, "scripts");
+await fs.mkdir(scriptsRoot);
+await fs.mkdir(path.join(tempRoot, "assets"));
+for (const name of ["gui-library.mjs", "gui-package.mjs"]) {
+  await fs.copyFile(path.join(root, "scripts", name), path.join(scriptsRoot, name));
 }
+await fs.copyFile(path.join(root, "assets", "safe-css-validator.mjs"), path.join(tempRoot, "assets", "safe-css-validator.mjs"));
+await fs.writeFile(path.join(scriptsRoot, "validate-image-macos.mjs"), "process.exit(0);\n");
+const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
+await fs.writeFile(path.join(scriptsRoot, "gui-library.sh"),
+  `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(path.join(scriptsRoot, "gui-library.mjs"))} ${quote(stateRoot)} "$@"\n`, {mode: 0o700});
+const loaderPath = path.join(scriptsRoot, "load-image-theme-macos.sh");
 
 const requestPath = path.join(requestsRoot, "batch.json");
 await fs.mkdir(requestsRoot, { recursive: true });
@@ -75,7 +62,7 @@ const item = {
   imagePath,
   name: "Contract theme",
   appearance: "dark",
-  category: "illustration",
+  category: "custom",
   tags: ["one", "two"],
   safeArea: "right",
   taskMode: "banner",
@@ -89,7 +76,6 @@ const item = {
   accent: "#12AbEf",
 };
 await fs.writeFile(requestPath, JSON.stringify({ schemaVersion: 1, items: [item, item] }));
-const logPath = path.join(tempRoot, "loader.log");
 
 function runNode(script, args, env) {
   return new Promise((resolve, reject) => {
@@ -103,7 +89,7 @@ function runNode(script, args, env) {
   });
 }
 
-const env = { ...process.env, HOME: home, LOADER_LOG: logPath };
+const env = { ...process.env, HOME: home };
 const batch = await runNode(path.join(root, "scripts", "import-batch-macos.mjs"), [requestPath, loaderPath], env);
 assert.equal(batch.code, 0, batch.stderr);
 const batchResult = JSON.parse(batch.stdout);
@@ -112,20 +98,29 @@ assert.deepEqual(
   { imported: 1, skipped: 1, failed: 0 },
   JSON.stringify(batchResult.results),
 );
-assert.match(batchResult.results[0].themeDirectory, /[\\/]themes[\\/]img-[0-9]+-[0-9a-f]{8}$/);
+assert.match(path.basename(batchResult.results[0].themeDirectory), /^custom-[0-9a-f-]{36}$/);
 assert.equal(batchResult.results[1].status, "skipped");
-const loggedArgs = JSON.parse((await fs.readFile(logPath, "utf8")).trim());
-for (const pair of [["--category", "illustration"], ["--safe-area", "right"], ["--task-mode", "banner"], ["--focus-x", "0.2"], ["--focus-y", "0.8"], ["--position-x", "-0.25"], ["--position-y", "0.4"], ["--zoom", "1.4"], ["--position-mode", "free"], ["--accent", "#12AbEf"]]) {
-  const index = loggedArgs.indexOf(pair[0]);
-  assert.equal(loggedArgs[index + 1], pair[1], `${pair[0]} was not forwarded`);
-}
-assert.deepEqual(JSON.parse(loggedArgs[loggedArgs.indexOf("--tags-json") + 1]), ["one", "two"]);
-const importedThemeId = loggedArgs[loggedArgs.indexOf("--theme-id") + 1];
-assert.match(importedThemeId, /^img-[0-9]+-[0-9a-f]{8}$/);
-const importedTheme = JSON.parse(await fs.readFile(path.join(themesRoot, importedThemeId, "theme.json"), "utf8"));
+assert.equal(batchResult.results[1].themeDirectory, batchResult.results[0].themeDirectory);
+const importedTheme = JSON.parse(await fs.readFile(path.join(batchResult.results[0].themeDirectory, "theme.json"), "utf8"));
 assert.equal(importedTheme.id, path.basename(batchResult.results[0].themeDirectory));
-assert.equal(importedTheme.managerFingerprintVersion, 2);
-assert.equal(typeof importedTheme.managerFingerprint, "string");
+assert.equal(importedTheme.name, item.name);
+assert.equal(importedTheme.category, item.category);
+assert.deepEqual(importedTheme.tags, item.tags);
+assert.equal(importedTheme.appearance, item.appearance);
+assert.equal(importedTheme.colors.accent, item.accent);
+for (const key of ["safeArea", "taskMode", "focusX", "focusY", "framingEnabled", "positionX", "positionY", "zoom", "positionMode"]) {
+  assert.equal(importedTheme.art[key], item[key], `${key} was not preserved`);
+}
+assert.deepEqual(await fs.readFile(path.join(batchResult.results[0].themeDirectory, importedTheme.image)), await fs.readFile(imagePath));
+// A different crop must remain distinct, while an invalid item must not prevent
+// other items from completing or leave temporary requests behind.
+await fs.writeFile(requestPath, JSON.stringify({schemaVersion: 1, items: [{...item, zoom: 1.8}, {...item, imagePath: path.join(imagesRoot, "missing.jpg")}, item]}));
+const secondBatch = await runNode(path.join(root, "scripts", "import-batch-macos.mjs"), [requestPath, loaderPath], env);
+assert.equal(secondBatch.code, 0, secondBatch.stderr);
+const secondResult = JSON.parse(secondBatch.stdout);
+assert.deepEqual([secondResult.imported, secondResult.failed, secondResult.skipped], [1, 1, 1]);
+assert.notEqual(secondResult.results[0].themeDirectory, batchResult.results[0].themeDirectory);
+assert.deepEqual(await fs.readdir(requestsRoot), ["batch.json"]);
 
 // Deletion must reject a nested symbolic link before moving the directory to
 // quarantine. This protects the manager's archive boundary on macOS.

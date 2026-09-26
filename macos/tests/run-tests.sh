@@ -433,9 +433,9 @@ fi
     [ -s "$themes/$id/background.mp4" ] || exit 1
   done
   [ -f "$themes/custom-keepme/theme.json" ] || exit 1
-  for id in $retired; do [ ! -e "$themes/$id" ] || exit 1; done
+  for id in $retired; do [ -f "$themes/$id/retired-marker" ] || exit 1; done
   seeded="$(/usr/bin/find "$themes" -maxdepth 1 -type d -name "preset-*" | /usr/bin/wc -l | /usr/bin/tr -d " ")"
-  [ "$seeded" -eq 4 ] || exit 1
+  [ "$seeded" -eq 10 ] || exit 1
 ' _ "$ROOT"
 
 run_signed_runtime_switch_test() {
