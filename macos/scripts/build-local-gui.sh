@@ -34,7 +34,9 @@ xcrun swiftc "${FLAGS[@]}" -I "$TEMP_BUILD" -L "$TEMP_BUILD" -lDreamSkinCore "$S
 APP="$TEMP_BUILD/Codex Dream Skin.app"
 ditto "$BASE" "$APP"
 cp "$ROOT/../windows/presets/catalog.json" "$APP/Contents/Resources/manager-catalog.json"
-# Ship source helper updates alongside the matching release's runtime assets.
+# Ship source helpers and generated assets together so compatibility fixes
+# cannot silently retain the base release's old selectors or styles.
+ditto "$ROOT/assets" "$APP/Contents/Resources/engine/assets"
 cp "$ROOT/scripts/"*.mjs "$APP/Contents/Resources/engine/scripts/"
 cp "$ROOT/scripts/"*.sh "$APP/Contents/Resources/engine/scripts/"
 chmod 755 "$APP/Contents/Resources/engine/scripts/"*.sh

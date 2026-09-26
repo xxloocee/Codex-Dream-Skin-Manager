@@ -1435,6 +1435,8 @@ html[data-dream-skin="active"][data-dream-art-wide="true"] __DREAM_SELECTOR_SHEL
   border-top: 0 !important;
 }
 
+/* Match only the decorative fade: Codex 26.924 puts the similarly named
+   data attribute on a wrapper containing the conversation itself. */
 html[data-dream-skin="active"][data-dream-art-wide="true"] __DREAM_SELECTOR_SHELL_MAIN__
   __DREAM_SELECTOR_MAIN_CONTENT_TOP_FADE__ {
   display: none !important;
