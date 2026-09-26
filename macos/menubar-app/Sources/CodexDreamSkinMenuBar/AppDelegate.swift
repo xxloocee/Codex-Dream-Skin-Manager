@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
   private var snapshot = StatusSnapshot()
   private var statusRefreshRunning = false
   private var operationInFlight = false
+  private var persistedRestoreScheduled = false
   private var engineInstallInFlight = false
   private var themeRecoveryInFlight = false
   private var pendingCommunityVersionID: String?
@@ -168,20 +169,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
   }
 
   private func restorePersistedSkinIfNeeded() {
+    guard !persistedRestoreScheduled else { return }
     let stateURL = stateRootURL.appendingPathComponent("state.json")
     guard let data = try? Data(contentsOf: stateURL),
           let state = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
           state["session"] as? String == "active",
           let themeID = state["appliedThemeId"] as? String, !themeID.isEmpty,
           fileManager.fileExists(atPath: themesURL.appendingPathComponent(themeID).path) else { return }
+    persistedRestoreScheduled = true
     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-      guard let self, !self.operationInFlight, !self.engineInstallInFlight,
-            let script = self.installedScript(named: "start-dream-skin-macos.sh") else { return }
+      guard let self else { return }
+      guard !self.operationInFlight, !self.engineInstallInFlight,
+            let script = self.installedScript(named: "start-dream-skin-macos.sh") else {
+        self.persistedRestoreScheduled = false
+        return
+      }
       self.operationInFlight = true
       self.managerModel.message = "正在恢复上次应用的皮肤…"
       self.rebuildMenu()
       ScriptRunner.run(script: script, arguments: ["--restart-existing"]) { [weak self] result in
         guard let self else { return }
+        self.persistedRestoreScheduled = false
         self.operationInFlight = false
         self.refreshStatus()
         self.rebuildMenu()
@@ -830,6 +838,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         self.statusItem.button?.toolTip = "Codex Dream Skin · \(self.copy.statusTitle(session: parsed.session, operation: parsed.operation))"
         self.statusItem.button?.appearsDisabled = parsed.session == "unknown" || parsed.session == "stale"
         self.rebuildMenu()
+        // Codex can be closed and reopened while the manager stays alive. The
+        // saved theme remains active in state.json, but the renderer watcher is
+        // gone; restore it as soon as the reopened Codex process is detected.
+        if parsed.codexRunning, parsed.session == "stale", !parsed.appliedThemeID.isEmpty {
+          self.restorePersistedSkinIfNeeded()
+        }
       } else {
         self.managerModel.status = "状态读取失败"
         self.managerModel.message = self.conciseOutput(result.output, fallback: "无法读取运行状态，请尝试安装 / 修复引擎。")
