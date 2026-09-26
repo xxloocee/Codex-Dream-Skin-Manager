@@ -29,6 +29,7 @@ final class ManagerModel: ObservableObject {
   @Published var log = ""
   var libraryAction: (String, [String], @escaping ([String: Any]?) -> Void) -> Void = { _, _, done in done(nil) }
   @Published var busy = false
+  @Published var updateStage: String?
   @Published var message = "选择皮肤预览，点击“应用皮肤”切换。"
   static let catalogOrder: [String: Int] = {
     guard let url = Bundle.main.url(forResource: "manager-catalog", withExtension: "json"),
@@ -181,6 +182,14 @@ struct ManagerView: View {
         Button { model.reload(); model.action("refresh", nil) } label: { Image(systemName: "arrow.clockwise") }.help("刷新主题和运行状态")
       }.padding(22)
       Divider()
+      if let updateStage = model.updateStage {
+        HStack(spacing: 10) {
+          ProgressView().controlSize(.small)
+          Text(updateStage).font(.callout.weight(.medium))
+          Spacer()
+        }.padding(.horizontal, 22).padding(.vertical, 10)
+        Divider()
+      }
       TabView(selection: $tab) {
         dashboard.tabItem { Label("控制台", systemImage: "square.grid.2x2") }.tag(0)
         imports.tabItem { Label("导入图片", systemImage: "square.and.arrow.down") }.tag(1)

@@ -1438,8 +1438,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         alert.messageText = "发现 Mac GUI " + latest
         alert.informativeText = "下载后会校验发布者签名和 SHA-256，再替换并重启主题管理器。不会重启 Codex 或改动主题库，旧版 App 将保留备份。"
         alert.addButton(withTitle: "下载并更新"); alert.addButton(withTitle: "稍后")
+        self.showManager()
         self.activateForUserInteraction()
-        if alert.runModal() == .alertFirstButtonReturn { self.prepareGUIUpdate(latest) }
+        guard let window = self.managerWindow else {
+          self.managerModel.message = "无法显示更新确认窗口，请重新打开主题管理器。"
+          return
+        }
+        alert.beginSheetModal(for: window) { [weak self] response in
+          guard let self, response == .alertFirstButtonReturn else { return }
+          self.managerModel.message = "已确认更新，正在准备下载 Mac GUI " + latest + "…"
+          self.prepareGUIUpdate(latest)
+        }
       } else if UserDefaults.standard.string(forKey: "guiUpdateNotifiedVersion") != latest {
         self.postUpdateAvailableNotification(version: latest, releaseURL: releaseURL)
         UserDefaults.standard.set(latest, forKey: "guiUpdateNotifiedVersion")
@@ -1449,18 +1458,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
 
   private func prepareGUIUpdate(_ version: String) {
     guard !operationInFlight, !engineInstallInFlight, !themeRecoveryInFlight, !snapshot.busy,
-          let script = bundledScript(named: "gui-update.sh") else { return }
+          let script = bundledScript(named: "gui-update.sh") else {
+      managerModel.message = "当前有其他操作或更新组件缺失，暂时无法开始更新。"
+      appendManagerLog(managerModel.message)
+      return
+    }
     let target = Bundle.main.bundleURL
     guard target.pathExtension == "app", FileManager.default.isWritableFile(atPath: target.deletingLastPathComponent().path),
           !target.path.hasPrefix("/Volumes/") else {
-      managerModel.message = "请先将 App 放入可写的应用程序文件夹或本地文件夹，再进行更新。"; return
+      managerModel.message = "请先将 App 放入可写的应用程序文件夹或本地文件夹，再进行更新。"
+      appendManagerLog(managerModel.message)
+      return
     }
     operationInFlight = true
     managerModel.message = "正在下载并校验 Mac GUI " + version + "…"
+    managerModel.updateStage = "正在下载并校验 Mac GUI " + version + "，安装包约 150 MB，请保持管理器打开。"
     rebuildMenu()
     ScriptRunner.run(script: script, arguments: ["prepare", version]) { [weak self] result in
       guard let self else { return }
-      defer { self.operationInFlight = false; self.rebuildMenu() }
+      defer { self.operationInFlight = false; self.managerModel.updateStage = nil; self.rebuildMenu() }
       guard result.succeeded,
             let object = (try? JSONSerialization.jsonObject(with: Data(result.output.utf8))) as? [String: Any],
             let stagedPath = object["stagedApp"] as? String,
