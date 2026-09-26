@@ -1,6 +1,6 @@
 # Native GUI update channel
 
-The native GUI has a separate release version (`macos/GUI_VERSION`) from the upstream skin engine (`macos/VERSION`). The updater never installs the upstream menu-only app or consumes ordinary `v*` releases.
+The signed native GUI channel has a separate release version (`macos/GUI_VERSION`) from the skin engine (`macos/VERSION`). Automatic installation only consumes signed `gui-v*` releases. Ordinary DMGs without a configured GUI signing channel use the existing static `update.json` check against `macos/VERSION` and offer to open the ordinary release page for manual download; they never use that fallback for automatic installation.
 
 ## Publisher setup (fork or upstream)
 
@@ -19,12 +19,13 @@ DREAMSKIN_GUI_SIGNING_KEY_FILE=/absolute/private/publisher-key.pem \
 bash macos/scripts/build-local-gui.sh
 ```
 
-Alternatively supply `DREAMSKIN_GUI_PUBLIC_KEY` for a build machine that does not publish. Builds without publisher configuration still work; the updater explicitly reports that it is not configured. No private key is copied into the app.
+Alternatively supply `DREAMSKIN_GUI_PUBLIC_KEY` for a build machine that does not publish. Builds without publisher configuration still work and use the ordinary release check described above. No private key is copied into the app.
 
 ## Runtime
 
 - Checks shortly after launch and every 24 hours. Unchanged/error background checks remain quiet; each new version generates one notification.
-- Only stable `gui-v*` releases from the configured repository are considered.
+- Ordinary-release notifications offer manual download; signed GUI notifications offer verified installation. Each channel remembers its notified version separately. A failure in the configured signed channel does not fall back to an unsigned channel.
+- Automatic installation only considers stable `gui-v*` releases from the configured repository. The signature and installation checks below apply to that channel.
 - Ed25519 validates the exact manifest bytes. Download URLs derive from the pinned repository, version and architecture. SHA-256, size, bundle identifier, GUI version, code signature and next-version channel/key must match before installation.
 - The user confirms download/install. An external helper waits for the manager to quit normally, swaps only its app bundle, retains the previous bundle, and relaunches it. Codex, engine deployment and theme data are not touched.
 - A failed replacement or LaunchServices launch restores the previous bundle. A successful `open` is not proof that every later UI action is crash-free; the retained bundle enables manual rollback.

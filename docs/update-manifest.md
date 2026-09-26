@@ -2,7 +2,9 @@
 
 ## 目标与范围
 
-检查更新只读取 GitHub Release 静态附件，不再请求 GitHub REST API。Windows 保留版本比较、安装包 URL 白名单、SHA-256 校验和安装确认；macOS 保留打开发布页手动下载的行为。
+本清单通道检查更新时只读取 GitHub Release 静态附件，不再请求 GitHub REST API。Windows 保留版本比较、安装包 URL 白名单、SHA-256 校验和安装确认；macOS 保留打开发布页手动下载的行为。
+
+macOS 普通 DMG 未配置独立 GUI 签名通道时，原生管理器的手动和后台检查均复用此静态清单入口，并按内置 `macos/VERSION` 比较版本。用户确认后仅打开发布页下载 DMG。已配置的 `gui-v*` 签名通道继续使用其独立更新机制，不因签名通道检查失败而回退到本通道。
 
 固定入口：
 
