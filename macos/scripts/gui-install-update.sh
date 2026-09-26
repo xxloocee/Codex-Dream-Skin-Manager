@@ -17,7 +17,7 @@ cleanup() { rm -rf "$TEMP_APP"; }
 finish() {
   local code=$?
   if [ "$code" -ne 0 ] && [ ! -e "$TARGET" ] && [ -d "$BACKUP" ]; then /bin/mv "$BACKUP" "$TARGET" || true; fi
-  if [ "$code" -ne 0 ]; then write_result failed "自动更新失败（退出码 $code），请查看安装日志；主题数据未改动。" || true; fi
+  if [ "$code" -ne 0 ]; then write_result failed "自动更新失败（退出码 ${code}），请查看安装日志；主题数据未改动。" || true; fi
   cleanup
   exit "$code"
 }
@@ -28,7 +28,7 @@ write_result() {
   /usr/bin/plutil -insert message -string "$2" "$RESULT.tmp"
   /bin/mv -f "$RESULT.tmp" "$RESULT"
 }
-/bin/ditto "$STAGED" "$TEMP_APP/Codex Dream Skin.app"
+/usr/bin/ditto "$STAGED" "$TEMP_APP/Codex Dream Skin.app"
 CANDIDATE="$TEMP_APP/Codex Dream Skin.app"
 /usr/bin/codesign --verify --deep --strict "$CANDIDATE"
 [ "$(/usr/libexec/PlistBuddy -c 'Print :DreamSkinGUIVersion' "$CANDIDATE/Contents/Info.plist")" = "$EXPECTED_VERSION" ] || exit 3
@@ -56,5 +56,5 @@ if ! /usr/bin/open "$TARGET"; then
   /usr/bin/open "$TARGET"
   exit 6
 fi
-write_result installed "已安装 GUI $EXPECTED_VERSION。旧版备份：$BACKUP"
+write_result installed "已安装 GUI ${EXPECTED_VERSION}。旧版备份：$BACKUP"
 # Keep the previous signed bundle for manual rollback; never touch the theme library.
