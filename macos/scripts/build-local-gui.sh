@@ -4,7 +4,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 BASE="${1:-/Applications/Codex Dream Skin.app}"
-OUTPUT="${2:-$ROOT/release/Codex Dream Skin GUI.app}"
+OUTPUT="${2:-$ROOT/release/Codex Dream Skin.app}"
 [ -d "$BASE/Contents/Resources/engine" ] || { echo 'A complete installed Dream Skin app is required.' >&2; exit 1; }
 [ ! -e "$OUTPUT" ] || { echo 'Output already exists; choose a new output path.' >&2; exit 1; }
 VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
@@ -30,7 +30,7 @@ fi
 SOURCES="$ROOT/menubar-app/Sources"
 xcrun swiftc "${FLAGS[@]}" -parse-as-library -emit-module -emit-library -static -module-name DreamSkinCore "$SOURCES"/DreamSkinCore/*.swift -emit-module-path "$TEMP_BUILD/DreamSkinCore.swiftmodule" -o "$TEMP_BUILD/libDreamSkinCore.a"
 xcrun swiftc "${FLAGS[@]}" -I "$TEMP_BUILD" -L "$TEMP_BUILD" -lDreamSkinCore "$SOURCES"/CodexDreamSkinMenuBar/*.swift -o "$TEMP_BUILD/CodexDreamSkinMenuBar"
-APP="$TEMP_BUILD/Codex Dream Skin GUI.app"
+APP="$TEMP_BUILD/Codex Dream Skin.app"
 ditto "$BASE" "$APP"
 cp "$ROOT/../windows/presets/catalog.json" "$APP/Contents/Resources/manager-catalog.json"
 # Ship source helper updates alongside the matching release's runtime assets.

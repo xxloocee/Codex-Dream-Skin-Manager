@@ -2,7 +2,7 @@
 
 ## 打开
 
-从顶部菜单栏退出旧版 Dream Skin，再打开 `release/Codex Dream Skin GUI.app`。关闭窗口后仍可从 Dock 或菜单栏「打开主题管理器」重新打开。
+从顶部菜单栏退出旧版 Dream Skin，再打开 `release/Codex Dream Skin.app`。关闭窗口后仍可从 Dock 或菜单栏「打开主题管理器」重新打开。
 新版本沿用现有主题库；仅选择预览不会切换正在使用的皮肤。
 
 ## 与 Windows 对应的功能

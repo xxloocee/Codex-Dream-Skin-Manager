@@ -63,7 +63,12 @@ try {
       // The archive is signed by this channel's publisher before extraction.
       const extracted=path.join(stage,'payload');await fs.mkdir(extracted,{mode:0o700});
       await run('/usr/bin/ditto',['-x','-k',archive,extracted],{timeout:120000,maxBuffer:MB});
-      const app=path.join(extracted,'Codex Dream Skin GUI.app');
+      let app=path.join(extracted,'Codex Dream Skin.app');
+      try { await fs.lstat(app); }
+      catch(error) {
+        if(error.code!=='ENOENT')throw error;
+        app=path.join(extracted,'Codex Dream Skin GUI.app');
+      }
       if((await fs.lstat(app)).isSymbolicLink())throw Error('安装包应用无效。');
       await run('/usr/bin/codesign',['--verify','--deep','--strict',app],{timeout:120000,maxBuffer:MB});
       const plist=path.join(app,'Contents/Info.plist');

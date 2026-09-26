@@ -28,8 +28,8 @@ write_result() {
   /usr/bin/plutil -insert message -string "$2" "$RESULT.tmp"
   /bin/mv -f "$RESULT.tmp" "$RESULT"
 }
-/bin/ditto "$STAGED" "$TEMP_APP/Codex Dream Skin GUI.app"
-CANDIDATE="$TEMP_APP/Codex Dream Skin GUI.app"
+/bin/ditto "$STAGED" "$TEMP_APP/Codex Dream Skin.app"
+CANDIDATE="$TEMP_APP/Codex Dream Skin.app"
 /usr/bin/codesign --verify --deep --strict "$CANDIDATE"
 [ "$(/usr/libexec/PlistBuddy -c 'Print :DreamSkinGUIVersion' "$CANDIDATE/Contents/Info.plist")" = "$EXPECTED_VERSION" ] || exit 3
 [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$CANDIDATE/Contents/Info.plist")" = "$EXPECTED_BUNDLE" ] || exit 3

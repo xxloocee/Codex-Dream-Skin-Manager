@@ -37,10 +37,14 @@ jobs:
           echo "GUI_VERSION=$version" >> "$GITHUB_ENV"
       - name: Build universal native manager (no tests)
         run: |
-          DREAMSKIN_ARCHS='arm64 x86_64' bash macos/scripts/build-menubar-app.sh --skip-tests --output "$RUNNER_TEMP/package/Codex Dream Skin GUI.app"
+          DREAMSKIN_ARCHS='arm64 x86_64' bash macos/scripts/build-menubar-app.sh --skip-tests --output "$RUNNER_TEMP/package/Codex Dream Skin.app"
       - name: Package and sign update manifest
         run: |
           mkdir -p dist-gui
+          ditto -c -k --keepParent "$RUNNER_TEMP/package/Codex Dream Skin.app" "dist-gui/CodexDreamSkin-$GUI_VERSION-universal.zip"
+          # Already-installed 0.1.x updaters require this exact archive root.
+          # Keep their signed update assets separate from the user download.
+          mv "$RUNNER_TEMP/package/Codex Dream Skin.app" "$RUNNER_TEMP/package/Codex Dream Skin GUI.app"
           ditto -c -k --keepParent "$RUNNER_TEMP/package/Codex Dream Skin GUI.app" "dist-gui/CodexDreamSkinGUI-$GUI_VERSION-arm64.zip"
           cp "dist-gui/CodexDreamSkinGUI-$GUI_VERSION-arm64.zip" "dist-gui/CodexDreamSkinGUI-$GUI_VERSION-x64.zip"
           "$RUNNER_TEMP/package/Codex Dream Skin GUI.app/Contents/Resources/engine/runtime/node/bin/node" macos/scripts/publish-gui-manifest.mjs "$GUI_VERSION" dist-gui
@@ -48,7 +52,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "gui-v$GUI_VERSION" dist-gui/* --target "$GITHUB_SHA" --title "Mac GUI $GUI_VERSION" --notes "Native macOS GUI update. Includes signed update metadata and universal app archives. Theme data is stored separately and preserved." --latest
+          gh release create "gui-v$GUI_VERSION" dist-gui/* --target "$GITHUB_SHA" --title "Codex Dream Skin for Mac $GUI_VERSION" --notes "下载安装请选择 CodexDreamSkin-$GUI_VERSION-universal.zip，解压后应用名称为 Codex Dream Skin，支持苹果芯片和 Intel。带 GUI 字样的压缩包用于兼容旧版自动更新。主题数据单独存储并保留。" --latest
       - name: Remove signing key
         if: always()
         run: rm -f "$RUNNER_TEMP/gui-signing-key.pem"

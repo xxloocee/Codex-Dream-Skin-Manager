@@ -7,7 +7,7 @@ The native GUI has a separate release version (`macos/GUI_VERSION`) from the ups
 1. Generate a long-lived Ed25519 signing key locally and keep a secure backup. Do not commit the private key.
 2. Add its PEM contents to the repository Actions secret `DREAMSKIN_GUI_SIGNING_KEY`.
 3. Set `macos/GUI_VERSION`, then push `gui-v<version>` or manually dispatch `Native macOS GUI release` with the matching version.
-4. The workflow builds the universal app, derives the pinned public key from the publisher secret, packages architecture-labelled ZIP assets, signs the manifest, and publishes the complete GitHub Release.
+4. The workflow builds the universal app, derives the pinned public key from the publisher secret, signs the manifest, and publishes the complete GitHub Release. The user download is `CodexDreamSkin-<version>-universal.zip` containing `Codex Dream Skin.app`. Separate architecture-labelled update archives retain the legacy `Codex Dream Skin GUI.app` root required by already-installed 0.1.x updaters; new updater code accepts either root. Updating preserves the installed application's filename.
 
 The workflow uses `GITHUB_REPOSITORY`, so a fork and the upstream project do not share a hard-coded publisher. Each maintainer owns their release repository and private signing key. Keep the same signing key between versions; rotating it requires a separately distributed trust update.
 
