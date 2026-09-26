@@ -117,11 +117,12 @@ Custom artwork framing is stored in `theme.json.art` with `positionX` and
 Windows. Run `node ../tools/sync-runtime-assets.mjs` from the repository root
 after editing `runtime/`.
 
-The public DMG seeds **Gothic Void Crusade**, contributed through PR #134, as
-its redistributable default, alongside the bundled MP4 animated themes
-**墨羽流光 / Ink Feather Glow** and **银璃幻梦 / Silver Glass Dream**,
-using the same video files as the Windows edition. All three are available
-under the saved themes menu after installation. A source checkout also contains the
+The public DMG and native GUI release seed **36 themes**: Gothic Void Crusade,
+the two MP4 animated themes **墨羽流光 / Ink Feather Glow** and
+**银璃幻梦 / Silver Glass Dream**, plus 33 static themes from the Windows source
+catalog. The GUI also seeds newly added bundled themes on launch when its
+version changes without a skin-engine upgrade. Existing themes and deletion
+records take precedence. A source checkout also contains the
 **桥本有菜 / Arina Hashimoto** reference material, but the public app bundle
 deliberately excludes it until independent likeness and redistribution rights
 are confirmed.
@@ -137,10 +138,9 @@ background. The artwork is a user-provided AI-generated example, not an
 official OpenAI/Codex visual or endorsement; confirm likeness and asset rights
 before redistributing it.
 
-Seeding is idempotent. Upgrades remove only retired bundled preset IDs; your
-own `custom-*` themes from “换一张图” and the currently active theme copy are
-never touched. Existing locally saved reference themes are not deleted by an
-upgrade, but they are not copied into newly downloaded public packages.
+Seeding is idempotent: upgrades do not overwrite saved preset edits, custom
+themes, the active theme, or themes the user deliberately deleted. Existing
+locally saved reference themes are preserved, but not copied into public packages.
 
 To contribute a preset, see [`presets/README.md`](./presets/README.md).
 

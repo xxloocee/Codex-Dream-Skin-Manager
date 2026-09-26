@@ -1,6 +1,6 @@
 # 预设主题 · Preset packs
 
-这个目录放 **Codex Dream Skin 的内置预设主题**。安装时 `install-dream-skin-macos.sh` 会把每个 `preset-*/` 幂等地播种到用户主题库 `~/Library/Application Support/CodexDreamSkinStudio/themes/`，装完即可在**菜单栏「已保存的主题」**或 `switch-theme-macos.sh --id <id>` 里直接切换。
+这个目录放 **Codex Dream Skin 的内置预设主题**。构建 GUI 发行包时还会从 Windows 目录生成 33 款静态主题包（不包含公开分发受限的桥本有菜参考图），连同这里的哥特默认主题和两款动态主题共 36 款。安装时 `install-dream-skin-macos.sh` 会把每个 `preset-*/` 幂等地播种到用户主题库 `~/Library/Application Support/CodexDreamSkinStudio/themes/`；GUI 更新后启动时也会补齐缺少的内置主题，且尊重用户删除记录。
 
 > This folder holds the bundled preset themes. Install seeds each `preset-*/` into the user theme library, so a fresh install ships with ready-to-use skins.
 

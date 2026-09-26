@@ -37,6 +37,7 @@ cp "$ROOT/../windows/presets/catalog.json" "$APP/Contents/Resources/manager-cata
 cp "$ROOT/scripts/"*.mjs "$APP/Contents/Resources/engine/scripts/"
 cp "$ROOT/scripts/"*.sh "$APP/Contents/Resources/engine/scripts/"
 chmod 755 "$APP/Contents/Resources/engine/scripts/"*.sh
+"$APP/Contents/Resources/engine/runtime/node/bin/node" "$ROOT/scripts/prepare-gui-presets.mjs" "$ROOT/../windows/presets/catalog.json" "$APP/Contents/Resources/engine/presets"
 cp "$TEMP_BUILD/CodexDreamSkinMenuBar" "$APP/Contents/MacOS/CodexDreamSkinMenuBar"
 sed "s/__VERSION__/$VERSION/g" "$ROOT/menubar-app/Resources/Info.plist.template" > "$APP/Contents/Info.plist"
 GUI_VERSION="$(tr -d '[:space:]' < "$ROOT/GUI_VERSION")"

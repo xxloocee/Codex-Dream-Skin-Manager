@@ -92,6 +92,7 @@ RUNTIME_SCRIPTS=(
   gui-library.sh
   gui-library.mjs
   gui-package.mjs
+  seed-gui-presets-macos.sh
   apply-from-menubar-macos.sh
   apply-community-theme-macos.sh
   check-image-dimensions.mjs
@@ -168,6 +169,7 @@ done
 /bin/chmod 644 "$ENGINE/scripts/"*.mjs
 /bin/chmod 644 "$ENGINE/VERSION"
 /bin/bash "$ROOT/scripts/prepare-node-runtime.sh" "$ENGINE/runtime/node"
+"$ENGINE/runtime/node/bin/node" "$ROOT/scripts/prepare-gui-presets.mjs" "$ROOT/../windows/presets/catalog.json" "$ENGINE/presets"
 [ ! -e "$ENGINE/presets/preset-arina-hashimoto" ] \
   || { printf 'Rights-restricted preset entered the public app bundle.\n' >&2; exit 1; }
 

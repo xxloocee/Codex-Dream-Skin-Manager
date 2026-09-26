@@ -136,6 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     ensureUserDirectories()
     configureManager()
     showManager()
+    seedBundledGUIPresets()
     cleanupStalePrivateOperationDirectories()
     migrateLegacySwiftBarIfNeeded()
     installBundledEngineIfNeeded(force: false)
@@ -234,6 +235,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     }
     managerWindow?.makeKeyAndOrderFront(nil)
     NSApp.activate(ignoringOtherApps: true)
+  }
+
+  private func seedBundledGUIPresets() {
+    guard let script = bundledScript(named: "seed-gui-presets-macos.sh") else { return }
+    ScriptRunner.run(script: script) { [weak self] result in
+      guard let self else { return }
+      if result.succeeded {
+        self.managerModel.reload()
+      } else {
+        self.managerModel.message = "补齐内置主题失败：" + self.conciseOutput(result.output, fallback: "请重新打开应用后再试。")
+      }
+    }
   }
 
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
