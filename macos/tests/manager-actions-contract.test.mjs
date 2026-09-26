@@ -68,15 +68,6 @@ if (process.platform === "win32") {
 } else {
   await fs.writeFile(loaderPath, `#!/bin/sh\nexec "${process.execPath}" "$(dirname "$0")/fake-loader.mjs" "$@"\n`, { mode: 0o700 });
 }
-// The batch adapter resolves the production gui-library.sh next to its loader
-// argument. Keep that boundary in the fixture while routing the call to the
-// fake loader above instead of requiring a real macOS runtime.
-await fs.writeFile(
-  path.join(tempRoot, "gui-library.sh"),
-  `#!/bin/sh\nexec "${process.execPath}" "$(dirname "$0")/fake-loader.mjs" "$@"\n`,
-  { mode: 0o700 },
-);
-
 const requestPath = path.join(requestsRoot, "batch.json");
 await fs.mkdir(requestsRoot, { recursive: true });
 const item = {
