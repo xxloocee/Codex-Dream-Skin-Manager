@@ -378,7 +378,8 @@ html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surfa
   position: relative !important;
   isolation: isolate;
   overflow: hidden !important;
-  background: var(--ds-bg) !important;
+  /* Keep the shell clear so header opacity 0 reveals the artwork behind it. */
+  background: transparent !important;
   border: 1px solid var(--ds-line) !important;
   border-right: 0 !important;
   border-bottom: 0 !important;
@@ -400,7 +401,7 @@ html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surfa
 }
 
 html[data-dream-skin="active"][data-dream-shell="light"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]):not(:has([role="main"]))::before {
-  opacity: .72;
+  opacity: calc(.72 * var(--ds-global-opacity));
 }
 
 html[data-dream-skin="active"]:is([data-dream-art-wide="true"], [data-dream-art-aspect="wide"], [data-dream-art-aspect="ultrawide"])
@@ -419,7 +420,7 @@ html[data-dream-skin="active"]:is([data-dream-task-mode="full"], [data-dream-art
   background-image: var(--ds-task-full-veil), var(--dream-skin-art);
   background-position: center, var(--ds-art-position);
   background-size: 100% 100%, cover;
-  opacity: 1;
+  opacity: var(--ds-global-opacity);
 }
 
 html[data-dream-skin="active"]:is([data-dream-task-mode="ambient"], [data-dream-art-task-mode="ambient"], [data-dream-task-mode="banner"], [data-dream-art-task-mode="banner"])
@@ -597,13 +598,13 @@ html[data-dream-skin="active"]:not([data-dream-media="video"]):not([data-dream-t
 
 html[data-dream-skin="active"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]):not(:has([role="main"])) article {
   border: 1px solid rgb(var(--ds-muted-rgb) / .12);
-  background: rgb(var(--ds-panel-rgb) / .44);
+  background: rgb(var(--ds-panel-rgb) / calc(.44 * var(--ds-global-opacity)));
   box-shadow: 0 8px 24px rgb(var(--ds-bg-rgb) / .10);
   backdrop-filter: blur(7px) saturate(105%);
 }
 
 html[data-dream-skin="active"][data-dream-shell="light"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]):not(:has([role="main"])) article {
-  background: rgb(var(--ds-panel-rgb) / .72);
+  background: rgb(var(--ds-panel-rgb) / calc(.72 * var(--ds-global-opacity)));
 }
 
 html[data-dream-skin="active"][data-dream-shell="light"]
@@ -1054,7 +1055,7 @@ html[data-dream-skin="active"]:not(:has(main:is(.main-surface, [data-app-shell-m
   background-repeat: no-repeat;
   background-position: center, center, var(--ds-art-position);
   background-size: 100% 100%, 100% 100%, cover;
-  opacity: .78;
+  opacity: calc(.78 * var(--ds-global-opacity));
 }
 
 html[data-dream-skin="active"]:not(:has(main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]))) [data-ds-part="main"] > *,
@@ -1353,7 +1354,7 @@ html[data-dream-skin="active"] .thread-scroll-container
   padding: 14px 16px !important;
   border: 1px solid transparent !important;
   border-radius: 18px !important;
-  background: rgb(var(--ds-panel-rgb) / var(--ds-bubble-opacity, 0)) !important;
+  background: rgb(var(--ds-panel-rgb) / calc(var(--ds-bubble-opacity, 0) * var(--ds-global-opacity))) !important;
   color: var(--ds-text) !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
@@ -1364,7 +1365,7 @@ html[data-dream-skin="active"] .thread-scroll-container
   [data-response-annotation-conversation][data-response-annotation-target] {
   margin: 0 !important;
   border-color: transparent !important;
-  background: rgb(var(--ds-panel-rgb) / var(--ds-bubble-opacity, 0)) !important;
+  background: rgb(var(--ds-panel-rgb) / calc(var(--ds-bubble-opacity, 0) * var(--ds-global-opacity))) !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
 }
@@ -1376,7 +1377,7 @@ html[data-dream-skin="active"] :is(
   [data-local-conversation-user-anchor][data-ds-part="message"],
   [data-local-conversation-user-anchor] [data-ds-part="message"]
 ) {
-  background: rgb(var(--ds-panel-rgb) / var(--ds-bubble-opacity, 0)) !important;
+  background: rgb(var(--ds-panel-rgb) / calc(var(--ds-bubble-opacity, 0) * var(--ds-global-opacity))) !important;
   background-image: none !important;
   border-color: transparent !important;
   box-shadow: none !important;
