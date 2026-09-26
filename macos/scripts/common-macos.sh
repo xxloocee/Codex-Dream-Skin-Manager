@@ -205,33 +205,36 @@ finish_client_operation() {
 }
 
 # Seed bundled preset packs into the user's themes/ library so a fresh install
-# ships with ready-to-use skins. Idempotent (each preset is refreshed in place)
-# and scoped to preset-* ids, so user-made custom-* packs are never touched.
+# ships with ready-to-use skins. Existing entries and deletion markers win;
+# maintenance must never overwrite a saved theme or resurrect a deleted one.
 seed_bundled_presets() {
   local presets_root="$PROJECT_ROOT/presets"
   [ -d "$presets_root" ] || return 0
   local themes_root="$STATE_ROOT/themes"
   /bin/mkdir -p "$themes_root"
-  local retired
-  for retired in \
-    preset-midnight-aurora preset-sakura-dawn preset-amber-dusk \
-    preset-forest-mist preset-cyber-neon preset-romantic-rose; do
-    /bin/rm -rf "$themes_root/$retired"
-  done
-  local src id dest entry
+  # Never retire or overwrite user library entries during engine maintenance.
+  # Deletions made by the manager are remembered so repair cannot resurrect them.
+  local src id dest entry stage
   for src in "$presets_root"/preset-*/; do
-    [ -d "$src" ] || continue
-    [ -f "${src}theme.json" ] || continue
+    [ -d "$src" ] && [ -f "${src}theme.json" ] || continue
     id="$(/usr/bin/basename "$src")"
     dest="$themes_root/$id"
-    /bin/rm -rf "$dest"
-    /bin/mkdir -p "$dest"
-    /bin/chmod 700 "$dest"
+    [ ! -e "$dest" ] && [ ! -L "$dest" ] || continue
+    [ ! -e "$STATE_ROOT/deleted-presets/$id" ] || continue
+    stage="$(/usr/bin/mktemp -d "$STATE_ROOT/.preset-seed.XXXXXX")"
     for entry in "$src"*; do
-      [ -f "$entry" ] || continue
-      /bin/cp "$entry" "$dest/"
+      [ -f "$entry" ] && [ ! -L "$entry" ] || continue
+      /bin/cp "$entry" "$stage/" || { /bin/rm -rf "$stage"; return 1; }
     done
-    /bin/chmod 600 "$dest"/* 2>/dev/null || true
+    /bin/chmod 600 "$stage"/* 2>/dev/null || true
+    if [ -e "$dest" ] || [ -L "$dest" ]; then
+      /bin/rm -rf "$stage"
+    else
+      # rename(2) will not nest the stage into a concurrently created directory.
+      "$NODE" -e 'const fs=require("node:fs");try{fs.renameSync(process.argv[1],process.argv[2]);}catch(e){if(!["EEXIST","ENOTEMPTY"].includes(e.code))throw e;}' "$stage" "$dest" \
+        || { /bin/rm -rf "$stage"; return 1; }
+      [ ! -d "$stage" ] || /bin/rm -rf "$stage"
+    fi
   done
 }
 
