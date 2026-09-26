@@ -1102,7 +1102,7 @@ export async function probeVideoInCodex(snapshotPath, state) {
     targets = await listAppTargets(state.port);
   } catch {
     anchor?.close();
-    throw new Error("无法验证视频解码能力：请先启动 Codex 并连接皮肤运行时，再重试导入或应用。");
+    throw Object.assign(new Error("无法验证视频解码能力：请先启动 Codex 并连接皮肤运行时，再重试导入或应用。"), { code: "DREAMSKIN_VIDEO_RENDERER_PENDING" });
   }
   try {
     for (const target of targets) {
@@ -1120,7 +1120,7 @@ export async function probeVideoInCodex(snapshotPath, state) {
         return result;
       } finally { session?.close(); }
     }
-    throw new Error("未找到可校验的 Codex 主窗口，请打开 Codex 主界面后重试。");
+    throw Object.assign(new Error("未找到可校验的 Codex 主窗口，请打开 Codex 主界面后重试。"), { code: "DREAMSKIN_VIDEO_RENDERER_PENDING" });
   } finally { anchor?.close(); }
 }
 
