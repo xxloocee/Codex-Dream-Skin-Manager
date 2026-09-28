@@ -1040,24 +1040,34 @@
     const main = resolvedMainNode();
     let height = 0;
     let windowHeight = 0;
+    const topInWindow = (node) => {
+      let top = 0;
+      for (let current = node; current; current = current.offsetParent) {
+        top += current.offsetTop || 0;
+      }
+      return top;
+    };
     for (const header of selectorNodes("header-tint")) {
-      const rect = header.getBoundingClientRect?.();
-      if (!rect || rect.height <= 0 || rect.top > 2 || rect.bottom <= 0) continue;
-      // Current Codex places the fixed titlebar outside main. Measure its
-      // window-relative height separately from the main content header.
-      windowHeight = Math.max(windowHeight, Math.min(window.innerHeight, rect.bottom));
+      const top = topInWindow(header);
+      const bottom = top + (header.offsetHeight || 0);
+      if (bottom <= 0 || top > 2) continue;
+      // Current Codex places the fixed titlebar outside main. Keep its
+      // window-relative height separate from the main content header.
+      windowHeight = Math.max(windowHeight, Math.min(window.innerHeight, bottom));
     }
-    if (main?.getBoundingClientRect) {
-      const bounds = main.getBoundingClientRect();
+    if (main) {
+      const mainTop = topInWindow(main);
+      const mainHeight = main.offsetHeight || 0;
       for (const header of selectorNodes("header-tint")) {
         if (!main.contains?.(header)) continue;
-        const rect = header.getBoundingClientRect();
-        if (rect.height > 0 && rect.top <= bounds.top + 2) {
-          height = Math.max(height, Math.min(bounds.height, rect.bottom - bounds.top));
+        const top = topInWindow(header);
+        const headerHeight = header.offsetHeight || 0;
+        if (headerHeight > 0 && top <= mainTop + 2) {
+          height = Math.max(height, Math.min(mainHeight, top + headerHeight - mainTop));
         }
       }
       if (windowHeight === 0 && height > 0) {
-        windowHeight = Math.min(window.innerHeight, bounds.top + height);
+        windowHeight = Math.min(window.innerHeight, mainTop + height);
       }
     }
     setStyleProperty(document.documentElement, "--ds-main-header-height", `${Math.max(0, height)}px`);

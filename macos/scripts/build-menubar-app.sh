@@ -32,6 +32,8 @@ TMP="$(/usr/bin/mktemp -d /tmp/codex-dream-skin-app.XXXXXX)"
 # Preserve the real exit status; a plain cleanup trap masks fatal errors as
 # success on the /bin/bash 3.2 this shebang resolves to.
 trap 'status=$?; /bin/rm -rf "$TMP"; exit "$status"' EXIT
+/bin/bash "$ROOT/scripts/prepare-node-runtime.sh" "$TMP/node-runtime"
+BUILD_NODE="$TMP/node-runtime/bin/node"
 SWIFT_FLAGS=(-O)
 SWIFT_OVERLAY=""
 SWIFT_INCLUDE="$(xcode-select -p)/usr/include/swift"
@@ -41,16 +43,13 @@ if [ -n "${DREAMSKIN_SDK:-}" ] \
   && /usr/bin/grep -q '^module SwiftBridging {' "$SWIFT_INCLUDE/module.modulemap" \
   && /usr/bin/grep -q '^module SwiftBridging {' "$SWIFT_INCLUDE/bridging.modulemap"; then
   : > "$TMP/empty.modulemap"
-  /usr/bin/python3 - "$SWIFT_INCLUDE/module.modulemap" "$TMP/empty.modulemap" "$TMP/overlay.json" <<'PY'
-import json
-import sys
-
-source, replacement, output = sys.argv[1:]
-with open(output, "w", encoding="utf-8") as file:
-    json.dump({"version": 0, "roots": [
-        {"type": "file", "name": source, "external-contents": replacement}
-    ]}, file)
-PY
+  "$BUILD_NODE" - "$SWIFT_INCLUDE/module.modulemap" "$TMP/empty.modulemap" "$TMP/overlay.json" <<'NODE'
+const fs = require('node:fs');
+const [source, replacement, output] = process.argv.slice(2);
+fs.writeFileSync(output, JSON.stringify({version: 0, roots: [
+  {type: 'file', name: source, 'external-contents': replacement},
+]}));
+NODE
   SWIFT_OVERLAY="$TMP/overlay.json"
   SWIFT_FLAGS+=(-vfsoverlay "$SWIFT_OVERLAY")
 fi
@@ -190,7 +189,7 @@ done
 /bin/chmod 755 "$ENGINE/scripts/"*.sh
 /bin/chmod 644 "$ENGINE/scripts/"*.mjs
 /bin/chmod 644 "$ENGINE/VERSION"
-/bin/bash "$ROOT/scripts/prepare-node-runtime.sh" "$ENGINE/runtime/node"
+/usr/bin/ditto "$TMP/node-runtime" "$ENGINE/runtime/node"
 "$ENGINE/runtime/node/bin/node" "$ROOT/scripts/prepare-gui-presets.mjs" "$ROOT/../windows/presets/catalog.json" "$ENGINE/presets"
 [ ! -e "$ENGINE/presets/preset-arina-hashimoto" ] \
   || { printf 'Rights-restricted preset entered the public app bundle.\n' >&2; exit 1; }
