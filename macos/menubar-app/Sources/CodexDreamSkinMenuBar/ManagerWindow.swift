@@ -38,6 +38,7 @@ final class ManagerModel: ObservableObject {
           let themes = object["themes"] as? [[String: Any]] else { return [:] }
     var order: [String: Int] = [:]
     for (index, theme) in themes.enumerated() { if let id = theme["id"] as? String { order["preset-" + id] = index } }
+    order["preset-silver-glass-dream-4k"] = order["preset-silver-glass-dream"]
     return order
   }()
   let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/CodexDreamSkinStudio/themes")
