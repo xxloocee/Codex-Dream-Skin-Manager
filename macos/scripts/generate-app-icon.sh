@@ -12,13 +12,18 @@ trap 'status=$?; /bin/rm -rf "$TMP"; exit "$status"' EXIT
 ICONSET="$TMP/DreamSkin.iconset"
 SOURCE="$TMP/icon-1024.png"
 /bin/mkdir -p "$ICONSET" "$(dirname "$OUTPUT")"
-# No array here: expanding an empty array under `set -u` is fatal on the
-# /bin/bash 3.2 this shebang resolves to.
+run_swift() {
+  if [ -n "${DREAMSKIN_SWIFT_VFS_OVERLAY:-}" ]; then
+    /usr/bin/xcrun swift -vfsoverlay "$DREAMSKIN_SWIFT_VFS_OVERLAY" "$@"
+  else
+    /usr/bin/xcrun swift "$@"
+  fi
+}
 if [ -n "${DREAMSKIN_SDK:-}" ]; then
-  /usr/bin/xcrun swift -sdk "$DREAMSKIN_SDK" \
+  run_swift -sdk "$DREAMSKIN_SDK" \
     "$ROOT/menubar-app/Tools/generate-icon.swift" "$SOURCE"
 else
-  /usr/bin/xcrun swift \
+  run_swift \
     "$ROOT/menubar-app/Tools/generate-icon.swift" "$SOURCE"
 fi
 

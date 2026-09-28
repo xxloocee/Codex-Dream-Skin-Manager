@@ -27,9 +27,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
   private var snapshot = StatusSnapshot()
   private var statusRefreshRunning = false
   private var operationInFlight = false
-  private var persistedRestoreScheduled = false
-  private var nextPersistedRestoreAttempt = Date.distantPast
-  private var persistedRestoreFailures = 0
   private var engineInstallInFlight = false
   private var themeRecoveryInFlight = false
   private var pendingCommunityVersionID: String?
@@ -166,46 +163,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     // first check.
     DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
       self?.performBackgroundUpdateCheck()
-    }
-  }
-
-  private func restorePersistedSkinIfNeeded() {
-    guard !persistedRestoreScheduled, !operationInFlight, !engineInstallInFlight,
-          !themeRecoveryInFlight, !snapshot.busy, snapshot.codexRunning,
-          Date() >= nextPersistedRestoreAttempt,
-          !(snapshot.session == "active" && snapshot.injectorAlive && snapshot.cdpOK),
-          let script = bundledScript(named: "start-dream-skin-macos.sh") else { return }
-    let stateURL = stateRootURL.appendingPathComponent("state.json")
-    let themeURL = stateRootURL.appendingPathComponent("theme/theme.json")
-    guard let data = try? Data(contentsOf: stateURL),
-          let state = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-          let session = state["session"] as? String, ["active", "stale"].contains(session),
-          let themeID = state["appliedThemeId"] as? String, !themeID.isEmpty,
-          let themeData = try? Data(contentsOf: themeURL),
-          let theme = (try? JSONSerialization.jsonObject(with: themeData)) as? [String: Any],
-          theme["id"] as? String == themeID else { return }
-    persistedRestoreScheduled = true
-    operationInFlight = true
-    nextPersistedRestoreAttempt = Date().addingTimeInterval(60)
-    managerModel.message = "正在恢复上次皮肤；必要时会重新启动 Codex…"
-    rebuildMenu()
-    // Recheck that Codex is still open in the script: quitting it deliberately
-    // between the status read and this action must not cause it to reopen.
-    ScriptRunner.run(script: script, arguments: ["--restart-existing", "--restore-if-running"]) { [weak self] result in
-      guard let self else { return }
-      self.persistedRestoreScheduled = false
-      self.operationInFlight = false
-      if result.succeeded {
-        self.persistedRestoreFailures = 0
-      } else {
-        self.persistedRestoreFailures += 1
-        let delay = min(300.0, 30.0 * pow(2.0, Double(min(self.persistedRestoreFailures, 4))))
-        self.nextPersistedRestoreAttempt = Date().addingTimeInterval(delay)
-        self.managerModel.message = "皮肤自动恢复失败：" + self.conciseOutput(result.output, fallback: "请点击应用皮肤重试")
-        self.appendManagerLog(self.managerModel.message)
-      }
-      self.refreshStatus()
-      self.rebuildMenu()
     }
   }
 
@@ -849,8 +806,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         self.statusItem.button?.toolTip = "Codex Dream Skin · \(self.copy.statusTitle(session: parsed.session, operation: parsed.operation))"
         self.statusItem.button?.appearsDisabled = parsed.session == "unknown" || parsed.session == "stale"
         self.rebuildMenu()
-        // A watcher can outlive Codex. Probe the connection as well as its PID.
-        self.restorePersistedSkinIfNeeded()
       } else {
         self.managerModel.status = "状态读取失败"
         self.managerModel.message = self.conciseOutput(result.output, fallback: "无法读取运行状态，请尝试安装 / 修复引擎。")

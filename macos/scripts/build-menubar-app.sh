@@ -32,6 +32,28 @@ TMP="$(/usr/bin/mktemp -d /tmp/codex-dream-skin-app.XXXXXX)"
 # Preserve the real exit status; a plain cleanup trap masks fatal errors as
 # success on the /bin/bash 3.2 this shebang resolves to.
 trap 'status=$?; /bin/rm -rf "$TMP"; exit "$status"' EXIT
+SWIFT_FLAGS=(-O)
+SWIFT_OVERLAY=""
+SWIFT_INCLUDE="$(xcode-select -p)/usr/include/swift"
+if [ -n "${DREAMSKIN_SDK:-}" ] \
+  && [ -f "$SWIFT_INCLUDE/module.modulemap" ] \
+  && [ -f "$SWIFT_INCLUDE/bridging.modulemap" ] \
+  && /usr/bin/grep -q '^module SwiftBridging {' "$SWIFT_INCLUDE/module.modulemap" \
+  && /usr/bin/grep -q '^module SwiftBridging {' "$SWIFT_INCLUDE/bridging.modulemap"; then
+  : > "$TMP/empty.modulemap"
+  /usr/bin/python3 - "$SWIFT_INCLUDE/module.modulemap" "$TMP/empty.modulemap" "$TMP/overlay.json" <<'PY'
+import json
+import sys
+
+source, replacement, output = sys.argv[1:]
+with open(output, "w", encoding="utf-8") as file:
+    json.dump({"version": 0, "roots": [
+        {"type": "file", "name": source, "external-contents": replacement}
+    ]}, file)
+PY
+  SWIFT_OVERLAY="$TMP/overlay.json"
+  SWIFT_FLAGS+=(-vfsoverlay "$SWIFT_OVERLAY")
+fi
 ARCH_TEXT="${DREAMSKIN_ARCHS:-arm64 x86_64}"
 read -r -a ARCHS <<< "$ARCH_TEXT"
 [ "${#ARCHS[@]}" -gt 0 ] || { printf 'No build architectures selected.\n' >&2; exit 1; }
@@ -43,12 +65,12 @@ for arch in "${ARCHS[@]}"; do
   if [ -n "${DREAMSKIN_SDK:-}" ]; then
     direct="$TMP/direct-$arch"
     /bin/mkdir -p "$direct"
-    /usr/bin/swiftc -O -sdk "$DREAMSKIN_SDK" -target "$triple" \
+    /usr/bin/swiftc "${SWIFT_FLAGS[@]}" -sdk "$DREAMSKIN_SDK" -target "$triple" \
       -parse-as-library -emit-module -emit-library -static -module-name DreamSkinCore \
       "$PACKAGE_ROOT"/Sources/DreamSkinCore/*.swift \
       -emit-module-path "$direct/DreamSkinCore.swiftmodule" \
       -o "$direct/libDreamSkinCore.a"
-    /usr/bin/swiftc -O -sdk "$DREAMSKIN_SDK" -target "$triple" \
+    /usr/bin/swiftc "${SWIFT_FLAGS[@]}" -sdk "$DREAMSKIN_SDK" -target "$triple" \
       -I "$direct" -L "$direct" -lDreamSkinCore \
       "$PACKAGE_ROOT"/Sources/CodexDreamSkinMenuBar/*.swift \
       -o "$direct/CodexDreamSkinMenuBar"
@@ -173,7 +195,8 @@ done
 [ ! -e "$ENGINE/presets/preset-arina-hashimoto" ] \
   || { printf 'Rights-restricted preset entered the public app bundle.\n' >&2; exit 1; }
 
-"$ROOT/scripts/generate-app-icon.sh" "$RESOURCES/DreamSkin.icns"
+DREAMSKIN_SWIFT_VFS_OVERLAY="$SWIFT_OVERLAY" \
+  "$ROOT/scripts/generate-app-icon.sh" "$RESOURCES/DreamSkin.icns"
 [ -s "$RESOURCES/DreamSkin.icns" ] \
   || { printf 'App icon is missing after generation: %s\n' "$RESOURCES/DreamSkin.icns" >&2; exit 1; }
 GUI_VERSION="$(/usr/bin/tr -d '[:space:]' < "$ROOT/GUI_VERSION")"
