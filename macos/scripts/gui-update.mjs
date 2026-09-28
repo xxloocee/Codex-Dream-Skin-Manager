@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import {constants} from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {verify,createHash} from 'node:crypto';
@@ -24,17 +25,61 @@ const stateRoot=path.join(process.env.HOME,'Library/Application Support/CodexDre
 const semver=v=>typeof v==='string'&&/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(v);
 const compare=(a,b)=>{const x=a.split('.').map(Number),y=b.split('.').map(Number);for(let i=0;i<3;i++){if(x[i]!==y[i])return x[i]>y[i]?1:-1;}return 0;};
 const hosts=new Set(['api.github.com','github.com','release-assets.githubusercontent.com','objects.githubusercontent.com']);
+const systemProxy=(async()=>{
+  // curl reads proxy environment variables. For GUI apps launched from Finder,
+  // use the macOS network proxy when those variables are absent.
+  if(process.env.HTTPS_PROXY||process.env.https_proxy||process.env.ALL_PROXY||process.env.all_proxy)return null;
+  try {
+    const {stdout}=await run('/usr/sbin/scutil',['--proxy'],{timeout:5000,maxBuffer:65536});
+    const values=Object.fromEntries([...stdout.matchAll(/^[ \t]*([A-Za-z]+)[ \t]*:[ \t]*([^\r\n]+)[ \t]*$/gm)].map(([,key,value])=>[key,value.trim()]));
+    const scheme=values.HTTPSEnable==='1'?'http':values.SOCKSEnable==='1'?'socks5h':null;
+    const host=scheme==='http'?values.HTTPSProxy:values.SOCKSProxy;
+    const port=Number(scheme==='http'?values.HTTPSPort:values.SOCKSPort);
+    if(scheme&&host&&/^[A-Za-z0-9.:[\]-]+$/.test(host)&&Number.isInteger(port)&&port>0&&port<65536)
+      return `${scheme}://${host.includes(':')&&!host.startsWith('[')?`[${host}]`:host}:${port}`;
+  } catch { /* A missing proxy configuration still permits a direct request. */ }
+  return null;
+})();
 async function download(url,limit) {
+  const proxy=await systemProxy;
   for(let i=0;i<6;i++){
     const parsed=new URL(url);
     if(parsed.protocol!=='https:'||parsed.username||parsed.password||!hosts.has(parsed.hostname))throw Error('更新地址不在允许的 GitHub 服务中。');
-    const response=await fetch(url,{redirect:'manual',signal:AbortSignal.timeout(limit>MB?180000:20000),headers:{'User-Agent':'CodexDreamSkinGUI-Updater','Accept':parsed.hostname==='api.github.com'?'application/vnd.github+json':'application/octet-stream'}});
-    if(response.status>=300&&response.status<400){const location=response.headers.get('location');await response.body?.cancel();if(!location)throw Error('更新地址重定向无效。');url=new URL(location,url).href;continue;}
-    if(!response.ok)throw Error(`更新服务返回 HTTP ${response.status}。`);
-    if(Number(response.headers.get('content-length'))>limit){await response.body?.cancel();throw Error('更新文件超过限制。');}
-    const parts=[];let size=0;
-    for await(const chunk of response.body){size+=chunk.length;if(size>limit)throw Error('更新文件超过限制。');parts.push(chunk);}
-    return Buffer.concat(parts);
+    const stage=await fs.mkdtemp(path.join(os.tmpdir(),'dreamskin-update-fetch-'));
+    try {
+      const args=['--disable','--proto','=https','--tlsv1.2','--silent','--show-error','--max-redirs','0',
+        '--connect-timeout','10','--max-time',limit>MB?'180':'25','--max-filesize',String(limit),
+        '--user-agent','CodexDreamSkinGUI-Updater','--header',
+        `Accept: ${parsed.hostname==='api.github.com'?'application/vnd.github+json':'application/octet-stream'}`,
+        '--output',path.join(stage,'body'),'--write-out','%{http_code}\n%{redirect_url}',url];
+      const proxyArgs=proxy?[args[0],'--proxy',proxy,'--noproxy','',...args.slice(1)]:args;
+      let stdout;
+      const options={timeout:limit>MB?190000:35000,maxBuffer:65536};
+      try { ({stdout}=await run('/usr/bin/curl',proxyArgs,options)); }
+      catch(error) {
+        if(proxy&&[5,6,7,28,35,52,56,60].includes(Number(error.code))) {
+          try { ({stdout}=await run('/usr/bin/curl',args,options)); }
+          catch(directError) { error=directError; }
+        }
+        if(stdout===undefined) {
+          const reason=error.code===63?'更新文件超过限制。':`无法连接 GitHub 更新服务（${parsed.hostname}，curl ${error.code||'error'}）。请检查网络或系统代理。`;
+          throw Error(reason);
+        }
+      }
+      const separator=stdout.indexOf('\n');
+      const status=Number(stdout.slice(0,separator));
+      if(separator<0||!Number.isInteger(status))throw Error('更新服务返回无效响应。');
+      if(status>=300&&status<400){
+        const location=stdout.slice(separator+1).trim();
+        if(!location)throw Error('更新地址重定向无效。');
+        url=new URL(location,url).href;
+        continue;
+      }
+      if(status<200||status>=300)throw Error(`更新服务返回 HTTP ${status}。`);
+      const body=await fs.readFile(path.join(stage,'body'));
+      if(body.length>limit)throw Error('更新文件超过限制。');
+      return body;
+    } finally { await fs.rm(stage,{recursive:true,force:true}); }
   }
   throw Error('更新地址重定向过多。');
 }
