@@ -19,8 +19,7 @@ const oldPreset = path.join(themesRoot, 'preset-silver-glass-dream');
 const upgradedID = 'preset-silver-glass-dream-4k';
 const upgradedPreset = path.join(themesRoot, upgradedID);
 const deletedMarker = path.join(stateRoot, 'deleted-presets', upgradedID);
-const originalThemeHash = '4d19c2b2910176eb45cb1312b3aa206611c141c68e9dc7864e5a605170217bbe';
-const originalVideoHash = 'fd809617a18643cd7a21fa358548ff55dc56600174e45b19e1158650d218be07';
+const oldDeletedMarker = path.join(stateRoot, 'deleted-presets', 'preset-silver-glass-dream');
 
 const exists = (file) => {
   try { fs.lstatSync(file); return true; }
@@ -32,14 +31,18 @@ const regular = (file) => {
 };
 const digest = (file) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
-// Never replace a saved theme, restore a deleted one, or change an active skin.
-// The two hashes identify the unmodified preset shipped before the 4K update.
-if (!exists(upgradedPreset) && !exists(deletedMarker) &&
-    fs.existsSync(oldPreset) && !fs.lstatSync(oldPreset).isSymbolicLink() &&
-    regular(path.join(oldPreset, 'theme.json')) && regular(path.join(oldPreset, 'background.mp4')) &&
-    regular(path.join(source, 'theme.json')) && regular(path.join(source, 'background.mp4')) &&
-    digest(path.join(oldPreset, 'theme.json')) === originalThemeHash &&
-    digest(path.join(oldPreset, 'background.mp4')) === originalVideoHash) {
+// A fresh install already has the bundled 4K preset under the original ID.
+// Existing libraries may contain any older or customized version, so compare
+// with the current bundle instead of requiring one exact historical hash.
+// Never replace saved content or restore a theme the user deleted.
+const sourceTheme = path.join(source, 'theme.json');
+const sourceVideo = path.join(source, 'background.mp4');
+const oldIsCurrent = () => exists(oldPreset) && !fs.lstatSync(oldPreset).isSymbolicLink() &&
+  regular(path.join(oldPreset, 'theme.json')) && regular(path.join(oldPreset, 'background.mp4')) &&
+  digest(path.join(oldPreset, 'theme.json')) === digest(sourceTheme) &&
+  digest(path.join(oldPreset, 'background.mp4')) === digest(sourceVideo);
+if (!exists(upgradedPreset) && !exists(deletedMarker) && !exists(oldDeletedMarker) &&
+    regular(sourceTheme) && regular(sourceVideo) && !oldIsCurrent()) {
   const stage = fs.mkdtempSync(path.join(stateRoot, '.preset-seed.'));
   try {
     const theme = JSON.parse(fs.readFileSync(path.join(source, 'theme.json'), 'utf8'));
