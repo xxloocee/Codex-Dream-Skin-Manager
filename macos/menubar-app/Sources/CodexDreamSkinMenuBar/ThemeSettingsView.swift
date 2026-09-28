@@ -19,7 +19,7 @@ struct ThemeSettingsView: View {
   @State private var zoom = 1.0
   @State private var bubble = 0.0
   @State private var surface = 0.8
-  @State private var globalOpacity = 1.0
+  @State private var globalOpacity = 0.32
   @State private var transparentHeader = false
   @State private var safeArea = "auto"
   @State private var taskMode = "auto"
@@ -73,6 +73,7 @@ struct ThemeSettingsView: View {
             setting("工具面板不透明度", value: $surface, range: 0...1)
               .help("用于输入框、右侧浮层和设置等独立面板。")
             setting("全局皮肤不透明度", value: $globalOpacity, range: 0...1)
+              .help("0% 时新会话显示原视频、已有会话保留轻微阅读底色；中间值新会话更亮；100% 时背景视频完全被遮住。顶部由独立开关控制。")
             Toggle("顶部背景透明", isOn: $transparentHeader)
               .help("开启后顶部显示皮肤原画；关闭后使用默认背景遮罩。")
           }
@@ -114,7 +115,7 @@ struct ThemeSettingsView: View {
     positionX = art["positionX"] as? Double ?? 0; positionY = art["positionY"] as? Double ?? 0
     zoom = art["zoom"] as? Double ?? 1; bubble = art["bubbleOpacity"] as? Double ?? 0
     surface = art["surfaceOpacity"] as? Double ?? 0.8
-    globalOpacity = art["globalOpacity"] as? Double ?? 1.0
+    globalOpacity = art["globalOpacity"] as? Double ?? 0.32
     transparentHeader = (art["headerOpacity"] as? Double ?? 0.8) == 0
     positionMode = art["positionMode"] as? String ?? "locked"
     safeArea = art["safeArea"] as? String ?? "auto"; taskMode = art["taskMode"] as? String ?? "auto"

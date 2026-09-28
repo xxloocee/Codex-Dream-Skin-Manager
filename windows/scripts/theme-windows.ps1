@@ -453,7 +453,7 @@ function Normalize-DreamSkinThemeContract {
   }
   if (-not $Theme.PSObject.Properties['art'] -or -not $Theme.PSObject.Properties['art'].Value) {
     $Theme | Add-Member -NotePropertyName art -NotePropertyValue `
-      ([pscustomobject]@{ focusX = $null; focusY = $null; bubbleOpacity = 0.0; surfaceOpacity = 0.8; globalOpacity = 1.0; headerOpacity = 0.8; safeArea = 'auto'; taskMode = 'auto' }) -Force
+      ([pscustomobject]@{ focusX = $null; focusY = $null; bubbleOpacity = 0.0; surfaceOpacity = 0.8; globalOpacity = 0.32; headerOpacity = 0.8; safeArea = 'auto'; taskMode = 'auto' }) -Force
   }
   return $Theme
 }
@@ -675,7 +675,7 @@ function Set-DreamSkinActiveTheme {
       id = 'custom'
       name = '自定义主题'
       appearance = 'auto'
-      art = [pscustomobject]@{ focusX = $null; focusY = $null; bubbleOpacity = 0.0; surfaceOpacity = 0.8; globalOpacity = 1.0; headerOpacity = 0.8; safeArea = 'auto'; taskMode = 'auto' }
+      art = [pscustomobject]@{ focusX = $null; focusY = $null; bubbleOpacity = 0.0; surfaceOpacity = 0.8; globalOpacity = 0.32; headerOpacity = 0.8; safeArea = 'auto'; taskMode = 'auto' }
     }
   }
   $imageName = New-DreamSkinThemeImageName -Extension $extension

@@ -98,7 +98,8 @@
     "--ds-theme-image-focus-y", "--ds-theme-image-zoom",
     "--ds-theme-image-dim", "--ds-theme-image-task-intensity",
     "--ds-theme-density-scale", "--ds-theme-motion-level",
-    "--ds-global-opacity", "--ds-header-opacity", "--ds-main-header-height",
+    "--ds-global-opacity", "--ds-home-veil-opacity", "--ds-header-opacity", "--ds-main-header-height",
+    "--ds-window-header-height",
   ];
   const selectorByKey = new Map(SELECTOR_CONTRACT.selectors.map((entry) => [entry.key, entry]));
   const stableTestidSelector = (testid) => SELECTOR_CONTRACT.stableTestids?.includes(testid)
@@ -384,7 +385,7 @@
   const surfaceOpacity = typeof ART.surfaceOpacity === "number" && Number.isFinite(ART.surfaceOpacity)
     ? clamp(ART.surfaceOpacity, 0, 1) : 0.8;
   const globalOpacity = typeof ART.globalOpacity === "number" && Number.isFinite(ART.globalOpacity)
-    ? clamp(ART.globalOpacity, 0, 1) : 1;
+    ? clamp(ART.globalOpacity, 0, 1) : 0.32;
   // Legacy zero means transparent; all other saved values use the default tint.
   const headerOpacity = ART.headerOpacity === 0 ? 0 : 0.8;
 
@@ -647,10 +648,13 @@
     setStyleProperty(root, "--dream-art-background-size", backgroundSize);
     setStyleProperty(root, "--ds-bubble-opacity", String(Number(bubbleOpacity.toFixed(4))));
     setStyleProperty(root, "--ds-global-opacity", String(Number(globalOpacity.toFixed(4))));
-    root.toggleAttribute("data-dream-global-transparent", globalOpacity === 0);
+    // Keep new conversations visibly brighter than reading surfaces at middle
+    // settings, while preserving raw artwork at zero and a full veil at one.
+    setStyleProperty(root, "--ds-home-veil-opacity", String(Number((globalOpacity * globalOpacity).toFixed(4))));
+    setAttribute(root, "data-dream-global-transparent", globalOpacity === 0 ? "true" : "false");
     setStyleProperty(root, "--ds-header-opacity", String(Number(headerOpacity.toFixed(4))));
-    root.toggleAttribute("data-dream-header-transparent", headerOpacity === 0);
-    setStyleProperty(root, "--ds-surface-opacity", String(Number((surfaceOpacity * globalOpacity).toFixed(4))));
+    setAttribute(root, "data-dream-header-transparent", headerOpacity === 0 ? "true" : "false");
+    setStyleProperty(root, "--ds-surface-opacity", String(Number(surfaceOpacity.toFixed(4))));
     setStyleProperty(root, "--ds-theme-image-focus-x", String(Number(focusX.toFixed(4))));
     setStyleProperty(root, "--ds-theme-image-focus-y", String(Number(focusY.toFixed(4))));
   };
@@ -1035,6 +1039,14 @@
   const refreshHeaderGeometry = () => {
     const main = resolvedMainNode();
     let height = 0;
+    let windowHeight = 0;
+    for (const header of selectorNodes("header-tint")) {
+      const rect = header.getBoundingClientRect?.();
+      if (!rect || rect.height <= 0 || rect.top > 2 || rect.bottom <= 0) continue;
+      // Current Codex places the fixed titlebar outside main. Measure its
+      // window-relative height separately from the main content header.
+      windowHeight = Math.max(windowHeight, Math.min(window.innerHeight, rect.bottom));
+    }
     if (main?.getBoundingClientRect) {
       const bounds = main.getBoundingClientRect();
       for (const header of selectorNodes("header-tint")) {
@@ -1044,8 +1056,12 @@
           height = Math.max(height, Math.min(bounds.height, rect.bottom - bounds.top));
         }
       }
+      if (windowHeight === 0 && height > 0) {
+        windowHeight = Math.min(window.innerHeight, bounds.top + height);
+      }
     }
     setStyleProperty(document.documentElement, "--ds-main-header-height", `${Math.max(0, height)}px`);
+    setStyleProperty(document.documentElement, "--ds-window-header-height", `${Math.max(0, windowHeight)}px`);
   };
   const refreshParts = () => {
     metrics.partPasses += 1;

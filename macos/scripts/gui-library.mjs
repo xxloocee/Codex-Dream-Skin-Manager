@@ -64,7 +64,7 @@ function fingerprint(theme,media,css) {
     framing,positionX:framing?(a.positionX??0):0,positionY:framing?(a.positionY??0):0,
     zoom:framing?(a.zoom??1):1,positionMode:framing?(a.positionMode??'locked'):'locked',
     safeArea:a.safeArea??'auto',taskMode:a.taskMode??'auto',bubbleOpacity:a.bubbleOpacity??0,
-    surfaceOpacity:a.surfaceOpacity??0.8,globalOpacity:a.globalOpacity??1,headerOpacity:a.headerOpacity??0.8,accent:(theme.colors?.accent??'').toUpperCase()};
+    surfaceOpacity:a.surfaceOpacity??0.8,globalOpacity:a.globalOpacity??0.32,headerOpacity:a.headerOpacity??0.8,accent:(theme.colors?.accent??'').toUpperCase()};
   return createHash('sha256').update(JSON.stringify(render)).update(media).update(css??'').digest('hex');
 }
 async function duplicate(theme,media,css) {

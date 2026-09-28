@@ -811,7 +811,7 @@ export async function loadTheme(themeDir) {
       focusY: normalizedUnit(art.focusY, "art.focusY"),
       bubbleOpacity: normalizedRange(art.bubbleOpacity, "art.bubbleOpacity", 0, 1, 0),
       surfaceOpacity: normalizedRange(art.surfaceOpacity, "art.surfaceOpacity", 0, 1, 0.8),
-      globalOpacity: normalizedRange(art.globalOpacity, "art.globalOpacity", 0, 1, 1),
+      globalOpacity: normalizedRange(art.globalOpacity, "art.globalOpacity", 0, 1, 0.32),
       headerOpacity: normalizedRange(art.headerOpacity, "art.headerOpacity", 0, 1, 0.8),
       safeArea: normalizedChoice(art.safeArea, "art.safeArea", THEME_CHOICES.safeArea, "auto"),
       taskMode: normalizedChoice(art.taskMode, "art.taskMode", THEME_CHOICES.taskMode, "auto"),

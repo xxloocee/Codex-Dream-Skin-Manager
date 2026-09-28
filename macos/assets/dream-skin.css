@@ -16,12 +16,15 @@
   --ds-bg-rgb: 17 19 24;
   --ds-panel-rgb: 25 28 34;
   --ds-panel-2-rgb: 32 36 43;
-  /* Window tint is independent of the floating-panel opacity setting. */
-  --ds-shell-background: rgb(var(--ds-bg-rgb) / calc(.58 * var(--ds-global-opacity)));
+  /* The global control is the video veil: zero reveals the artwork and one
+     fully hides it. Existing conversations keep a light reading tint at zero. */
+  --ds-shell-background: rgb(0 0 0 / calc(.16 + .84 * var(--ds-global-opacity)));
+  --ds-home-shell-background: rgb(0 0 0 / var(--ds-home-veil-opacity));
   /* Shared floating surface settings. Change background alpha, never element
      opacity: text, icons, images and semantic highlights must stay opaque. */
   --ds-surface-opacity: .80;
-  --ds-global-opacity: 1;
+  --ds-global-opacity: .32;
+  --ds-home-veil-opacity: .1024;
   --ds-header-opacity: .80;
   --ds-surface-blur: 10px;
   --ds-surface-background: rgb(var(--ds-panel-rgb) / var(--ds-surface-opacity));
@@ -75,7 +78,8 @@
 
 html[data-dream-skin="active"][data-dream-shell="light"] {
   color-scheme: light !important;
-  --ds-shell-background: rgb(var(--ds-panel-rgb) / calc(.64 * var(--ds-global-opacity)));
+  --ds-shell-background: rgb(var(--ds-panel-rgb) / calc(.16 + .84 * var(--ds-global-opacity)));
+  --ds-home-shell-background: rgb(var(--ds-panel-rgb) / var(--ds-home-veil-opacity));
   --ds-bg: #f3f5f6;
   --ds-panel: #fafbfb;
   --ds-panel-2: #e9edef;
@@ -214,22 +218,30 @@ html[data-dream-skin="active"] {
     background: var(--ds-shell-background);
   }
 
-  /* Home showcases the artwork with a lighter window-wide tint. The home
-     part disappears on entering a conversation, restoring the existing tint.
-     Fade only this decorative plane, never the UI or floating panels. */
+  /* Home reveals the raw artwork at zero and stays brighter in the middle.
+     The conversation retains its reading tint; both hide artwork at one. */
   html[data-dream-skin="active"][data-dream-art-wide="true"]:not([data-dream-task-mode="off"])
     body:has([data-ds-part="home"])::before {
-    opacity: .55;
+    background: var(--ds-home-shell-background);
   }
 
   /* Clear the top of the shared tint plane without changing the page below. */
   html[data-dream-skin="active"][data-dream-art-wide="true"][data-dream-header-transparent="true"]:not([data-dream-task-mode="off"])
     body::before {
-    clip-path: inset(var(--ds-main-header-height, 0px) 0 0 0);
+    clip-path: inset(var(--ds-window-header-height, 0px) 0 0 0);
   }
 
   html[data-dream-skin="active"][data-dream-art-wide="true"]:not([data-dream-task-mode="off"]) #codex-dream-skin-video {
     z-index: -2 !important;
+  }
+
+  /* Codex 26.924 paints an 80% opaque background on the full-window page
+     layout. It sits above the video and our home/thread tint plane, making
+     both routes equally dark even when the skin opacity is zero. */
+  html[data-dream-skin="active"][data-dream-media="video"][data-dream-art-wide="true"]:not([data-dream-task-mode="off"])
+    [data-app-shell-page-surface="true"]:has(main[data-app-shell-main-surface="default"]) {
+    background: transparent !important;
+    backdrop-filter: none !important;
   }
 
   html[data-dream-skin="active"][data-dream-art-wide="true"]:not([data-dream-task-mode="off"]) :is(
@@ -1458,7 +1470,7 @@ html[data-dream-skin="active"] .thread-scroll-container
   padding: 14px 16px !important;
   border: 1px solid transparent !important;
   border-radius: 18px !important;
-  background: rgb(var(--ds-panel-rgb) / calc(var(--ds-bubble-opacity, 0) * var(--ds-global-opacity))) !important;
+  background: rgb(var(--ds-panel-rgb) / var(--ds-bubble-opacity, 0)) !important;
   color: var(--ds-text) !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
@@ -1469,7 +1481,7 @@ html[data-dream-skin="active"] .thread-scroll-container
   [data-response-annotation-conversation][data-response-annotation-target] {
   margin: 0 !important;
   border-color: transparent !important;
-  background: rgb(var(--ds-panel-rgb) / calc(var(--ds-bubble-opacity, 0) * var(--ds-global-opacity))) !important;
+  background: rgb(var(--ds-panel-rgb) / var(--ds-bubble-opacity, 0)) !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
 }
@@ -1481,7 +1493,7 @@ html[data-dream-skin="active"] :is(
   [data-local-conversation-user-anchor][data-ds-part="message"],
   [data-local-conversation-user-anchor] [data-ds-part="message"]
 ) {
-  background: rgb(var(--ds-panel-rgb) / calc(var(--ds-bubble-opacity, 0) * var(--ds-global-opacity))) !important;
+  background: rgb(var(--ds-panel-rgb) / var(--ds-bubble-opacity, 0)) !important;
   background-image: none !important;
   border-color: transparent !important;
   box-shadow: none !important;
@@ -1710,8 +1722,8 @@ html[data-dream-skin="active"] [data-ds-part="message"] { border-radius: 16px; }
 
 @layer dreamskin-surfaces { html[data-dream-skin="active"][data-dream-header-transparent="true"] :is([data-ds-part="header"], [class~="group/application-menu-top-bar"], [class*="_ApplicationMenuTopBar_"]) { background: transparent !important; } }
 
-/* A zero global value is the explicit "original video" mode. Clear every
-   scene veil and native shell paint; controls retain their own readable surfaces. */
+/* A zero global value clears local scene veils and native shell paint. The
+   shared body tint above remains lightly visible in conversations only. */
 @layer dreamskin-surfaces {
   html[data-dream-skin="active"][data-dream-global-transparent="true"]
     :is(main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"]), [data-ds-part="main"], [data-ds-part="home"], aside.app-shell-left-panel) {
