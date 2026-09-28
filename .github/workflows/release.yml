@@ -223,6 +223,11 @@ jobs:
             <(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
           sha256sum "${expected[@]}" | LC_ALL=C sort -k2 > SHA256SUMS.txt
 
+      - name: Create static update manifest
+        env:
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+        run: python3 tools/create-update-manifest.py --tag "$RELEASE_TAG" --directory dist
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}

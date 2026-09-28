@@ -41,6 +41,11 @@ function Assert-True {
 
 try {
   $common = @('-SkillRoot', $SkillRoot, '-StateRoot', $stateRoot)
+  $freshStatus = Invoke-Manager -Arguments (@('-Action', 'Status', '-Quick') + $common)
+  Assert-Equal '' $freshStatus.activeThemeId 'Fresh status must not initialize an active theme.'
+  Assert-True (-not (Test-Path -LiteralPath $stateRoot)) 'Fresh status created user state.'
+  # Writes, rather than reads, initialize and migrate the fixture store.
+  $null = Invoke-Manager -Arguments (@('-Action', 'Pause') + $common)
   $packagedInitial = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
   $packagedThemeMetadataPath = Join-Path $SkillRoot 'assets\theme.json'
   $packagedThemeMetadata = Get-Content -LiteralPath $packagedThemeMetadataPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -70,6 +75,9 @@ try {
     (($legacyActiveTheme | ConvertTo-Json -Depth 8) + "`r`n"),
     [System.Text.Encoding]::UTF8)
   $null = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
+  $readOnlyActiveTheme = [System.IO.File]::ReadAllText($legacyActiveThemePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+  Assert-Equal 'light' $readOnlyActiveTheme.appearance 'Status unexpectedly migrated the active theme.'
+  $null = Invoke-Manager -Arguments (@('-Action', 'Pause') + $common)
   $migratedActiveTheme = [System.IO.File]::ReadAllText($legacyActiveThemePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
   Assert-Equal 'auto' $migratedActiveTheme.appearance 'Legacy active preset did not migrate to adaptive appearance.'
   Write-Host 'PASS: legacy active presets migrate to adaptive appearance'
@@ -84,6 +92,7 @@ try {
   Copy-Item -LiteralPath $unrelatedPreset[0].imagePath `
     -Destination (Join-Path $stateRoot "active-theme\$($legacyActiveTheme.image)") -Force
   $null = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
+  $null = Invoke-Manager -Arguments (@('-Action', 'Pause') + $common)
   $customizedActiveTheme = [System.IO.File]::ReadAllText($legacyActiveThemePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
   Assert-Equal 'light' $customizedActiveTheme.appearance 'Customized active preset was incorrectly migrated.'
   Write-Host 'PASS: customized active presets keep their explicit appearance'
@@ -121,15 +130,13 @@ try {
     (Get-Item -LiteralPath $concurrentOutputA).Length,
     (Get-Item -LiteralPath $concurrentOutputB).Length
   )
-  Assert-True (@($concurrentOutputLengths | Where-Object { $_ -gt 0 }).Count -ge 1) 'Concurrent first-run Status produced no successful result.'
-  if ($concurrentOutputLengths[0] -eq 0) {
-    Assert-True ([System.IO.File]::ReadAllText($concurrentErrorA).Contains('already running')) 'Concurrent Status A failed for an unexpected reason.'
+  Assert-Equal 2 @($concurrentOutputLengths | Where-Object { $_ -gt 0 }).Count 'Concurrent reads must both return status.'
+  foreach ($outputPath in @($concurrentOutputA, $concurrentOutputB)) {
+    $concurrentStatus = [System.IO.File]::ReadAllText($outputPath) | ConvertFrom-Json
+    Assert-Equal '' $concurrentStatus.activeThemeId 'Concurrent read initialized an active theme.'
   }
-  if ($concurrentOutputLengths[1] -eq 0) {
-    Assert-True ([System.IO.File]::ReadAllText($concurrentErrorB).Contains('already running')) 'Concurrent Status B failed for an unexpected reason.'
-  }
-  Assert-True (Test-Path -LiteralPath (Join-Path $concurrentStateRoot 'active-theme\theme.json') -PathType Leaf) 'Concurrent first-run initialization did not create the active theme.'
-  Write-Host 'PASS: first-run theme initialization is protected across manager processes'
+  Assert-True (-not (Test-Path -LiteralPath $concurrentStateRoot)) 'Concurrent reads created state.'
+  Write-Host 'PASS: concurrent status reads are observational and do not contend on initialization'
   $initial = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
   $catalogTheme = @($initial.themes | Where-Object { $_.id -eq 'preset-catalog-one' })
   $catalogThemeTwo = @($initial.themes | Where-Object { $_.id -eq 'preset-catalog-two' })
@@ -179,6 +186,7 @@ try {
   # changing the fixtures used by the existing apply/reset tests.
   $presetStateRoot = Join-Path $testRoot 'preset-edit-state'
   $presetCommon = @('-SkillRoot', $SkillRoot, '-StateRoot', $presetStateRoot)
+  $null = Invoke-Manager -Arguments (@('-Action', 'Pause') + $presetCommon)
   $presetInitial = Invoke-Manager -Arguments (@('-Action', 'Status') + $presetCommon)
   $catalogHashBeforeEdit = (Get-FileHash -LiteralPath (Join-Path $SkillRoot 'presets\catalog.json')).Hash
   $gothicMetadataPath = Join-Path $SkillRoot 'presets\preset-gothic-void-crusade\theme.json'
@@ -327,7 +335,7 @@ try {
   [System.IO.File]::WriteAllText($themePath, $originalThemeJson, [System.Text.Encoding]::UTF8)
   Write-Host 'PASS: saved theme editing supports missing optional art fields'
 
-  Assert-Equal '1.7' $after.managerApiVersion 'Manager API version is missing.'
+  Assert-Equal '1.8' $after.managerApiVersion 'Manager API version is missing.'
   Assert-Equal '1' $after.themeSchemaVersion 'Theme schema version is missing.'
   Assert-True (@($after.supportedActions) -contains 'ValidateImage') 'Supported actions do not include ValidateImage.'
   Assert-True (@($after.supportedActions) -contains 'ResetTheme') 'Supported actions do not include ResetTheme.'
@@ -485,6 +493,8 @@ try {
   [System.IO.File]::WriteAllText($unmarkedSentinel, 'keep', [System.Text.Encoding]::UTF8)
   $null = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
   Assert-True (Test-Path -LiteralPath $unmarkedSentinel -PathType Leaf) 'Status deleted an unmarked directory that only matched the quarantine name prefix.'
+  $null = Invoke-Manager -Arguments (@('-Action', 'Pause') + $common)
+  Assert-True (Test-Path -LiteralPath $unmarkedSentinel -PathType Leaf) 'Write cleanup deleted an unmarked directory.'
   Write-Host 'PASS: pending cleanup requires a valid manager quarantine marker'
 
   $pendingCleanupTheme = Join-Path $stateRoot 'themes\pending-cleanup-delete-test'
@@ -535,6 +545,8 @@ try {
         Set-Acl -LiteralPath $quarantinedImage -AclObject $cleanupAcl
       }
       $null = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
+      Assert-True (Test-Path -LiteralPath $pendingQuarantine.FullName) 'Status must not perform pending cleanup.'
+      $null = Invoke-Manager -Arguments (@('-Action', 'Pause') + $common)
       Assert-True (-not (Test-Path -LiteralPath $pendingQuarantine.FullName)) 'A later manager invocation did not retry pending quarantine cleanup.'
     }
   }
@@ -569,6 +581,8 @@ try {
         $env:CODEX_DREAM_SKIN_TEST_FAIL_FINAL_QUARANTINE_REMOVE = $previousFinalFailure
       }
       $null = Invoke-Manager -Arguments (@('-Action', 'Status') + $common)
+      Assert-True (Test-Path -LiteralPath $finalQuarantine.FullName) 'Status must not perform pending cleanup.'
+      $null = Invoke-Manager -Arguments (@('-Action', 'Pause') + $common)
       Assert-True (-not (Test-Path -LiteralPath $finalQuarantine.FullName)) 'Final quarantine marker was not retried after directory deletion became available.'
     }
     if ($null -eq $previousFinalFailure) {

@@ -40,6 +40,7 @@ function normalized(raw) {
   if(theme.colors!==undefined&&(!theme.colors||typeof theme.colors!=='object'||Array.isArray(theme.colors))) throw Error('颜色参数无效。');
   if(theme.colors?.accent && !/^#[0-9a-f]{6}$/i.test(theme.colors.accent)) throw Error('强调色须为 #RRGGBB。');
   if(typeof theme.image!=='string'||path.basename(theme.image)!==theme.image||!/\.(png|apng|jpe?g|webp|gif|mp4)$/i.test(theme.image)) throw Error('支持 PNG/APNG/JPEG/WebP/GIF/MP4；HEIC/TIFF 请先转换为 PNG。');
+  if(theme.originalImage!==undefined && (typeof theme.originalImage!=='string'||!theme.originalImage||path.basename(theme.originalImage)!==theme.originalImage||/[\\\x00-\x1f\x7f]/.test(theme.originalImage)||['.','..','theme.json','theme.css','license.txt',theme.image.toLowerCase()].includes(theme.originalImage.toLowerCase()))) throw Error('原始素材文件名无效。');
   theme.schemaVersion=1;
   delete theme.managerFingerprint;delete theme.managerFingerprintVersion;
   return theme;
@@ -58,7 +59,8 @@ function encode(value) {return Buffer.from(JSON.stringify(value,null,2)+'\n');}
 function fingerprint(theme,media,css) {
   const a=theme.art??{}, framing=a.framingEnabled===true||['positionX','positionY','zoom','positionMode'].some(k=>Object.hasOwn(a,k));
   // Stable, explicitly ordered rendering fields. Names/categories/tags are labels.
-  const render={appearance:theme.appearance??'auto',focusX:a.focusX??0.5,focusY:a.focusY??0.5,
+  // Missing focus uses renderer image analysis, not an explicit centered crop.
+  const render={appearance:theme.appearance??'auto',focusX:a.focusX??null,focusY:a.focusY??null,
     framing,positionX:framing?(a.positionX??0):0,positionY:framing?(a.positionY??0):0,
     zoom:framing?(a.zoom??1):1,positionMode:framing?(a.positionMode??'locked'):'locked',
     safeArea:a.safeArea??'auto',taskMode:a.taskMode??'auto',bubbleOpacity:a.bubbleOpacity??0,
@@ -76,7 +78,7 @@ async function duplicate(theme,media,css) {
   }
   return null;
 }
-async function publish(theme,media,css,license) {
+async function publish(theme,media,css,license,originalMedia=null) {
   const id='custom-'+randomUUID(),stage=path.join(stateRoot,'.gui-import-'+randomUUID());
   await fs.mkdir(stage,{mode:0o700});
   try {
@@ -84,6 +86,10 @@ async function publish(theme,media,css,license) {
     await run(process.execPath,[path.join(scripts,'validate-image-macos.mjs'),path.join(stage,theme.image)],{timeout:120000,maxBuffer:MB});
     if(css){decodeAndValidateSafeCss(css);await fs.writeFile(path.join(stage,'theme.css'),css);}
     if(license)await fs.writeFile(path.join(stage,'LICENSE.txt'),license);
+    if(theme.originalImage!==undefined) {
+      if(!originalMedia)throw Error('原始素材缺失，已取消另存。');
+      await fs.writeFile(path.join(stage,theme.originalImage),originalMedia,{flag:'wx',mode:0o600});
+    }
     await fs.writeFile(path.join(stage,'theme.json'),encode(theme));
     await fs.rename(stage,path.join(root,id));
     return {id,name:theme.name};
@@ -109,8 +115,11 @@ try {
   } else if(action==='save') {
     const {dir,theme}=await readTheme(args[0]),request=await json(args[1]);
     if(request.expectedHash!==createHash('sha256').update(await read(path.join(dir,'theme.json'))).digest('hex'))throw Error('主题已被其他操作修改，请刷新后再保存。');
-    const next=normalized({...theme,...request.config,id:theme.id,image:theme.image});
-    if(request.copy) result=await publish(next,await read(path.join(dir,theme.image),128*MB),await optional(path.join(dir,'theme.css'),256*1024),await optional(path.join(dir,'LICENSE.txt'),65536));
+    const next=normalized({...theme,...request.config,id:theme.id,image:theme.image,originalImage:theme.originalImage});
+    if(request.copy) {
+      const original=theme.originalImage===undefined?null:await read(path.join(dir,theme.originalImage),128*MB);
+      result=await publish(next,await read(path.join(dir,theme.image),128*MB),await optional(path.join(dir,'theme.css'),256*1024),await optional(path.join(dir,'LICENSE.txt'),65536),original);
+    }
     else {await atomic(path.join(dir,'theme.json'),encode(next));result={id:theme.id,name:next.name};}
   } else if(action==='create') {
     const request=await json(args[0]);

@@ -18,14 +18,16 @@ using System.Web.Script.Serialization;
 
 namespace CodexDreamSkinManager
 {
-    internal static class ManagerTests
+    internal static partial class ManagerTests
     {
         private static readonly List<string> Failures = new List<string>();
         private static int PassCount;
 
         [STAThread]
-        private static int Main()
+        private static int Main(string[] args)
         {
+            RunStatusReadTests();
+            if (Array.IndexOf(args, "--status-read-only") >= 0) return ReportResults();
             Run("Cold video apply connects before validation and starts after publication", delegate {
                 AssertApplyFlow(false, true, true, false, "check,confirm,connect,apply,start", true);
             });
@@ -42,10 +44,10 @@ namespace CodexDreamSkinManager
                 AssertApplyFlow(true, true, true, false, "check,confirm,connect,apply,start", true, false, true);
             });
             Run("Healthy video apply reuses the running injector", delegate {
-                AssertApplyFlow(true, true, true, false, "check,apply", true);
+                AssertApplyFlow(true, true, true, false, "apply", true);
             });
             Run("Healthy image apply reuses the running injector", delegate {
-                AssertApplyFlow(true, false, true, false, "check,apply", true);
+                AssertApplyFlow(true, false, true, false, "apply", true);
             });
             Run("Cold image apply publishes before starting native appearance", delegate {
                 AssertApplyFlow(false, false, true, false, "check,apply,start", true);
@@ -790,7 +792,7 @@ namespace CodexDreamSkinManager
                         MethodInfo refresh = typeof(MainWindow).GetMethod("RefreshStatusAsync", BindingFlags.Instance | BindingFlags.NonPublic);
                         Task<bool> refreshTask = null;
                         window.Dispatcher.Invoke(new Action(delegate {
-                            refreshTask = (Task<bool>)refresh.Invoke(window, new object[] { false });
+                            refreshTask = (Task<bool>)refresh.Invoke(window, new object[] { false, true });
                         }));
                         AssertTrue(WaitForTask(refreshTask, window.Dispatcher));
                         AssertEqual("状态需要恢复", GetPrivateField<TextBlock>(window, "statusText").Text);
@@ -835,7 +837,7 @@ namespace CodexDreamSkinManager
                         MethodInfo refresh = typeof(MainWindow).GetMethod("RefreshStatusAsync", BindingFlags.Instance | BindingFlags.NonPublic);
                         Task<bool> refreshTask = null;
                         window.Dispatcher.Invoke(new Action(delegate {
-                            refreshTask = (Task<bool>)refresh.Invoke(window, new object[] { false });
+                            refreshTask = (Task<bool>)refresh.Invoke(window, new object[] { false, true });
                         }));
                         AssertTrue(!WaitForTask(refreshTask, window.Dispatcher));
                         AssertEqual("running", running.StatusKind);
@@ -847,7 +849,7 @@ namespace CodexDreamSkinManager
                         Func<Task> action = delegate { return Task.FromResult(0); };
                         Task operation = null;
                         window.Dispatcher.Invoke(new Action(delegate {
-                            operation = (Task)runOperation.Invoke(window, new object[] { action, "done" });
+                            operation = (Task)runOperation.Invoke(window, new object[] { action, "done", true });
                         }));
                         WaitForTask(operation, window.Dispatcher);
                         AssertTrue(!(bool)ReadMemberObject(window, "operationRunning"));
@@ -894,7 +896,7 @@ namespace CodexDreamSkinManager
                         MethodInfo refresh = typeof(MainWindow).GetMethod("RefreshStatusAsync", BindingFlags.Instance | BindingFlags.NonPublic);
                         Task<bool> refreshTask = null;
                         window.Dispatcher.Invoke(new Action(delegate {
-                            refreshTask = (Task<bool>)refresh.Invoke(window, new object[] { false });
+                            refreshTask = (Task<bool>)refresh.Invoke(window, new object[] { false, true });
                         }));
                         AssertEqual("1", Convert.ToString(ReadMemberObject(window, "statusRefreshCount")));
                         AssertTrue(!GetPrivateField<Button>(window, "applyThemeButton").IsEnabled);
@@ -903,7 +905,7 @@ namespace CodexDreamSkinManager
                         int actionsRun = 0;
                         Func<Task> action = delegate { actionsRun++; return Task.FromResult(0); };
                         MethodInfo runOperation = typeof(MainWindow).GetMethod("RunOperationAsync", BindingFlags.Instance | BindingFlags.NonPublic);
-                        Task blockedOperation = (Task)runOperation.Invoke(window, new object[] { action, "done" });
+                        Task blockedOperation = (Task)runOperation.Invoke(window, new object[] { action, "done", true });
                         WaitForTask(blockedOperation, window.Dispatcher);
                         AssertEqual("0", actionsRun.ToString());
 
@@ -947,7 +949,7 @@ namespace CodexDreamSkinManager
                             return Task.FromResult(0);
                         };
                         MethodInfo runOperation = typeof(MainWindow).GetMethod("RunOperationAsync", BindingFlags.Instance | BindingFlags.NonPublic);
-                        Task operation = (Task)runOperation.Invoke(window, new object[] { action, "restored" });
+                        Task operation = (Task)runOperation.Invoke(window, new object[] { action, "restored", true });
                         WaitForTask(operation, window.Dispatcher);
 
                         AssertEqual("stopped", running.StatusKind);
@@ -1774,6 +1776,11 @@ namespace CodexDreamSkinManager
                 AssertEqual("已保存主题", cleaned);
             });
 
+            return ReportResults();
+        }
+
+        private static int ReportResults()
+        {
             if (Failures.Count == 0)
             {
                 Console.WriteLine("PASS: " + PassCount + " tests");
@@ -1786,7 +1793,8 @@ namespace CodexDreamSkinManager
         }
 
         private static void AssertApplyFlow(bool running, bool video, bool consent, bool reject,
-            string expectedEvents, bool published, bool failConnect = false, bool lostConnection = false)
+            string expectedEvents, bool published, bool failConnect = false, bool lostConnection = false,
+            bool failLiveApply = false)
         {
             string root = CreateLayout();
             string scripts = Path.Combine(root, "windows", "scripts");
@@ -1795,12 +1803,13 @@ namespace CodexDreamSkinManager
             File.WriteAllText(active, "previous");
             File.WriteAllText(Path.Combine(scripts, "status.json"),
                 "{\"isRunning\":" + (running ? "true" : "false") +
-                ",\"statusKind\":\"" + (running ? "running" : "stopped") + "\",\"themes\":[]}");
+                ",\"statusKind\":\"" + (lostConnection ? "degraded" : running ? "running" : "stopped") + "\",\"themes\":[]}");
             if (running) File.WriteAllText(Path.Combine(scripts, "connected"), "yes");
             if (video) File.WriteAllText(Path.Combine(scripts, "video"), "yes");
             if (reject) File.WriteAllText(Path.Combine(scripts, "reject"), "yes");
             if (failConnect) File.WriteAllText(Path.Combine(scripts, "fail-connect"), "yes");
             if (lostConnection) File.WriteAllText(Path.Combine(scripts, "restart-required"), "yes");
+            if (failLiveApply) File.WriteAllText(Path.Combine(scripts, "fail-live-apply"), "yes");
             File.WriteAllText(Path.Combine(scripts, "start-dream-skin.ps1"), @"
 param([switch]$CheckOnly,[switch]$ConnectOnly,[switch]$RestartExisting)
 $ErrorActionPreference = 'Stop'
@@ -1822,7 +1831,7 @@ if ((Test-Path (Join-Path $PSScriptRoot 'video')) -and -not $RestartExisting) { 
 Add-Content $log 'start'
 ");
             File.WriteAllText(Path.Combine(scripts, "manager-actions.ps1"), @"
-param($Action,$SkillRoot,$ThemeDirectory,[switch]$DeferLiveApply)
+param($Action,$SkillRoot,$ThemeDirectory,[switch]$DeferLiveApply,[switch]$Quick,[switch]$SkipThemes)
 $ErrorActionPreference = 'Stop'
 if ($Action -eq 'Status') { Get-Content (Join-Path $PSScriptRoot 'status.json') -Raw; return }
 if ($Action -ne 'ApplyTheme') { throw 'Unexpected action' }
@@ -1830,6 +1839,11 @@ Add-Content (Join-Path $PSScriptRoot 'events.txt') 'apply'
 if ((Test-Path (Join-Path $PSScriptRoot 'video')) -and -not (Test-Path (Join-Path $PSScriptRoot 'connected'))) { throw 'No video connection' }
 if (Test-Path (Join-Path $PSScriptRoot 'reject')) { throw 'Fixture decode failure' }
 Set-Content (Join-Path $PSScriptRoot 'active.txt') 'candidate'
+if (Test-Path (Join-Path $PSScriptRoot 'fail-live-apply')) {
+  Set-Content (Join-Path $PSScriptRoot 'restart-required') 'yes'
+  '{""rendererApplied"":false}'
+  return
+}
 [ordered]@{ rendererApplied = (-not $DeferLiveApply -and (Test-Path (Join-Path $PSScriptRoot 'connected'))) } | ConvertTo-Json
 ");
             MainWindow window = null;

@@ -10,6 +10,8 @@ namespace CodexDreamSkinManager
 {
     internal sealed class DreamSkinService
     {
+        private const int ReadTimeoutMilliseconds = 15000;
+        private const int OperationTimeoutMilliseconds = 300000;
         private readonly string rootDirectory;
         private readonly string scriptsDirectory;
         private readonly string managerScript;
@@ -54,6 +56,7 @@ namespace CodexDreamSkinManager
             status.StatusMessage = ReadString(data, "statusMessage", "");
             status.RendererStatus = ReadString(data, "rendererStatus", "unavailable");
             status.RendererMessage = ReadString(data, "rendererMessage", "");
+            status.Message = ReadString(data, "catalogMessage", "");
             status.ActiveThemeId = ReadString(data, "activeThemeId", "");
             status.ActiveThemeName = ReadString(data, "activeTheme", "未选择");
             status.ActiveThemeImage = ReadString(data, "activeImage", "");
@@ -128,9 +131,17 @@ namespace CodexDreamSkinManager
         {
             EnsureManagerAvailable();
             ScriptResult result = await PowerShellRunner.RunAsync(managerScript,
-                // Leave room for PowerShell startup and state inspection around the
-                // renderer's bounded three-second one-shot probe.
-                new[] { P("-Action"), V("Status"), P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")) }, 15000);
+                new[] { P("-Action"), V("Status"), P("-Quick"), P("-SkipThemes"),
+                    P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")) }, ReadTimeoutMilliseconds);
+            return ParseStatus(result.Output);
+        }
+
+        public async Task<DreamSkinStatus> GetThemesAsync()
+        {
+            EnsureManagerAvailable();
+            ScriptResult result = await PowerShellRunner.RunAsync(managerScript,
+                new[] { P("-Action"), V("ListThemes"),
+                    P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")) }, ReadTimeoutMilliseconds);
             return ParseStatus(result.Output);
         }
 
@@ -295,7 +306,7 @@ namespace CodexDreamSkinManager
             ScriptResult result;
             try
             {
-                result = await PowerShellRunner.RunAsync(managerScript, args, 30000);
+                result = await PowerShellRunner.RunAsync(managerScript, args, OperationTimeoutMilliseconds);
             }
             catch (InvalidOperationException ex)
             {
@@ -483,7 +494,7 @@ namespace CodexDreamSkinManager
             EnsureManagerAvailable();
             ScriptResult result = await PowerShellRunner.RunAsync(managerScript,
                 new[] { P("-Action"), V(paused ? "Pause" : "Resume"),
-                    P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")) }, 30000);
+                    P("-SkillRoot"), V(Path.Combine(rootDirectory, "windows")) }, OperationTimeoutMilliseconds);
             Dictionary<string, object> data = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(result.Output);
             if (data == null) throw new FormatException("暂停/继续结果为空。");
             return ReadBool(data, paused ? "rendererRemoved" : "rendererApplied");
@@ -535,14 +546,14 @@ namespace CodexDreamSkinManager
         private async Task RunManagerAsync(IList<ScriptArgument> args)
         {
             EnsureManagerAvailable();
-            await PowerShellRunner.RunAsync(managerScript, args, 30000);
+            await PowerShellRunner.RunAsync(managerScript, args, OperationTimeoutMilliseconds);
         }
 
         private async Task RunScriptAsync(string script, IList<ScriptArgument> args)
         {
             // Recovery can stop Codex, reconnect, then run the bounded startup
             // verification. Its outer budget must include those serial phases.
-            await PowerShellRunner.RunAsync(script, args, 300000);
+            await PowerShellRunner.RunAsync(script, args, OperationTimeoutMilliseconds);
         }
 
         private void EnsureManagerAvailable()

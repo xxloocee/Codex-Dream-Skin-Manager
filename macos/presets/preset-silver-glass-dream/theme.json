@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "preset-silver-glass-dream",
-  "name": "银璃幻梦",
+  "name": "银璃幻梦 · 4K原速循环",
   "brandSubtitle": "CODEX DREAM SKIN",
   "tagline": "把喜欢的画面变成可交互的 Codex 工作台。",
   "projectPrefix": "选择项目 · ",
@@ -11,21 +11,34 @@
   "image": "background.mp4",
   "appearance": "auto",
   "art": {
-    "focusX": 0.5,
-    "focusY": 0.5,
+    "surfaceOpacity": 0.4984725050916497,
     "safeArea": "auto",
-    "taskMode": "auto"
+    "headerOpacity": 0,
+    "focusX": 0.5,
+    "taskMode": "auto",
+    "globalOpacity": 0,
+    "framingEnabled": false,
+    "focusY": 0.5,
+    "bubbleOpacity": 0.49567209775967414
   },
   "colors": {
-    "background": "#15151C",
-    "panel": "#20202A",
-    "panelAlt": "#2B2B36",
-    "accent": "#FF80C0",
-    "accentAlt": "#FF80C0",
-    "secondary": "#FF80C0",
     "highlight": "#FF80C0",
     "text": "#F4F4F8",
+    "panel": "#20202A",
+    "accentAlt": "#FF80C0",
+    "secondary": "#FF80C0",
     "muted": "#A8A8BA",
-    "line": "rgba(168, 168, 186, .22)"
-  }
+    "background": "#15151C",
+    "line": "rgba(168, 168, 186, .22)",
+    "panelAlt": "#2B2B36",
+    "accent": "#FF80C0"
+  },
+  "category": "cyber",
+  "tags": [
+    "动态",
+    "人物",
+    "科技",
+    "银白",
+    "4K"
+  ]
 }

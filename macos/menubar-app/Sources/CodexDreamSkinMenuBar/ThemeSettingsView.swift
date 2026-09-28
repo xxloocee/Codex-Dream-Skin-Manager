@@ -71,9 +71,10 @@ struct ThemeSettingsView: View {
             Picker("任务页模式", selection: $taskMode) { Text("自动").tag("auto"); Text("氛围").tag("ambient"); Text("横幅").tag("banner"); Text("完整").tag("full"); Text("关闭").tag("off") }
             setting("消息气泡不透明度", value: $bubble, range: 0...1)
             setting("工具面板不透明度", value: $surface, range: 0...1)
+              .help("用于输入框、右侧浮层和设置等独立面板。")
             setting("全局皮肤不透明度", value: $globalOpacity, range: 0...1)
             Toggle("顶部背景透明", isOn: $transparentHeader)
-              .help("开启后顶部直接显示皮肤原画；关闭后使用默认背景遮罩。")
+              .help("开启后顶部显示皮肤原画；关闭后使用默认背景遮罩。")
           }
           Section("自定义取景") {
             Toggle("启用自定义取景", isOn: $framing)

@@ -26,6 +26,7 @@
     '[data-composer-home-utility-bar-position="above"]',
     '[class*="_ComposerLayoutBody_"]',
     '[class~="group/diff-header"]',
+    '[data-ds-part="sidebar"] .sidebar-navigation',
   ].join(',');
   const PROTECTED_SURFACE_CONTENT = [
     'button', 'input', 'textarea', 'pre', 'code', 'canvas', 'svg', 'img', 'video',
@@ -992,12 +993,13 @@
     surfaceNodes.delete(node);
   };
   const refreshSurfaces = (parts, composerNodes) => {
-    const shellParts = new Set(["root", "main", "home", "thread", "sidebar", "header"]);
-    const sceneNodes = [...parts].filter(([, part]) => part === "main" || part === "home" || part === "thread" || part === "header")
+    const shellParts = new Set(["root", "main", "home", "thread", "header"]);
+    const sceneNodes = [...parts].filter(([, part]) => part === "main" || part === "home")
       .map(([node]) => node);
     const candidates = new Set([
       ...genericNodes(NEUTRAL_SURFACE_SELECTOR), ...genericNodes(SURFACE_BOUNDARIES),
       ...composerNodes, ...selectorNodes("home-utility"),
+      ...[...parts].filter(([, part]) => part === "sidebar").map(([node]) => node),
     ].filter((node) => !shellParts.has(parts.get(node)) &&
       !node.closest?.(PROTECTED_SURFACE_CONTENT)));
     // A generic bg-surface wrapper around the entire app must not become an
@@ -1021,7 +1023,11 @@
         }
       }
       if (!surfaceNodes.has(node)) surfaceNodes.set(node, node.getAttribute(SURFACE_ATTR));
-      const value = nested || sceneWrappers.has(node) ? "clear" : "panel";
+      // The sidebar is structural chrome, not an adjustable floating panel.
+      // Keep it in the candidate tree so neutral navigation descendants clear
+      // their native paint; actual menus/dialogs inside it remain independent.
+      const value = parts.get(node) === "sidebar" ? "shell"
+        : nested || sceneWrappers.has(node) ? "clear" : "panel";
       if (node.getAttribute(SURFACE_ATTR) !== value) node.setAttribute(SURFACE_ATTR, value);
     }
   };

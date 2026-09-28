@@ -330,7 +330,7 @@ $compressionReferences = @(
 
 $testExe = Join-Path $build 'ManagerTests.exe'
 $sources = @(Get-ChildItem -LiteralPath (Join-Path $root 'src') -Filter '*.cs' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
-$testSources = @((Join-Path $root 'tests\ManagerTests.cs')) + $sources
+$testSources = @((Join-Path $root 'tests\ManagerTests.cs'), (Join-Path $root 'tests\StatusReadTests.cs')) + $sources
 $donationImage = Join-Path $root 'assets\donation-wechat.png'
 if (-not (Test-Path -LiteralPath $donationImage -PathType Leaf)) { throw 'Donation QR image is missing.' }
 $donationResource = '/resource:' + $donationImage + ',CodexDreamSkinManager.DonationQr.png'
@@ -346,6 +346,8 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 & $testExe
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+& (Join-Path $root 'tests\status-read.unit.ps1') -Root $root
 
 & $nodeExecutableFullPath (Join-Path $root 'tools\video-decode-probe.test.mjs')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

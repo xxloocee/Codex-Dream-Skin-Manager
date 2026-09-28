@@ -410,7 +410,8 @@ if /usr/bin/printf '%s\n' "$MENU_IMAGE_OUTPUT" | /usr/bin/grep -F -q 'bad'; then
   exit 1
 fi
 
-# seed_bundled_presets is idempotent and must never touch user custom-* packs.
+# seed_bundled_presets is idempotent and must never touch user custom-* or
+# legacy preset-* packs that are already in the library.
 /usr/bin/env HOME="$TMP/seed-home" /bin/bash -c '
   . "$1/scripts/common-macos.sh"
   ensure_state_root
@@ -434,8 +435,6 @@ fi
   done
   [ -f "$themes/custom-keepme/theme.json" ] || exit 1
   for id in $retired; do [ -f "$themes/$id/retired-marker" ] || exit 1; done
-  seeded="$(/usr/bin/find "$themes" -maxdepth 1 -type d -name "preset-*" | /usr/bin/wc -l | /usr/bin/tr -d " ")"
-  [ "$seeded" -eq 10 ] || exit 1
 ' _ "$ROOT"
 
 run_signed_runtime_switch_test() {

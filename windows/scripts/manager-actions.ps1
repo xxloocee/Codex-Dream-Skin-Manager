@@ -1,10 +1,13 @@
 ﻿[CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet('Status','ApplyTheme','UpdateTheme','DeleteTheme','DeletePreset','ImportTheme','ImportBatch','Pause','Resume','ResetTheme','ValidateImage')]
+  [ValidateSet('Status','ListThemes','ApplyTheme','UpdateTheme','DeleteTheme','DeletePreset','ImportTheme','ImportBatch','Pause','Resume','ResetTheme','ValidateImage')]
   [string]$Action,
   [Parameter(Mandatory = $true)][string]$SkillRoot,
   [string]$StateRoot = (Join-Path $env:LOCALAPPDATA 'CodexDreamSkin'),
+  # Quick reads never launch Node; SkipThemes lets the UI load the catalog independently.
+  [switch]$Quick,
+  [switch]$SkipThemes,
   [string]$ThemeDirectory,
   [string]$ImagePath,
   [string]$Name,
@@ -29,7 +32,7 @@ param(
   [switch]$KeepCurrent,
   # The manager will reconcile/start the session after committing this theme.
   [switch]$DeferLiveApply,
-  # Keep lock waiting below the manager's 30-second whole-operation budget.
+  # Lock contention should fail promptly, independently of the operation budget.
   [ValidateRange(1, 30)][int]$LockTimeoutSeconds = 5
 )
 
@@ -901,7 +904,7 @@ function Get-ManagerInjectorStatus {
   if (-not $visibleProcess) {
     return [pscustomobject]@{ Kind = 'stale'; Message = "记录的注入器进程已不存在（PID $processId）。"; Running = $false }
   }
-  $process = Get-CimInstance Win32_Process -Filter "ProcessId = $processId" -ErrorAction SilentlyContinue
+  $process = Get-CimInstance Win32_Process -Filter "ProcessId = $processId" -OperationTimeoutSec 3 -ErrorAction SilentlyContinue
   if (-not $process) {
     return [pscustomobject]@{ Kind = 'uninspectable'; Message = "进程存在，但系统不允许核验其命令行（PID $processId）。"; Running = $false }
   }
@@ -1135,7 +1138,82 @@ function Remove-ManagerPendingDeleteTrees {
   }
 }
 
-if ($Action -notin @('ValidateImage', 'Status')) {
+function Get-ManagerThemeCatalog {
+  $themes = @()
+  $presetIds = @{}
+  $catalogMessage = ''
+  $presetRoot = Join-Path $SkillRoot 'presets'
+  if (Test-Path -LiteralPath $presetRoot -PathType Container) {
+    $catalogThemes = $null
+    try { $catalogThemes = Read-ManagerPresetCatalog -PresetRoot $presetRoot } catch { $catalogMessage = $_.Exception.Message }
+    if ($null -ne $catalogThemes) {
+      foreach ($catalogTheme in @($catalogThemes)) {
+        try {
+          $option = ConvertTo-ManagerPresetOption -Preset $catalogTheme -Order $themes.Count
+          $themes += $option
+          $presetIds["$($option.id)"] = $true
+        } catch { $catalogMessage += " 已跳过无法读取的内置主题 $($catalogTheme.id)。" }
+      }
+    } else {
+      foreach ($candidate in @(Get-ManagerPresetCandidates -PresetRoot $presetRoot)) {
+        if ($presetIds.ContainsKey("$($candidate.id)")) { continue }
+        try {
+          $option = ConvertTo-ManagerPresetOption -Preset $candidate -Order $themes.Count
+          $themes += $option
+          $presetIds["$($option.id)"] = $true
+        } catch { $catalogMessage += " 已跳过无法读取的内置主题 $($candidate.id)。" }
+      }
+    }
+    foreach ($directoryPreset in @(Get-ManagerDirectoryPresetEntries -PresetRoot $presetRoot)) {
+      $directoryPresetId = "$($directoryPreset.id)"
+      if ($presetIds.ContainsKey($directoryPresetId)) { continue }
+      try {
+        $option = ConvertTo-ManagerPresetOption -Preset $directoryPreset -Order $themes.Count
+        $themes += $option
+        $presetIds[$directoryPresetId] = $true
+      } catch { $catalogMessage += " 已跳过无法读取的内置主题 $($directoryPreset.id)。" }
+    }
+  }
+  # A catalog read must not create directories or repair import transactions.
+  # Writers keep their existing locks and validation; skip transient/broken entries.
+  $savedDirectories = @()
+  try {
+    Assert-DreamSkinNoReparseComponents -Path $paths.Saved
+    if (Test-Path -LiteralPath $paths.Saved -PathType Container) {
+      $savedDirectories = @(Get-ChildItem -LiteralPath $paths.Saved -Directory -ErrorAction Stop |
+        Where-Object { -not $_.Name.StartsWith('.') } | Sort-Object Name)
+    }
+  } catch { $catalogMessage += " 无法读取已保存主题：$($_.Exception.Message)" }
+  foreach ($saved in $savedDirectories) {
+    try {
+      $loaded = Read-DreamSkinTheme -ThemeDirectory $saved.FullName -SkipImageMetadata
+      $savedId = "$($loaded.Theme.id)"
+      if ($presetIds.ContainsKey($savedId)) { continue }
+      $savedName = if ($loaded.Theme.name) { "$($loaded.Theme.name)" } else { $saved.Name }
+      $themes += ConvertTo-ManagerTheme -Id $savedId -ThemeName $savedName `
+        -ThemeImage $loaded.ImagePath -Directory $saved.FullName -Preset $false `
+        -Category $(if ($loaded.Theme.category) { "$($loaded.Theme.category)" } else { 'custom' }) `
+        -Tags @($loaded.Theme.tags | Where-Object { -not [string]::IsNullOrWhiteSpace("$_") }) -Source 'saved' `
+        -Order (1000 + $themes.Count) -AddedAt "$($saved.LastWriteTimeUtc)" `
+        -ThemeAppearance $(if ($loaded.Theme.appearance) { "$($loaded.Theme.appearance)" } else { 'auto' }) `
+        -ThemeFocusX $(if ($null -ne $loaded.Theme.art.focusX) { [double]$loaded.Theme.art.focusX } else { 0.5 }) `
+        -ThemeFocusY $(if ($null -ne $loaded.Theme.art.focusY) { [double]$loaded.Theme.art.focusY } else { 0.5 }) `
+        -ThemePositionX $(if ($null -ne $loaded.Theme.art.positionX) { [double]$loaded.Theme.art.positionX } else { 0.0 }) `
+        -ThemePositionY $(if ($null -ne $loaded.Theme.art.positionY) { [double]$loaded.Theme.art.positionY } else { 0.0 }) `
+        -ThemeZoom $(if ($null -ne $loaded.Theme.art.zoom) { [double]$loaded.Theme.art.zoom } else { 1.0 }) `
+        -ThemePositionMode $(if ($loaded.Theme.art.positionMode) { "$($loaded.Theme.art.positionMode)" } else { 'locked' }) `
+        -ThemeFramingEnabled $(Test-ManagerThemeFraming -Theme $loaded.Theme) `
+        -ThemeSafeArea $(if ($loaded.Theme.art.safeArea) { "$($loaded.Theme.art.safeArea)" } else { 'auto' }) `
+        -ThemeTaskMode $(if ($loaded.Theme.art.taskMode) { "$($loaded.Theme.art.taskMode)" } else { 'auto' }) `
+        -ThemeBubbleOpacity $(if ($null -ne $loaded.Theme.art.bubbleOpacity) { [double]$loaded.Theme.art.bubbleOpacity } else { 0.0 }) `
+        -ThemeSurfaceOpacity $(if ($null -ne $loaded.Theme.art.surfaceOpacity) { [double]$loaded.Theme.art.surfaceOpacity } else { 0.8 }) `
+        -ThemeAccent $(if ($loaded.Theme.palette.accent) { "$($loaded.Theme.palette.accent)" } else { '' })
+    } catch { $catalogMessage += " 已跳过无法读取的主题 $($saved.Name)。" }
+  }
+  return [pscustomobject]@{ themes = @($themes); catalogMessage = $catalogMessage.Trim() }
+}
+
+if ($Action -notin @('ValidateImage', 'Status', 'ListThemes', 'ApplyTheme')) {
   Invoke-ManagerWriteLock {
     Initialize-DreamSkinThemeStore -SkillRoot $SkillRoot -StateRoot $StateRoot | Out-Null
     Sync-ManagerActivePresetAppearance -PresetRoot (Join-Path $SkillRoot 'presets')
@@ -1144,23 +1222,23 @@ if ($Action -notin @('ValidateImage', 'Status')) {
 }
 
 switch ($Action) {
+  'ListThemes' {
+    Get-ManagerThemeCatalog | ConvertTo-Json -Depth 8
+  }
   'Status' {
-    Invoke-ManagerWriteLock {
-    Initialize-DreamSkinThemeStore -SkillRoot $SkillRoot -StateRoot $StateRoot | Out-Null
-    Sync-ManagerActivePresetAppearance -PresetRoot (Join-Path $SkillRoot 'presets')
-    Remove-ManagerPendingDeleteTrees -Root $paths.Root
+    # Observational only. Initialization, migration and cleanup belong to writes.
     $active = $null
     try { $active = Read-DreamSkinTheme -ThemeDirectory $paths.Active -SkipImageMetadata } catch {}
     $state = Read-DreamSkinState -Path $paths.State
     $identity = Get-ManagerInjectorStatus -State $state
     $paused = Test-DreamSkinPaused -StateRoot $StateRoot
-    $rendererStatus = 'unavailable'
-    $rendererMessage = ''
+    $rendererStatus = if ($Quick) { 'unchecked' } else { 'unavailable' }
+    $rendererMessage = if ($Quick) { '仅读取进程状态；应用皮肤时会确认实际显示。' } else { '' }
     $statusKind = if ($identity.Running -and $paused) { 'paused' } else { $identity.Kind }
     $statusMessage = $identity.Message
     # A dead/outdated watcher does not remove the CSS already in Codex. Probe
     # the recorded browser independently without adopting an unverified PID.
-    if ($identity.Running -or ($state -and $state.port -and $state.browserId)) {
+    if (-not $Quick -and ($identity.Running -or ($state -and $state.port -and $state.browserId))) {
       try {
         $renderer = Get-DreamSkinLiveRendererStatus -StateRoot $StateRoot -Paused $paused
       } catch {
@@ -1179,62 +1257,17 @@ switch ($Action) {
         $statusMessage = $rendererMessage
       }
     }
-    $themes = @()
-    $presetIds = @{}
-    $catalogMessage = ''
-    $presetRoot = Join-Path $SkillRoot 'presets'
-    if (Test-Path -LiteralPath $presetRoot -PathType Container) {
-      $catalogThemes = $null
-      try { $catalogThemes = Read-ManagerPresetCatalog -PresetRoot $presetRoot } catch { $catalogMessage = $_.Exception.Message }
-      if ($null -ne $catalogThemes) {
-        foreach ($catalogTheme in @($catalogThemes)) {
-          $option = ConvertTo-ManagerPresetOption -Preset $catalogTheme -Order $themes.Count
-          $themes += $option
-          $presetIds["$($option.id)"] = $true
-        }
-      } else {
-        foreach ($candidate in @(Get-ManagerPresetCandidates -PresetRoot $presetRoot)) {
-          if ($presetIds.ContainsKey("$($candidate.id)")) { continue }
-          $option = ConvertTo-ManagerPresetOption -Preset $candidate -Order $themes.Count
-          $themes += $option
-          $presetIds["$($option.id)"] = $true
-        }
-      }
-      foreach ($directoryPreset in @(Get-ManagerDirectoryPresetEntries -PresetRoot $presetRoot)) {
-        $directoryPresetId = "$($directoryPreset.id)"
-        if ($presetIds.ContainsKey($directoryPresetId)) { continue }
-        $option = ConvertTo-ManagerPresetOption -Preset $directoryPreset -Order $themes.Count
-        $themes += $option
-        $presetIds[$directoryPresetId] = $true
-      }
-    }
-    foreach ($saved in @(Get-DreamSkinSavedThemes -StateRoot $StateRoot -SkipImageMetadata)) {
-      # Older installations staged official presets under themes/. Keep those
-      # files for runtime compatibility, but expose the catalog entry only once
-      # and never classify it as a deletable user theme.
-      $loaded = Read-DreamSkinTheme -ThemeDirectory $saved.Path -SkipImageMetadata
-      if ($presetIds.ContainsKey("$($saved.Id)")) { continue }
-      $themes += ConvertTo-ManagerTheme -Id $saved.Id -ThemeName $saved.Name `
-        -ThemeImage $loaded.ImagePath -Directory $saved.Path -Preset $false `
-        -Category $(if ($loaded.Theme.category) { "$($loaded.Theme.category)" } else { 'custom' }) `
-        -Tags @($loaded.Theme.tags | Where-Object { -not [string]::IsNullOrWhiteSpace("$_") }) -Source 'saved' `
-        -Order (1000 + $themes.Count) -AddedAt "$($saved.LastWriteTimeUtc)" `
-        -ThemeAppearance $(if ($loaded.Theme.appearance) { "$($loaded.Theme.appearance)" } else { 'auto' }) `
-        -ThemeFocusX $(if ($null -ne $loaded.Theme.art.focusX) { [double]$loaded.Theme.art.focusX } else { 0.5 }) `
-        -ThemeFocusY $(if ($null -ne $loaded.Theme.art.focusY) { [double]$loaded.Theme.art.focusY } else { 0.5 }) `
-        -ThemePositionX $(if ($null -ne $loaded.Theme.art.positionX) { [double]$loaded.Theme.art.positionX } else { 0.0 }) `
-        -ThemePositionY $(if ($null -ne $loaded.Theme.art.positionY) { [double]$loaded.Theme.art.positionY } else { 0.0 }) `
-        -ThemeZoom $(if ($null -ne $loaded.Theme.art.zoom) { [double]$loaded.Theme.art.zoom } else { 1.0 }) `
-        -ThemePositionMode $(if ($loaded.Theme.art.positionMode) { "$($loaded.Theme.art.positionMode)" } else { 'locked' }) `
-        -ThemeFramingEnabled $(Test-ManagerThemeFraming -Theme $loaded.Theme) `
-        -ThemeSafeArea $(if ($loaded.Theme.art.safeArea) { "$($loaded.Theme.art.safeArea)" } else { 'auto' }) `
-        -ThemeTaskMode $(if ($loaded.Theme.art.taskMode) { "$($loaded.Theme.art.taskMode)" } else { 'auto' }) `
-        -ThemeBubbleOpacity $(if ($null -ne $loaded.Theme.art.bubbleOpacity) { [double]$loaded.Theme.art.bubbleOpacity } else { 0.0 }) `
-        -ThemeSurfaceOpacity $(if ($null -ne $loaded.Theme.art.surfaceOpacity) { [double]$loaded.Theme.art.surfaceOpacity } else { 0.8 }) `
-        -ThemeAccent $(if ($loaded.Theme.palette.accent) { "$($loaded.Theme.palette.accent)" } else { '' })
-    }
+    $catalog = if ($SkipThemes) { $null } else { Get-ManagerThemeCatalog }
+    $statusThemes = @()
+    if ($catalog) { $statusThemes = @($catalog.themes) }
     $nodeVersion = ''
-    try { $nodeVersion = "$(& (Get-DreamSkinNodeRuntime).Path --version 2>$null)".Trim() } catch {}
+    # Version display must not launch or revalidate Node during a state read.
+    try {
+      $bundledNode = Join-Path $SkillRoot 'runtime\node\node.exe'
+      if (Test-Path -LiteralPath $bundledNode -PathType Leaf) {
+        $nodeVersion = (Get-Item -LiteralPath $bundledNode).VersionInfo.ProductVersion
+      }
+    } catch {}
     $codexVersion = ''
     try {
       if ($state -and $state.codexExe -and (Test-Path -LiteralPath "$($state.codexExe)" -PathType Leaf)) {
@@ -1260,17 +1293,16 @@ switch ($Action) {
       activeZoom = if ($active -and $null -ne $active.Theme.art.zoom) { [double]$active.Theme.art.zoom } else { 1.0 }
       activePositionMode = if ($active -and $active.Theme.art.positionMode) { "$($active.Theme.art.positionMode)" } else { 'locked' }
       activeFramingEnabled = if ($active) { Test-ManagerThemeFraming -Theme $active.Theme } else { $false }
-      managerApiVersion = '1.7'
+      managerApiVersion = '1.8'
       themeSchemaVersion = 1
       stateSchemaVersion = $stateSchema
       injectorVersion = '1'
       nodeVersion = $nodeVersion
       codexVersion = $codexVersion
-      supportedActions = @('Status','ApplyTheme','UpdateTheme','DeleteTheme','DeletePreset','ImportTheme','ImportBatch','Pause','Resume','ResetTheme','ValidateImage')
-      catalogMessage = $catalogMessage
-      themes = @($themes)
+      supportedActions = @('Status','ListThemes','ApplyTheme','UpdateTheme','DeleteTheme','DeletePreset','ImportTheme','ImportBatch','Pause','Resume','ResetTheme','ValidateImage')
+      catalogMessage = if ($catalog) { $catalog.catalogMessage } else { '' }
+      themes = @($statusThemes)
     } | ConvertTo-Json -Depth 8
-    }
   }
   'ValidateImage' {
     if (-not $ImagePath) { throw '请选择需要验证的图片。' }
@@ -1278,6 +1310,7 @@ switch ($Action) {
   }
   'ApplyTheme' {
     Invoke-ManagerWriteLock {
+      Initialize-DreamSkinThemeStore -SkillRoot $SkillRoot -StateRoot $StateRoot -PrepareOnly | Out-Null
       if ($ThemeDirectory) {
         $result = Use-DreamSkinSavedTheme -ThemeDirectory $ThemeDirectory -StateRoot $StateRoot
       } elseif ($ImagePath) {

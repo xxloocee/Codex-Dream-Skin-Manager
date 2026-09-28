@@ -10,7 +10,7 @@ This project injects through **local loopback CDP**. It does **not** modify the 
 
 ## Native GUI
 
-The native AppKit/SwiftUI manager now includes a theme library, parameter editor, `.cdskin` import/export, safe batch imports, and a publisher-signed update channel. See [GUI usage](GUI使用说明.md) and [publisher setup](UPDATER.md). Unconfigured developer builds keep updating disabled.
+The native AppKit/SwiftUI manager now includes a theme library, parameter editor, `.cdskin` import/export, safe batch imports, and a publisher-signed update channel. See [GUI usage](GUI使用说明.md) and [publisher setup](UPDATER.md). Builds without a configured GUI signing channel check ordinary releases through the static manifest and offer manual download.
 
 ## Requirements
 

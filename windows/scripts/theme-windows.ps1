@@ -522,13 +522,17 @@ function Merge-DreamSkinPresetSettings {
 function Initialize-DreamSkinThemeStore {
   param(
     [Parameter(Mandatory = $true)][string]$SkillRoot,
-    [string]$StateRoot = (Join-Path $env:LOCALAPPDATA 'CodexDreamSkin')
+    [string]$StateRoot = (Join-Path $env:LOCALAPPDATA 'CodexDreamSkin'),
+    # Replacing the active theme needs directories/recovery, not validation of
+    # the old/default image. The replacement's temporary copy is validated later.
+    [switch]$PrepareOnly
   )
   $paths = Get-DreamSkinThemePaths -StateRoot $StateRoot
   foreach ($directory in @($paths.Root, $paths.Active, $paths.Saved, $paths.Images)) {
     Ensure-DreamSkinManagedDirectory -Path $directory -Root $paths.Root
   }
   Invoke-DreamSkinThemeReplacementRecovery -Paths $paths
+  if ($PrepareOnly) { return $paths }
   $assetRoot = Join-Path $SkillRoot 'assets'
   $bundledTheme = Read-DreamSkinTheme -ThemeDirectory $assetRoot
   $assetImage = $bundledTheme.ImagePath
@@ -664,7 +668,7 @@ function Set-DreamSkinActiveTheme {
   Assert-DreamSkinImageFile -Path $source -SkipImageMetadata
   $extension = [System.IO.Path]::GetExtension($source).ToLowerInvariant()
   $oldImage = $null
-  try { $oldImage = (Read-DreamSkinTheme -ThemeDirectory $paths.Active).ImagePath } catch {}
+  try { $oldImage = (Read-DreamSkinTheme -ThemeDirectory $paths.Active -SkipImageMetadata).ImagePath } catch {}
   if ($null -eq $Theme) {
     $Theme = [pscustomobject]@{
       schemaVersion = 1

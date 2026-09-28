@@ -51,6 +51,16 @@ powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\install-
 
 ## 启动与验证
 
+管理器启动及刷新时，主题列表与运行状态独立读取，单次读取上限为 15 秒。
+运行状态只检查记录的进程身份和本地状态，不初始化主题仓库、不启动 Node 或完整校验图片；
+“皮肤服务运行中”表示服务进程正常，实际显示在应用皮肤时确认。读取失败会保留已有列表和上次数据。
+
+应用主题优先使用现有连接，连接异常才检查启动或恢复；需要重启 Codex 时仍会请求确认。
+应用、启动及恢复脚本的单次调用上限为 5 分钟，内部锁等待和渲染探测仍采用短超时。
+应用完成后仅刷新运行状态；导入、编辑、删除和手动刷新仍会更新主题列表。
+命令行 `manager-actions.ps1 -Action Status` 保留完整渲染检查；`-Quick -SkipThemes` 仅读状态，
+`-Action ListThemes` 独立读取本地主题，不执行迁移或清理。
+
 推荐从 `Codex Dream Skin` 快捷方式启动。它发现 Codex 已经运行时会先询问是否重启。
 
 命令行启动：

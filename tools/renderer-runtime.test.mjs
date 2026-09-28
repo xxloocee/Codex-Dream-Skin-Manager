@@ -469,7 +469,12 @@ export async function runRendererRuntimeTest(assetRoot) {
   assert.match(css, /main:is\(\.main-surface, \[data-app-shell-main-surface\], \[class\*=\"_MainContentSurface_\"\]\):has\(\[role="main"\]\)/);
   assert.match(css, /main:is\(\.main-surface, \[data-app-shell-main-surface\], \[class\*=\"_MainContentSurface_\"\]\):not\(:has\(\[role="main"\]\)\)/);
   assert.match(css, /header:is\(\.app-header-tint, \[data-app-shell-header-edge-scroll\], \[class\*=\"_Header_\"\]\)/);
-  assert.match(css, /:is\(\.app-shell-main-content-top-fade, \[data-app-shell-main-content-top-fade\], \[class\*=\"_MainContentTopFade_\"\]\)/);
+  assert.match(css, /:is\(\.app-shell-main-content-top-fade, \[class\*=\"_MainContentTopFade_\"\], \[data-app-shell-main-content-top-fade\]:empty\)/);
+  assert.doesNotMatch(
+    css,
+    /[^{}]*main-content-top-fade[^{}]*\{[^}]*display:\s*none/,
+    "Fade cleanup must not hide the chat subtree when native markers move.",
+  );
   assert.doesNotMatch(css, /:has\([^()]*:has\(/);
   assert.doesNotMatch(
     css,
