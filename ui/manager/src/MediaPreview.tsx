@@ -91,10 +91,11 @@ export function MediaPreview({ client, target, name, parameters = null, visible,
     const timer = window.setTimeout(() => retry(value => value + 1), Math.max(1000, delay));
     return () => window.clearTimeout(timer);
   }, [resource, active, error, thumbnail, image.width, image.height]);
-  const params = previewParameters(parameters ?? emptyParameters), layout = previewLayout(image, viewport, params);
+  const params = previewParameters(parameters ?? emptyParameters, {}, systemDark), layout = previewLayout(image, viewport, params);
   const dark = params.appearance === "dark" || params.appearance === "auto" && systemDark;
   const rgb = dark ? "24, 28, 34" : "248, 249, 251";
   const style = { "--preview-surface": `rgba(${rgb},${params.surfaceOpacity})`, "--preview-bubble": `rgba(${rgb},${params.bubbleOpacity})`,
+    "--preview-shell": `rgba(${rgb},${params.shellOpacity})`,
     "--preview-accent": params.accent ?? (dark ? "#E9CB7B" : "#80602C") } as CSSProperties;
   const mode = params.taskMode === "auto" ? "ambient" : params.taskMode ?? "ambient";
   return <div className={`media-preview ${thumbnail ? "thumbnail-preview" : "full-preview"}`}>
@@ -106,10 +107,10 @@ export function MediaPreview({ client, target, name, parameters = null, visible,
         style={thumbnail ? undefined : layout ? { width: layout.width, height: layout.height, left: layout.x, top: layout.y } : { visibility: "hidden" }} /> :
         <div className="placeholder" title={error ? msg(error) : undefined}><span>{error ? thumbnail ? tr("预览不可用") : msg(error) : active ? tr("正在准备预览…") : tr("等待预览")}</span>
           {error && !thumbnail && <button type="button" onClick={() => retry(value => value + 1)}>{tr("重试预览")}</button>}</div>}
-      {resource && !error && !thumbnail && <div className="preview-workspace" aria-hidden="true">
+      {resource && !error && !thumbnail && <><div className="preview-shell" aria-hidden="true" /><div className="preview-workspace" aria-hidden="true">
         <div className="preview-sidebar"><span /><span /><span /></div>
         <div className="preview-conversation"><div className="preview-bubble" /><div className="preview-composer" /></div>
-      </div>}
+      </div></>}
     </div>
   </div>;
 }

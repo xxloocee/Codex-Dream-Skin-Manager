@@ -2,13 +2,13 @@ import { pruneHistory } from "./history-retention.mjs";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { ContractError, confirmationCopy, ERROR_CODES, parseThemeRef, record, RUNTIME_METHODS, validOperationId } from "../contracts/manager.mjs";
-import type { OperationSnapshot } from "../contracts/manager.mjs";
+import { ContractError, confirmationCopy, ERROR_CODES, parseApplyRefresh, parseThemeRef, record, RUNTIME_METHODS, validOperationId } from "../contracts/manager.mjs";
+import type { ApplyRefresh, OperationSnapshot } from "../contracts/manager.mjs";
 import type { ApplyPreflight } from "./ports/apply.mjs";
 import { jsonObject, optionalBytes, fileBytes, safePath } from "./local-files.mjs";
 import { durableJson, privateDirectory } from "./write-files.mjs";
 
-export interface OperationRecord { schemaVersion: 1; requestDigest: string; operation: OperationSnapshot; preflight: ApplyPreflight | null }
+export interface OperationRecord { schemaVersion: 1; requestDigest: string; operation: OperationSnapshot; preflight: ApplyPreflight | null; refresh?: ApplyRefresh }
 export class OperationStore {
   private readonly directory: string;
   constructor(root: string) { this.directory = path.join(root, "manager-operations", "ledger"); }
@@ -28,6 +28,10 @@ export class OperationStore {
       throw new ContractError("IO_ERROR", "The operation journal cannot be read safely.");
     }
     const operation = value.operation, effects = operation.effects as Record<string, unknown>;
+    if (value.refresh !== undefined) {
+      try { if (operation.method !== "skin.apply") throw new Error(); value.refresh = parseApplyRefresh(value.refresh); }
+      catch { throw new ContractError("IO_ERROR", "The hot refresh journal binding is invalid."); }
+    }
     const revision = (value: unknown) => value === null || typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
     const date = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value));
     if (!/^[a-f0-9]{64}$/.test(operation.expectedRevision as string) || !revision(operation.committedRevision) ||

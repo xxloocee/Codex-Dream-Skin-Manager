@@ -45,7 +45,7 @@ P1-A 具体字段：`requestId` 为 1–128 位 ASCII 字母/数字/冒号/下�
 | `themes.active` | `{}` | ThemeDetails 或 null | 只读当前活动副本，不视为可编辑主题库条目；有 stateRoot 才声明 |
 | `media.activePreview` | `{revision}` | MediaResource | 对活动副本生成短期预览，复用素材校验、版本和缓存生命周期；有 stateRoot 和资源服务才声明 |
 | `media.resolve` | `{theme: ThemeRef, revision, variant: "thumbnail" | "preview"}` | `{resourceId, url, mimeType, expiresAt}` | 可创建派生缓存，不修改原始素材/主题 |
-| `skin.apply` | `{operationId, theme: ThemeRef, expectedRevision}` | OperationSnapshot | 提交一次应用意图，可能先进入 awaitingConfirmation |
+| `skin.apply` | `{operationId, theme: ThemeRef, expectedRevision, refresh?}` | OperationSnapshot | 普通应用可能先进入 awaitingConfirmation；带 refresh 仅允许当前会话热刷新 |
 | `skin.pause` | `{operationId, expectedRuntimeRevision}` | OperationSnapshot | 暂停当前皮肤；分别记录期望与实际卸下，不启动/重启 Codex |
 | `skin.resume` | `{operationId, expectedRuntimeRevision}` | OperationSnapshot | 继续当前活动副本；需要启动/重启时先确认 |
 | `skin.reset` | `{operationId, expectedRuntimeRevision}` | OperationSnapshot | 应用平台默认主题；必要启动/重启先确认，保留库与覆盖 |
@@ -125,7 +125,7 @@ P2-A 增加 LICENSE.txt 和 originalImage 的存在性/字节身份；有转换�
 
 ThemeDetails 包含 Summary、存储参数、有效预览参数、媒体尺寸/格式、警告和可操作性。存储参数保留缺省信息：缺失 focusX/focusY 用 null 表示自动，不用 0.5 替代；显式 0.5 与自动不同。取景同样保留显式/缺省信息。前端预览可使用有效参数，但不能据此回写完整主题文件。
 
-P1-A 使用字段 `storedParameters`、`previewParameters`、`media`、`warnings`、`availability`。两组参数均包含 appearance、focusX/Y、positionX/Y、zoom、positionMode、framingEnabled、safeArea、taskMode、bubbleOpacity、surfaceOpacity、accent；stored 中缺失字段为 null，preview 提供仅用于显示的缺省值。accent 为空/缺失为 null。media 的 width/height 本段为 null，并返回 `MEDIA_NOT_INSPECTED`；MIME 仅按旧素材扩展名映射，不表示解码校验或资源加载已通过。P1-A 不是共享主题写入或主题包权威校验器。
+P1-A 使用字段 `storedParameters`、`previewParameters`、`media`、`warnings`、`availability`。两组参数均包含 appearance、focusX/Y、positionX/Y、zoom、positionMode、framingEnabled、safeArea、taskMode、bubbleOpacity、surfaceOpacity、shellOpacity、accent；stored 中缺失字段为 null，preview 提供仅用于显示的缺省值。shellOpacity 表示全窗口背景遮罩的不透明度，范围为 0..1；缺失时保留深色 0.58、浅色 0.64 的动态默认值，不等同于显式 0.58。surfaceOpacity 仅控制独立面板。accent 为空/缺失为 null。media 的 width/height 本段为 null，并返回 `MEDIA_NOT_INSPECTED`；MIME 仅按旧素材扩展名映射，不表示解码校验或资源加载已通过。P1-A 不是共享主题写入或主题包权威校验器。
 
 media.resolve 返回 URL 由宿主为当前会话映射，资源 ID 只引用已经校验过的本地素材/缓存；不接受任意 URL、路径或相对路径穿越。资源服务必须限制根目录、符号链接及 reparse point，设置正确 MIME，并拒绝通过媒体入口加载可执行页面。URL 过期/会话切换后重新 resolve。缓存未就绪或格式不支持需返回明确原因；不把原始视频当成可随意加载的 HTML 内容。
 
@@ -227,6 +227,10 @@ patch 为 `{name?, storageCategory?, tags?, parameters?}`；parameters 为 Theme
 OperationSnapshot.method 增加 `themes.update`/`themes.copy`；effects 增加可选 libraryChanged（旧 skin.apply 账本可缺省），编辑记录另有 nullable resultTheme/resultRevision。保存成功只说明 libraryChanged=true 及结果内容版本，不把 themeCommitted/rendererApplied 设置为 true。未发布为 failed，结果不明为 indeterminate。已知副作用在后续账本写入失败时尽量保留；旧会话未完成保存/复制不重放。调用方用 operations.get 查询，不能自动重试保存。
 
 “保存并应用”是 UI 明确串联的两个独立操作：保存 succeeded 且重新读取内容版本仍一致，才生成新 apply ID；启动/重启仍需 P1 一次性确认。保存后关闭页面、保存超时或结果不明，不自动应用；保存成功、后续失败要保留部分成功提示。保存与应用分别报告结果。
+
+正在使用的主题保存修改后，UI 先后读取真实状态，绑定同一主题、未暂停的活动副本和浏览器会话，以 `refresh: {activeRevision, runtimeSessionId, opacityOnly?: true}` 请求热刷新。两个版本标识均为 64 位十六进制。此约束计入幂等摘要并持久化到操作账本；执行前及平台锁内重新检查。连接丢失、版本或会话改变时失败，不创建重启确认、不启动或重启 Codex。查询收据也只有同一会话且 `codexRestarted=false` 才能恢复为成功。
+
+动态主题仅改变气泡/面板不透明度时使用 `opacityOnly=true`。运行中的 watcher 必须与当前完整包引擎匹配；媒体字节、主题身份、其它参数及 CSS/renderer 版本通过兼容指纹核对。通过后只更新现有页面的两个 CSS 变量及版本标识，保留视频节点、Blob URL 和播放位置，不解码或重新绑定视频。不兼容、旧引擎或更新失败均保留未确认结果，不降级为整包注入。旧引擎需由用户明确更新，不能用透明度保存隐式升级。
 
 操作、库事务、维护和更新历史只回收确定终态：保留最近 256 条及 30 天内记录，未完成、不可读和结果不明记录保留；内存终态缓存与保留记录同步，不以历史总数阻断新请求。日志文件 sync 后更新；Windows 没有 Node 目录 fsync，不能保证断电后的目录项持久性。发布成功在平台操作锁内先写收据，再写 current.json（requestFile 为叶文件名），标记 settled 后回收已取代的 settled 快照/请求；Inspect 持同一锁且不发布，当前及未确认快照保留。正常退出关闭后端 stdin 并排空已接受事务；Mac 关闭窗口仅隐藏，仍保留会话；写事务超时不强杀、不重放。未知旧会话的非终结记录查询返回 indeterminate，不改另一进程拥有的记录。
 

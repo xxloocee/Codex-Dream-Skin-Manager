@@ -103,7 +103,7 @@ try {
       const old = await optionalBytes(file, state, 16384);
       const previous = old ? jsonObject(old) : {};
       const previousArt = record(previous.art) ? { ...previous.art } : {};
-      for (const key of ["focusX", "focusY", "safeArea", "taskMode", "bubbleOpacity", "surfaceOpacity", "positionX", "positionY", "zoom", "positionMode", "framingEnabled", "playbackRate"]) delete previousArt[key];
+      for (const key of ["focusX", "focusY", "safeArea", "taskMode", "bubbleOpacity", "surfaceOpacity", "shellOpacity", "positionX", "positionY", "zoom", "positionMode", "framingEnabled", "playbackRate"]) delete previousArt[key];
       // Keep the replacement semantics for art, including omissions.
       value = { ...previous, schemaVersion: 1, appearance: config.appearance ?? "auto", art: { ...previousArt, ...(record(config.art) ? config.art : {}) },
         accent: record(config.palette) ? config.palette.accent ?? "" : "" };
