@@ -508,6 +508,13 @@ test("live verification checks renderer markers without requiring a visible wind
   const wrongTheme = await verifyAppliedSession(hiddenSession, "another-theme", "fixture-revision");
   assert.equal(wrongTheme.pass, false, "A renderer using a different theme must fail live verification.");
 
+  hiddenDom.window.__CODEX_DREAM_SKIN_STATE__.opacityUpdateFailed = true;
+  const failedOpacity = await verifyAppliedSession(hiddenSession, "fixture-theme", "fixture-revision");
+  assert.equal(failedOpacity.opacityUpdateFailed, true);
+  assert.equal(failedOpacity.pass, false, "Matching revision alone must not verify a failed opacity update.");
+  delete hiddenDom.window.__CODEX_DREAM_SKIN_STATE__.opacityUpdateFailed;
+  assert.equal((await verifyAppliedSession(hiddenSession, "fixture-theme", "fixture-revision")).pass, true);
+
   hiddenDom.window.__CODEX_DREAM_SKIN_DISABLED__ = true;
   const disabled = await verifyAppliedSession(hiddenSession, "fixture-theme", "fixture-revision");
   assert.equal(disabled.pass, false, "A disabled renderer must fail live verification.");

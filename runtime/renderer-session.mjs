@@ -289,7 +289,10 @@ export async function bindMediaFileToSession(session, loadedPayload, timeoutMs =
       })()`);
       if (status?.stale) throw new Error("Renderer changed while binding the media file bridge");
       if (status?.error) throw new Error(`Media loading failed: ${status.error}`);
-      if (status?.ready) return true;
+      if (status?.ready) {
+        if (loadedPayload.theme?.art?.shellOpacity !== undefined) await applyShellOpacityToSession(session, loadedPayload);
+        return true;
+      }
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     break;
@@ -297,10 +300,179 @@ export async function bindMediaFileToSession(session, loadedPayload, timeoutMs =
   throw new Error("Timed out waiting for the renderer media file bridge to load");
 }
 
-export async function applyLoadedToSession(session, loadedPayload) {
+function updateShellOpacity({ themeId, revision, shellOpacity }) {
+  const state = window.__CODEX_DREAM_SKIN_STATE__;
+  const root = document.documentElement;
+  if (!state || state.themeId !== themeId || state.revision !== revision ||
+      window.__CODEX_DREAM_SKIN_DISABLED__ || !root || root.getAttribute("data-dream-skin") !== "active") {
+    throw new Error("The renderer changed before shell opacity could be verified.");
+  }
+  if (shellOpacity !== undefined && (typeof shellOpacity !== "number" || !Number.isFinite(shellOpacity) || shellOpacity < 0 || shellOpacity > 1)) {
+    throw new Error("Shell opacity must be between 0 and 1.");
+  }
+  const hadOverride = Object.hasOwn(state, "shellOpacity");
+  const result = { applied: true, themeId, revision, shellOpacity: shellOpacity ?? null,
+    shellOpacityVerified: true, shellVeilVerified: false, shellVeilAlpha: null };
+  if (shellOpacity === undefined && !hadOverride) return result;
+  if (shellOpacity !== undefined && (typeof CSS !== "object" ||
+      !CSS.supports("background-color", "light-dark(rgb(0 0 0 / .5), rgb(255 255 255 / .5))"))) {
+    throw new Error("This renderer does not support light-dark shell opacity.");
+  }
+  const property = "--ds-shell-background";
+  const previous = root.style.getPropertyValue(property);
+  const priority = root.style.getPropertyPriority(property);
+  const previousOpacity = state.shellOpacity;
+  const owner = state.shellOpacityOverride;
+  if (hadOverride && (!owner || typeof owner.value !== "string" ||
+      typeof owner.baseline?.value !== "string" || typeof owner.baseline?.priority !== "string" ||
+      previous !== owner.value || priority !== "")) {
+    throw new Error("The shell opacity override was changed by another owner.");
+  }
+  const baseline = hadOverride ? owner.baseline : { value: previous, priority };
+  const value = shellOpacity === undefined ? baseline.value :
+    `light-dark(rgb(var(--ds-panel-rgb) / ${shellOpacity}), rgb(var(--ds-bg-rgb) / ${shellOpacity}))`;
+  const nextPriority = shellOpacity === undefined ? baseline.priority : "";
+  try {
+    if (value) root.style.setProperty(property, value, nextPriority);
+    else root.style.removeProperty(property);
+    if (root.style.getPropertyValue(property).trim() !== value.trim() ||
+        root.style.getPropertyPriority(property) !== nextPriority ||
+        !getComputedStyle(root).getPropertyValue(property).trim()) {
+      throw new Error("The shell opacity token did not read back correctly.");
+    }
+    const veil = document.body ? getComputedStyle(document.body, "::before") : null;
+    const taskMode = root.getAttribute("data-dream-task-mode") || root.getAttribute("data-dream-art-task-mode");
+    if (root.getAttribute("data-dream-art-wide") === "true" && taskMode !== "off" &&
+        veil && veil.content !== "none" && veil.content !== "normal" && veil.display !== "none") {
+      const color = veil.backgroundColor.trim();
+      const channel = color.match(/\/\s*([0-9.]+%?)\s*\)$/)?.[1] ??
+        color.match(/^rgba\([^)]*,\s*([0-9.]+%?)\s*\)$/i)?.[1];
+      const alpha = channel !== undefined ? Number.parseFloat(channel) / (channel.endsWith("%") ? 100 : 1)
+        : color === "transparent" ? 0 : /^(?:rgb|color|lab|lch|oklab|oklch)\(/i.test(color) ? 1 : NaN;
+      const expectedAlpha = shellOpacity ?? (baseline.value ? null :
+        root.getAttribute("data-dream-shell") === "light" ? 0.64 : 0.58);
+      if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1 ||
+          expectedAlpha !== null && Math.abs(alpha - expectedAlpha) > 0.001) {
+        throw new Error("The visible shell veil did not use the requested opacity.");
+      }
+      result.shellVeilVerified = expectedAlpha !== null;
+      result.shellVeilAlpha = alpha;
+    }
+    if (shellOpacity === undefined) {
+      delete state.shellOpacity;
+      delete state.shellOpacityOverride;
+    } else {
+      state.shellOpacity = shellOpacity;
+      state.shellOpacityOverride = { baseline, value };
+    }
+    if (Object.hasOwn(state, "shellOpacity") !== (shellOpacity !== undefined) ||
+        state.shellOpacity !== shellOpacity) throw new Error("The shell opacity state did not read back correctly.");
+    return result;
+  } catch (error) {
+    if (previous) root.style.setProperty(property, previous, priority);
+    else root.style.removeProperty(property);
+    if (hadOverride) {
+      state.shellOpacity = previousOpacity;
+      state.shellOpacityOverride = owner;
+    } else {
+      delete state.shellOpacity;
+      delete state.shellOpacityOverride;
+    }
+    throw error;
+  }
+}
+
+async function applyShellOpacityToSession(session, loadedPayload) {
+  const shellOpacity = loadedPayload.theme?.art?.shellOpacity;
+  const request = { themeId: loadedPayload.theme.id, revision: loadedPayload.revision,
+    ...(shellOpacity === undefined ? {} : { shellOpacity }) };
+  const result = await session.evaluate(`(() => {
+    const request = ${JSON.stringify(request)};
+    try {
+      const result = (${updateShellOpacity.toString()})(request);
+      const state = window.__CODEX_DREAM_SKIN_STATE__;
+      if (state?.themeId === request.themeId && state.revision === request.revision) delete state.opacityUpdateFailed;
+      return result;
+    } catch (error) {
+      const state = window.__CODEX_DREAM_SKIN_STATE__;
+      if (state?.themeId === request.themeId && state.revision === request.revision) state.opacityUpdateFailed = true;
+      throw error;
+    }
+  })()`);
+  if (result?.applied !== true || result.themeId !== request.themeId || result.revision !== request.revision ||
+      result.shellOpacityVerified !== true || result.shellOpacity !== (shellOpacity ?? null)) {
+    throw new Error("The shell opacity update did not verify.");
+  }
+  return result;
+}
+
+function updateVideoOpacityWithShell(request, shellRequest, applyShell) {
+  const state = window.__CODEX_DREAM_SKIN_STATE__;
+  const root = document.documentElement;
+  if (!state || !root || typeof state.updateVideoOpacity !== "function") return false;
+  const readOpacity = (name) => {
+    const value = root.style.getPropertyValue(name).trim();
+    return value ? Number(value) : NaN;
+  };
+  const previous = { themeId: request.themeId, opacityUpdateKey: request.opacityUpdateKey,
+    revision: state.revision, bubbleOpacity: readOpacity("--ds-bubble-opacity"), surfaceOpacity: readOpacity("--ds-surface-opacity") };
+  if (typeof previous.revision !== "string" || !/^[a-f0-9]{20}$/.test(previous.revision) ||
+      ![previous.bubbleOpacity, previous.surfaceOpacity].every(value => Number.isFinite(value) && value >= 0 && value <= 1)) return false;
+  const hadFailure = Object.hasOwn(state, "opacityUpdateFailed");
+  const previousFailure = state.opacityUpdateFailed;
+  const applied = state.updateVideoOpacity(request);
+  if (applied?.applied !== true || applied.themeId !== request.themeId || applied.revision !== request.revision) return false;
+  try {
+    const result = applyShell(shellRequest);
+    delete state.opacityUpdateFailed;
+    return result;
+  } catch (error) {
+    let restored = false;
+    if (window.__CODEX_DREAM_SKIN_STATE__ === state && document.documentElement === root) {
+      state.opacityUpdateFailed = true;
+      try {
+        const rollback = state.updateVideoOpacity(previous);
+        restored = rollback?.applied === true && rollback.themeId === previous.themeId && rollback.revision === previous.revision &&
+          state.revision === previous.revision && readOpacity("--ds-bubble-opacity") === previous.bubbleOpacity &&
+          readOpacity("--ds-surface-opacity") === previous.surfaceOpacity;
+      } catch {}
+    }
+    if (!restored) throw new Error("The shell opacity update failed and its rollback could not be verified; no video reload was attempted.");
+    if (hadFailure) state.opacityUpdateFailed = previousFailure;
+    else delete state.opacityUpdateFailed;
+    throw error;
+  }
+}
+
+export async function applyLoadedToSession(session, loadedPayload, { opacityOnly = false } = {}) {
+  const shellOpacity = loadedPayload.theme?.art?.shellOpacity;
+  if (shellOpacity !== undefined && (typeof shellOpacity !== "number" || !Number.isFinite(shellOpacity) || shellOpacity < 0 || shellOpacity > 1)) {
+    throw new Error("Shell opacity must be between 0 and 1.");
+  }
+  if (shellOpacity !== undefined) {
+    if (await session.evaluate('typeof CSS === "object" && CSS.supports("background-color", "light-dark(rgb(0 0 0 / .5), rgb(255 255 255 / .5))")') !== true) {
+      throw new Error("This renderer does not support light-dark shell opacity.");
+    }
+  }
+  if (loadedPayload.theme?.artMetadata?.video && typeof loadedPayload.theme.opacityUpdateKey === "string") {
+    const request = { themeId: loadedPayload.theme.id, opacityUpdateKey: loadedPayload.theme.opacityUpdateKey, revision: loadedPayload.revision,
+      bubbleOpacity: loadedPayload.theme.art?.bubbleOpacity ?? 0, surfaceOpacity: loadedPayload.theme.art?.surfaceOpacity ?? 0.3 };
+    const shellRequest = { themeId: request.themeId, revision: request.revision,
+      ...(shellOpacity === undefined ? {} : { shellOpacity }) };
+    const result = await session.evaluate(`(${updateVideoOpacityWithShell.toString()})(${JSON.stringify(request)}, ${JSON.stringify(shellRequest)}, ${updateShellOpacity.toString()})`);
+    if (result?.applied === true) {
+      if (result.themeId !== request.themeId || result.revision !== request.revision ||
+          result.shellOpacityVerified !== true || result.shellOpacity !== (shellOpacity ?? null)) {
+        throw new Error("The in-place opacity update did not verify.");
+      }
+      return result;
+    }
+  }
+  if (opacityOnly) throw new Error("The current video cannot be updated in place; no video reload or Codex restart was attempted.");
   if (loadedPayload.theme?.artMetadata?.video) await probeVideoDecode(session, loadedPayload.mediaFilePath);
   await session.evaluate(loadedPayload.payload);
   await bindMediaFileToSession(session, loadedPayload);
+  return applyShellOpacityToSession(session, loadedPayload);
 }
 
 
