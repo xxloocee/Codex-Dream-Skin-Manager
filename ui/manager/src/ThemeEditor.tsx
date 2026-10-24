@@ -21,6 +21,7 @@ const ranges = {
   positionX: ["水平位置", -1, 1, 0], positionY: ["垂直位置", -1, 1, 0], zoom: ["缩放", 1, 2, 1],
   playbackRate: ["视频播放速度", 0.25, 2, 1],
   bubbleOpacity: ["消息气泡不透明度（用户与助手）", 0, 1, 0], surfaceOpacity: ["面板不透明度（输入框、工具面板等）", 0, 1, 0.3],
+  shellOpacity: ["背景遮罩不透明度", 0, 1, 0.58],
 } as const;
 const choices = {
   appearance: ["外观模式", [["auto", "自动"], ["light", "浅色"], ["dark", "深色"]]],
@@ -32,16 +33,24 @@ export function ThemeEditor({ theme, busy, canApply, mode = "edit", allowCopy = 
   const tr = useText(), msg = useMessage();
   const [patch, setPatch] = useState<ThemePatch>({}), [error, setError] = useState<UiMessage>("");
   const [copying, setCopying] = useState(false), [copyName, setCopyName] = useState(theme.name.slice(0, 80));
+  const [systemDark, setSystemDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const appearance = () => setSystemDark(media.matches);
+    media.addEventListener("change", appearance);
+    return () => media.removeEventListener("change", appearance);
+  }, []);
   const dirty = Object.keys(patch).some(key => key !== "parameters" || Object.keys(patch.parameters ?? {}).length > 0);
   useEffect(() => { onDirty(dirty); return () => onDirty(false); }, [dirty, onDirty]);
-  useEffect(() => { onPreview?.(previewParameters(theme.storedParameters, patch.parameters)); return () => onPreview?.(null); }, [theme, patch, onPreview]);
+  useEffect(() => { onPreview?.(previewParameters(theme.storedParameters, patch.parameters, systemDark)); return () => onPreview?.(null); }, [theme, patch, onPreview, systemDark]);
   const parameter = (key: keyof ThemeParameters) => patch.parameters && Object.hasOwn(patch.parameters, key) ? patch.parameters[key] ?? null : theme.storedParameters[key];
-  const display = previewParameters(theme.storedParameters, patch.parameters);
+  const display = previewParameters(theme.storedParameters, patch.parameters, systemDark);
   const framing = display.framingEnabled;
   function change(key: keyof ThemeParameters, value: ThemeParameters[keyof ThemeParameters]) {
     setError("");
     setPatch(previous => {
       const parameters = { ...previous.parameters, [key]: value };
+      if (key === "shellOpacity" && value === null && theme.storedParameters.shellOpacity == null) delete parameters.shellOpacity;
       if (key === "framingEnabled" && value === false) for (const name of ["positionX", "positionY", "zoom", "positionMode"] as const) parameters[name] = null;
       return { ...previous, parameters };
     });
@@ -90,6 +99,10 @@ export function ThemeEditor({ theme, busy, canApply, mode = "edit", allowCopy = 
         <div className="editor-fields">{choiceControl("appearance")}</div>
         {mode === "edit" ? <>{rangeControl("focusX")}{rangeControl("focusY")}</> : framingControls()}
         <div className="editor-fields">{choiceControl("safeArea")}{choiceControl("taskMode")}</div>
+        {rangeControl("shellOpacity")}
+        <div className="framing-actions"><button type="button" disabled={parameter("shellOpacity") == null}
+          title={tr("清除自定义背景遮罩，随浅色和深色外观自动调整。")}
+          onClick={() => change("shellOpacity", null)}>{tr("使用外观默认值")}</button></div>
         {rangeControl("bubbleOpacity")}{rangeControl("surfaceOpacity")}
         {theme.mediaKind === "video" && rangeControl("playbackRate")}
         <label className="accent-field">{tr("主题强调色")}<span><input maxLength={7} placeholder="#RRGGBB" value={String(parameter("accent") ?? "")} onChange={event => change("accent", event.target.value || null)} />

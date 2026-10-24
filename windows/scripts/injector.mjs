@@ -85,6 +85,7 @@ function parseArgs(argv) {
     timeoutMs: 30000,
     screenshot: null,
     reload: false,
+    opacityOnly: false,
     browserId: null,
     themeDir: path.join(root, "assets"),
     pauseFile: null,
@@ -124,6 +125,7 @@ function parseArgs(argv) {
     else if (arg === "--operation-message") options.operationMessage = argv[++i];
     else if (arg === "--operation-token") options.operationToken = argv[++i];
     else if (arg === "--reload") options.reload = true;
+    else if (arg === "--opacity-only") options.opacityOnly = true;
     else if (arg === "--self-test") options.mode = "self-test";
     else if (arg === "--check-payload") options.mode = "check-payload";
     else throw new Error(`Unknown argument: ${arg}`);
@@ -133,6 +135,9 @@ function parseArgs(argv) {
   }
   if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 250 || options.timeoutMs > 120000) {
     throw new Error(`Invalid timeout: ${options.timeoutMs}`);
+  }
+  if (options.opacityOnly && (!["once", "apply-live"].includes(options.mode) || options.reload)) {
+    throw new Error("--opacity-only requires --once or --apply-live and cannot reload the renderer");
   }
   if (options.browserId !== null && !BROWSER_ID_PATTERN.test(options.browserId)) {
     throw new Error(`Invalid browser ID: ${options.browserId}`);
@@ -501,10 +506,11 @@ export async function verifyAppliedSession(
       themeId: runtime?.themeId ?? null,
       expectedThemeId,
       revision: runtime?.revision ?? null,
+      opacityUpdateFailed: runtime?.opacityUpdateFailed === true,
       expectedRevision,
       stylePresent: Boolean(adopted || fallback),
     };
-    result.pass = result.installed && !result.disabled &&
+    result.pass = result.installed && !result.disabled && !result.opacityUpdateFailed &&
       result.version === result.expectedVersion && result.stylePresent &&
       (!expectedThemeId || result.themeId === expectedThemeId) &&
       (!expectedRevision || result.revision === expectedRevision);
@@ -643,6 +649,7 @@ async function runOneShot(options) {
   let screenshotCaptured = false;
   try {
     for (const { target, session, probe } of connected) {
+      let opacity = null;
       try {
         if (options.mode === "remove") await removeFromSession(session);
         else if (options.mode === "once" || options.mode === "apply-live") {
@@ -652,7 +659,7 @@ async function runOneShot(options) {
               `正在应用「${loadedPayload.theme.name}」…`,
             );
           }
-          await applyLoadedToSession(session, loadedPayload);
+          opacity = await applyLoadedToSession(session, loadedPayload, { opacityOnly: options.opacityOnly });
           await new Promise((resolve) => setTimeout(resolve, options.mode === "once" ? 850 : 100));
         }
         if (options.reload) {
@@ -665,7 +672,7 @@ async function runOneShot(options) {
                 `正在应用「${loadedPayload.theme.name}」…`,
               );
             }
-            await applyLoadedToSession(session, loadedPayload);
+            opacity = await applyLoadedToSession(session, loadedPayload);
           }
         }
         if (operationToken) {
@@ -696,7 +703,7 @@ async function runOneShot(options) {
               loadedPayload?.revision ?? null,
             )
             : await verifySession(session, target.id);
-        results.push({ targetId: target.id, markers: probe.markers, result: verified });
+        results.push({ targetId: target.id, markers: probe.markers, result: verified, ...(opacity ? { opacity } : {}) });
         if (operationToken) {
           const passed = removedMode ? verified === true : verified?.pass;
           await presentOperationUi(
@@ -724,7 +731,7 @@ async function runOneShot(options) {
             options.mode === "remove" ? "暂停失败，请重试" : "应用失败，请重试",
           );
         }
-        results.push({ targetId: target.id, markers: probe?.markers, error: error.message });
+        results.push({ targetId: target.id, markers: probe?.markers, error: error.message, ...(opacity ? { opacity } : {}) });
       } finally {
         session.close();
       }
@@ -908,18 +915,26 @@ async function runWatch(options) {
       }
       const pauseChanged = nextPaused !== paused;
       const payloadChanged = !nextPaused && nextPayload !== loadedPayload;
+      const opacityOnly = payloadChanged && !pauseChanged && loadedPayload?.theme?.artMetadata?.video &&
+        nextPayload?.theme?.artMetadata?.video && /^[a-f0-9]{64}$/.test(nextPayload.theme.opacityUpdateKey ?? "") &&
+        nextPayload.theme.opacityUpdateKey === loadedPayload.theme.opacityUpdateKey;
       loadedPayload = nextPayload;
       paused = nextPaused;
       lifecycle.transition(paused ? "paused" : "full", { invalidate: payloadChanged });
 
       if (pauseChanged || payloadChanged) {
-        for (const [id, session] of sessions) {
+        const acceptedSessions = [...sessions.entries()].filter(([id, session]) =>
+          !session.closed && lifecycle.owns(id, session));
+        for (const [id, session] of acceptedSessions) {
           if (lifecycle.stopping) break;
+          if (session.closed || !lifecycle.owns(id, session)) continue;
           try {
             const previousEarlyScript = earlyScripts.get(id);
             if (paused) {
               await removeFromSession(session);
+              if (session.closed || !lifecycle.owns(id, session)) continue;
               await removeEarlyPayload(session, previousEarlyScript);
+              if (session.closed || !lifecycle.owns(id, session)) continue;
               earlyScripts.delete(id);
               fallbackTargets.delete(id);
             } else {
@@ -931,8 +946,13 @@ async function runWatch(options) {
                   loadedPayload.fingerprint,
                 );
                 if (!nextEarlyScript) throw new Error("CDP did not return an early-script identifier");
+                if (session.closed || !lifecycle.owns(id, session)) {
+                  await removeEarlyPayload(session, nextEarlyScript);
+                  continue;
+                }
                 fallbackTargets.set(id, false);
               } catch (error) {
+                if (session.closed || !lifecycle.owns(id, session)) continue;
                 fallbackTargets.set(id, true);
                 diagnostics.error(`[dream-skin] early theme refresh unavailable for ${id}: ${error.message}`);
                 attachLoadFallback(id, { id }, session);
@@ -941,11 +961,15 @@ async function runWatch(options) {
               else earlyScripts.delete(id);
               await removeEarlyPayload(session, previousEarlyScript);
               if (lifecycle.stopping) break;
-              await applyLoadedToSession(session, loadedPayload);
-              if (loadedPayload.mediaFilePath) attachLoadFallback(id, { id }, session);
+              if (session.closed || !lifecycle.owns(id, session)) continue;
+              await applyLoadedToSession(session, loadedPayload, { opacityOnly: Boolean(opacityOnly) });
+              if (!session.closed && lifecycle.owns(id, session) && loadedPayload.mediaFilePath) attachLoadFallback(id, { id }, session);
             }
           } catch (error) {
+            if (session.closed || !lifecycle.owns(id, session)) continue;
             diagnostics.error(`[dream-skin] live theme update failed for ${id}: ${error.message}`);
+            // A rejected opacity update must not reconnect and rebind the video.
+            if (opacityOnly) continue;
             await removeEarlyPayload(session, earlyScripts.get(id));
             earlyScripts.delete(id);
             fallbackTargets.delete(id);
@@ -1136,6 +1160,7 @@ async function main(options) {
       version: SKIN_VERSION,
       payloadBytes: Buffer.byteLength(loaded.payload),
       themeId: loaded.theme.id,
+      opacityUpdateKey: loaded.theme.opacityUpdateKey,
       appearance: loaded.theme.appearance,
       colorMode: loaded.theme.colorMode,
       explicitColorKeys: loaded.theme.explicitColorKeys,

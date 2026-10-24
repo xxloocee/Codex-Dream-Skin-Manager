@@ -84,7 +84,7 @@ process.stdout.write(JSON.stringify({effects:{themeCommitted:value(process.argv[
 ' "$COMMITTED" "$RENDERED" "$RESTARTED" "${1:-$COMMITTED_REVISION}" "${2:-}" "${3:-}" "$RUNTIME_COMMAND" "$PAUSED_COMMITTED" "$REMOVED" "$UNAVAILABLE" "$UPGRADE" "$UPGRADED"
 }
 transaction() {
-  local before snapshot directory fingerprint confirmed started current verification_before verification_after mapped requested_revision
+  local before snapshot directory fingerprint confirmed started current verification_before verification_after mapped requested_revision opacity_only
   before="$(probe)" || return 1
   RUNTIME_COMMAND="$("$CORE_NODE" -e 'const fs=require("node:fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(r.runtimeCommand?"true":"false")' "$REQUEST_PATH")" || return 1
   UPGRADE="$("$CORE_NODE" -e 'const r=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(r.runtimeCommand?.method==="runtime.upgrade"?"true":"false")' "$REQUEST_PATH")" || return 1
@@ -118,6 +118,8 @@ transaction() {
     result "" "" "$(field "$current" runtimeSessionId)"; return 0
   fi
   if [ "$ACTION" = apply ]; then
+    "$CORE_NODE" "$WORKER" check-refresh "$APPLICATION_ROOT" "$REQUEST_PATH" "$before" >/dev/null || return 1
+    opacity_only="$("$CORE_NODE" -e 'const r=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(String(r.refresh?.opacityOnly===true))' "$REQUEST_PATH")" || return 1
     if [ "$RUNTIME_COMMAND" = true ]; then runtime_check "$before" >/dev/null || return 1; fi
     fingerprint="$("$CORE_NODE" -e 'const fs=require("node:fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(r.schemaVersion!==1||!r.preflightFingerprint)process.exit(1);process.stdout.write(r.preflightFingerprint)' "$REQUEST_PATH")" || return 1
     [ "$fingerprint" = "$(field "$before" fingerprint)" ] || return 1
@@ -130,6 +132,7 @@ transaction() {
     requested_revision="$(field "$snapshot" expectedRevision)"
     current="$(probe)" || return 1
     [ "$(field "$current" fingerprint)" = "$fingerprint" ] || return 1
+    "$CORE_NODE" "$WORKER" check-refresh "$APPLICATION_ROOT" "$REQUEST_PATH" "$current" >/dev/null || return 1
     if [ "$RUNTIME_COMMAND" = true ]; then runtime_check "$current" >/dev/null || return 1; PAUSED_COMMITTED=null; fi
     COMMITTED=null
     if [ "$started" = true ]; then
@@ -145,7 +148,9 @@ transaction() {
       if [ -z "$(field "$before" runtimeSessionId)" ]; then RESTARTED="$(field "$before" processRunning)"; fi
     else
       RENDERED=null
-      /bin/bash "$SCRIPT_DIR/switch-theme-macos.sh" --manager-snapshot-dir "$directory" --lock-token "$TOKEN" --no-auto-restart >/dev/null || return 1
+      local switch_args=(--manager-snapshot-dir "$directory" --lock-token "$TOKEN" --no-auto-restart)
+      [ "$opacity_only" != true ] || switch_args+=(--opacity-only)
+      /bin/bash "$SCRIPT_DIR/switch-theme-macos.sh" "${switch_args[@]}" >/dev/null || return 1
       COMMITTED=true
       COMMITTED_REVISION="$requested_revision"
     fi

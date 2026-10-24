@@ -2,7 +2,7 @@ import { errorMessage, uiMessage, UiMessageError, renderMessage } from "./ui-mes
 import type { UiMessage } from "./ui-message";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { HelloResult, ManagerSnapshot, OperationSnapshot, RuntimeMethod, ThemeDetails, ThemePatch, ThemeRef, ThemeSummary } from "../../../contracts/manager.mjs";
+import type { ApplyRefresh, HelloResult, ManagerSnapshot, OperationSnapshot, RuntimeMethod, ThemeDetails, ThemePatch, ThemeRef, ThemeSummary } from "../../../contracts/manager.mjs";
 import { BridgeError, ManagerClient, reconnectManager } from "./client";
 import { ThemeEditor } from "./ThemeEditor";
 import { ImportPanel } from "./ImportPanel";
@@ -249,18 +249,30 @@ function App() {
     });
   }, [client, hello, operationId]);
   useEffect(() => {
-    if (!operation || operation.method !== "skin.apply" || pendingOperation(operation)) return;
-    setLibraryNotice(previous => typeof previous !== "string" && previous.key === "主题已保存，正在准备应用；启动或重启时仍须确认。" ? operation.state === "succeeded" && operation.effects.rendererApplied === true
-      ? uiMessage("主题已保存，并已核验应用。") : uiMessage("主题已保存，请刷新状态后核对当前外观。") : previous);
-  }, [operation]);
-  async function startApply(theme: ThemeRef, revision: string) {
+    if (!operation || operation.method !== "skin.apply" || pendingOperation(operation) || typeof libraryNotice === "string" ||
+        !["主题已保存，正在准备应用；启动或重启时仍须确认。", "主题已保存，正在刷新当前皮肤。"].includes(libraryNotice.key)) return;
+    if (operation.state === "succeeded" && operation.effects.rendererApplied === true) {
+      setLibraryNotice(uiMessage("主题已保存，并已核验应用。"));
+    } else if (operation.state === "indeterminate") {
+      setLibraryNotice(uiMessage("主题已保存。", undefined, {
+        after: uiMessage("结果暂不确定，请刷新状态后核对；不会重复执行。", undefined, {
+          before: " ", after: operation.error?.message ? ` ${operation.error.message}` : "",
+        }),
+      }));
+    } else {
+      setLibraryNotice(uiMessage("主题已保存，后续应用未完成：", undefined, {
+        after: operation.error?.message ?? operationFeedback(operation),
+      }));
+    }
+  }, [operation, libraryNotice]);
+  async function startApply(theme: ThemeRef, revision: string, refresh?: ApplyRefresh) {
     const context = applicationContext.current, manager = context.client, session = context.hello;
     if (!mounted.current || !manager || !session || !connected.current) throw new UiMessageError(uiMessage("管理器连接已关闭，请重新连接；已接受的操作不会自动重试。"));
     const id = `${session.backendSessionId}:${crypto.randomUUID()}`;
     try {
       // Persist intent before sending. Retrying this screen never creates an implicit second apply.
       sessionStorage.setItem(storageKey, id); setOperationId(null); setOperation(null);
-      const value = await manager.call("skin.apply", { operationId: id, theme, expectedRevision: revision });
+      const value = await manager.call("skin.apply", { operationId: id, theme, expectedRevision: revision, ...(refresh ? { refresh } : {}) });
       setOperation(value);
     } finally { if (mounted.current) setOperationId(id); }
   }
@@ -294,12 +306,25 @@ function App() {
   async function saveTheme(patch: ThemePatch, copyName: string | null, applyAfter: boolean) {
     if (!client || !hello || !details || updateBusy || maintenanceBusy || operationBusy || importBusy || fileBusy || pendingOperation(operation)) throw new UiMessageError(uiMessage("请等待当前操作结束。"));
     const source = details, selection = selectionSequence.current, id = `${hello.backendSessionId}:${crypto.randomUUID()}`;
-    const before = applicationContext.current.snapshot;
-    const refreshActive = copyName === null && !applicationContext.current.statusError && !!before?.runtime?.activeRevision && before.desired.paused === false && before.engine.health === "healthy" &&
-      before.desired.theme?.source === source.ref.source && before.desired.theme.id === source.ref.id;
     setOperationBusy(true); setOperationError(""); setLibraryNotice("");
     let saved = false;
     try {
+      let refresh: ApplyRefresh | undefined, refreshError: UiMessage | null = null;
+      if (copyName === null && !applyAfter) {
+        try {
+          const current = await client.call("status.get", {});
+          setSnapshot(previous => !previous || previous.backendSessionId !== current.backendSessionId || previous.sequence <= current.sequence ? current : previous);
+          setStatusError("");
+          if (current.runtime?.activeRevision && current.engine.runtimeSessionId && current.desired.paused === false && current.engine.health === "healthy" &&
+              current.desired.theme?.source === source.ref.source && current.desired.theme.id === source.ref.id) {
+            const editedParameters = Object.keys(patch.parameters ?? {});
+            const opacityOnly = source.mediaKind === "video" && Object.keys(patch).every(key => key === "parameters") && editedParameters.length > 0 &&
+              editedParameters.every(key => key === "bubbleOpacity" || key === "surfaceOpacity" || key === "shellOpacity");
+            refresh = { activeRevision: current.runtime.activeRevision, runtimeSessionId: current.engine.runtimeSessionId, ...(opacityOnly ? { opacityOnly: true as const } : {}) };
+          }
+        } catch (error) { refreshError = message(error); }
+      }
+      if (!mounted.current) return;
       sessionStorage.setItem(storageKey, id); setOperationId(null); setOperation(null);
       let value: OperationSnapshot;
       try { value = copyName !== null ? await client.call("themes.copy", { operationId: id, theme: source.ref, expectedRevision: source.revision, patch, name: copyName })
@@ -329,17 +354,19 @@ function App() {
         setThemes(library.themes.some(theme => identity(theme) === identity(current)) ? library.themes : [...library.themes, current]);
         if (library.warnings.length) setLibraryNotice(uiMessage("部分主题无法读取，请刷新主题库后重试。"));
       } } catch { setLibraryNotice(uiMessage("主题已保存，主题库刷新未完成。")); }
-      if ((applyAfter || refreshActive) && mounted.current) {
+      if ((applyAfter || refresh) && mounted.current) {
         // Explicit apply is independent of the status observer. Only an automatic
         // refresh must establish that the previously active skin is still current.
         const status = applyAfter ? null : await client.call("status.get", {});
-        if (!applyAfter && (!status || status.runtime?.activeRevision !== before?.runtime?.activeRevision || status.desired.paused !== false ||
+        if (!applyAfter && (!status || !refresh || status.runtime?.activeRevision !== refresh.activeRevision || status.engine.runtimeSessionId !== refresh.runtimeSessionId || status.desired.paused !== false ||
             status.engine.health !== "healthy" || status.desired.theme?.source !== source.ref.source || status.desired.theme.id !== source.ref.id)) {
           setLibraryNotice(uiMessage("主题已保存；当前皮肤已变化，未自动刷新。"));
         } else {
-          await startApply(value.resultTheme, value.resultRevision);
-          setLibraryNotice(uiMessage("主题已保存，正在刷新当前皮肤。"));
+          await startApply(value.resultTheme, value.resultRevision, applyAfter ? undefined : refresh);
+          setLibraryNotice(uiMessage(applyAfter ? "主题已保存，正在准备应用；启动或重启时仍须确认。" : "主题已保存，正在刷新当前皮肤。"));
         }
+      } else if (refreshError) {
+        setLibraryNotice(uiMessage("主题已保存到主题库，当前 Codex 外观未切换。", undefined, { after: refreshError }));
       }
     } catch (error) {
       const reason = saved ? uiMessage("主题已保存，后续操作未完成：", undefined, { after: message(error) }) : message(error);

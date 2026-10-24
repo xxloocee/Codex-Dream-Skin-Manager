@@ -69,7 +69,7 @@ export async function mergedPreset(theme: LocalTheme, stateRoot: string): Promis
   }
   // Old settings replace these fields, including omissions; they do not overlay defaults.
   const art = record(theme.config.art) ? { ...theme.config.art } : {};
-  for (const key of ["focusX", "focusY", "safeArea", "taskMode", "bubbleOpacity", "surfaceOpacity", "positionX", "positionY", "zoom", "positionMode", "framingEnabled", "playbackRate"]) {
+  for (const key of ["focusX", "focusY", "safeArea", "taskMode", "bubbleOpacity", "surfaceOpacity", "shellOpacity", "positionX", "positionY", "zoom", "positionMode", "framingEnabled", "playbackRate"]) {
     delete art[key];
     if (Object.hasOwn(settings.art, key)) art[key] = settings.art[key];
   }

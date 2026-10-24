@@ -15,6 +15,7 @@ EXPECTED_CONTENT_FINGERPRINT=""
 LOCK_TOKEN=""
 LOCK_OWNER="$PPID"
 APPLY_NOW="true"
+OPACITY_ONLY="false"
 OPERATION_TOKEN=""
 stage=""
 
@@ -40,6 +41,7 @@ while [ "$#" -gt 0 ]; do
     --lock-token) LOCK_TOKEN="${2:-}"; shift 2 ;;
     --lock-owner) LOCK_OWNER="${2:-}"; shift 2 ;;
     --no-apply) APPLY_NOW="false"; shift ;;
+    --opacity-only) OPACITY_ONLY="true"; shift ;;
     *) fail "Unknown argument: $1" ;;
   esac
 done
@@ -55,6 +57,10 @@ if [ -n "$MANAGER_SNAPSHOT_DIR" ]; then
   [ "${#snapshot_leaf}" -eq 36 ] && [ "$MANAGER_SNAPSHOT_DIR" = "$STATE_ROOT/manager-operations/snapshots/$snapshot_leaf" ] \
     || fail "Invalid manager snapshot identity."
   [ -n "$LOCK_TOKEN" ] || fail "Manager snapshots require an inherited transaction lock."
+fi
+if [ "$OPACITY_ONLY" = "true" ]; then
+  [ -n "$MANAGER_SNAPSHOT_DIR" ] && [ -n "$LOCK_TOKEN" ] && [ "$APPLY_NOW" = "true" ] \
+    || fail "Opacity-only updates require an immediate manager snapshot publication under its inherited lock."
 fi
 if [ -n "$THEME_ID" ]; then
   case "$THEME_ID" in
@@ -154,8 +160,34 @@ process.stdout.write(value.contentFingerprint);
   || fail "Saved theme content no longer matches the package that was imported."
 # Validate the exact staged pair, not the mutable library directory. The
 # injector performs the full schema, path, dimensions, and image checks.
-"$NODE" "$INJECTOR" --check-payload --theme-dir "$stage" >/dev/null \
+PAYLOAD_RESULT="$("$NODE" "$INJECTOR" --check-payload --theme-dir "$stage")" \
   || fail "Theme pack failed validation: $THEME_ID"
+if [ "$OPACITY_ONLY" = "true" ]; then
+  OPACITY_APPLICATION_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+  OPACITY_REQUEST_PATH="$STATE_ROOT/manager-operations/requests/$snapshot_leaf.json"
+  [ -f "$OPACITY_REQUEST_PATH" ] && [ ! -L "$OPACITY_REQUEST_PATH" ] \
+    || fail "The opacity update has no valid manager request; nothing was published."
+  "$NODE" -e '
+const request = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+if (request.refresh?.opacityOnly !== true) process.exit(1);
+' "$OPACITY_REQUEST_PATH" >/dev/null \
+    || fail "The manager request does not authorize an opacity-only update; nothing was published."
+  OPACITY_PROBE="$(/bin/bash "$SCRIPT_DIR/manager-platform.sh" probe "$OPACITY_APPLICATION_ROOT")" \
+    || fail "The current skin connection could not be checked; the opacity update was not published."
+  "$NODE" "$OPACITY_APPLICATION_ROOT/shared/core/apply-worker.mjs" check-refresh \
+    "$OPACITY_APPLICATION_ROOT" "$OPACITY_REQUEST_PATH" "$OPACITY_PROBE" >/dev/null \
+    || fail "The current watcher cannot guarantee an in-place opacity update; nothing was published."
+  ACTIVE_PAYLOAD_RESULT="$("$NODE" "$INJECTOR" --check-payload --theme-dir "$THEME_DIR")" \
+    || fail "The active video theme could not be checked; the opacity update was not published."
+  "$NODE" -e '
+const [next, current] = process.argv.slice(1).map(value => JSON.parse(value));
+if (next.artMetadata?.video !== true || current.artMetadata?.video !== true ||
+    typeof next.themeId !== "string" || next.themeId !== current.themeId ||
+    typeof next.opacityUpdateKey !== "string" || !/^[a-f0-9]{64}$/.test(next.opacityUpdateKey) ||
+    next.opacityUpdateKey !== current.opacityUpdateKey) process.exit(1);
+' "$PAYLOAD_RESULT" "$ACTIVE_PAYLOAD_RESULT" >/dev/null \
+    || fail "An opacity-only update must preserve the active video and theme configuration; nothing was published."
+fi
 THEME_BYTES="$(/usr/bin/stat -f '%z' "$stage/$THEME_IMAGE")"
 case "$THEME_IMAGE" in
   *.[mM][pP]4) MAX_THEME_BYTES=134217728; MAX_THEME_LABEL="128 MiB" ;;
@@ -165,7 +197,7 @@ esac
   || fail "Theme media must be non-empty and no larger than $MAX_THEME_LABEL."
 # Staging must also work before Codex exposes CDP. The injector checks video
 # decoding after the manager establishes the renderer connection.
-if [ "$APPLY_NOW" = "true" ]; then
+if [ "$APPLY_NOW" = "true" ] && [ "$OPACITY_ONLY" != "true" ]; then
   "$NODE" "$SCRIPT_DIR/validate-video-file.mjs" "$stage/$THEME_IMAGE" "$STATE_PATH" >/dev/null
 fi
 SAFE_CSS_NAME=""
@@ -203,15 +235,16 @@ fi
 
 # Hot path: CDP already open → seconds, not tens of seconds
 progress "$(dreamskin_text applying_theme_to_chatgpt)"
-if hot_reapply_theme "$PORT" 8000 "$OPERATION_TOKEN"; then
+if hot_reapply_theme "$PORT" 8000 "$OPERATION_TOKEN" "$OPACITY_ONLY"; then
   progress "$(dreamskin_text verifying_rendered_theme)"
-  "$NODE" "$INJECTOR" --verify --port "$PORT" --theme-dir "$THEME_DIR" --timeout-ms 10000 >/dev/null \
+  run_injector_with_diagnostics verify --verify --port "$PORT" --theme-dir "$THEME_DIR" --timeout-ms 10000 >/dev/null \
     || fail "Theme injection completed but the visible renderer did not verify the exact active theme."
   progress "$(dreamskin_text skin_applied): ${THEME_NAME}"
   exit 0
 fi
 
 # Cold path only when debug port is missing
+[ "$OPACITY_ONLY" != "true" ] || fail "The opacity update could not be applied without replacing the video; no restart was attempted."
 [ "$AUTO_RESTART" = "true" ] || fail "The shared manager requires new confirmation before starting or restarting Codex."
 progress "$(dreamskin_text restarting_chatgpt_for_apply)"
 if "$SCRIPT_DIR/start-dream-skin-macos.sh" --port "$PORT" --restart-existing --theme-staged; then

@@ -132,6 +132,7 @@ function parseArgs(argv) {
     timeoutMs: 30000,
     screenshot: null,
     reload: false,
+    opacityOnly: false,
     themeDir: null,
     operationState: null,
     operationAck: null,
@@ -161,6 +162,7 @@ function parseArgs(argv) {
     else if (arg === "--operation-message") options.operationMessage = argv[++i];
     else if (arg === "--operation-token") options.operationToken = argv[++i];
     else if (arg === "--reload") options.reload = true;
+    else if (arg === "--opacity-only") options.opacityOnly = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
   if (!Number.isInteger(options.port) || options.port < 1024 || options.port > 65535) {
@@ -176,6 +178,9 @@ function parseArgs(argv) {
     throw new Error("Begin operation requires --operation-kind apply, pause, or switch");
   }
   if (options.mode === "verify-removed" && (options.reload || options.screenshot)) throw new Error("Read-only removal inspection cannot reload or capture the renderer");
+  if (options.opacityOnly && (options.mode !== "once" || options.reload)) {
+    throw new Error("--opacity-only requires --once and cannot reload the renderer");
+  }
   if (options.mode === "finish-operation") {
     if (!OPERATION_UI_STATES.has(options.operationUiState)) {
       throw new Error("Finish operation requires --operation-ui-state success, error, or cancelled");
@@ -406,13 +411,14 @@ async function runOneShot(options) {
   let screenshotCaptured = false;
 
   for (const { target, session, probe } of connected) {
+    let opacity = null;
     try {
       if (options.mode === "remove") await removeFromSession(session);
       else if (options.mode === "once") {
         await bestEffortOperationUi(
           session, "update", operationToken, "loading", `正在应用「${loaded.theme.name}」…`,
         );
-        await applyLoadedToSession(session, loaded);
+        opacity = await applyLoadedToSession(session, loaded, { opacityOnly: options.opacityOnly });
       }
 
       if (options.reload) {
@@ -424,7 +430,7 @@ async function runOneShot(options) {
               session, operationToken, "loading", `正在应用「${loaded.theme.name}」…`,
             );
           }
-          await applyLoadedToSession(session, loaded);
+          opacity = await applyLoadedToSession(session, loaded);
         }
       }
 
@@ -444,7 +450,7 @@ async function runOneShot(options) {
           loaded?.theme.id ?? null,
           loaded?.revision ?? null,
         );
-      results.push({ targetId: target.id, markers: probe?.markers, result });
+      results.push({ targetId: target.id, markers: probe?.markers, result, ...(opacity ? { opacity } : {}) });
       if (operationToken) {
         const passed = options.mode === "remove" ? result === true : result?.pass;
         await presentOperationUi(
@@ -476,6 +482,7 @@ async function runOneShot(options) {
       results.push({
         targetId: target.id,
         markers: probe?.markers,
+        ...(opacity ? { opacity } : {}),
         error: error.message,
         result: null,
       });
@@ -619,6 +626,8 @@ async function watchOperationState(statePath, onState) {
 
 async function runWatch(options) {
   let current = await loadPayload(options.themeDir);
+  let desiredPayload = current;
+  let desiredOpacityOnly = false;
   const lifecycle = new WatcherLifecycle({ sessionFor: (record) => record.session });
   const sessions = lifecycle.sessions;
   const discoveryRetry = new DiscoveryRetry();
@@ -733,12 +742,15 @@ async function runWatch(options) {
   const refreshPayload = async () => {
     if (lifecycle.stopping) return;
     const refreshEpoch = lifecycle.epoch;
+    await waitForTargetSetups(options.timeoutMs);
+    if (lifecycle.stopping || lifecycle.epoch !== refreshEpoch) return;
     let next;
     try {
       next = await loadPayload(options.themeDir);
     } catch (error) {
-      await Promise.all([...sessions.values()].map(async (record) => {
-        if (record.session.closed) return;
+      await Promise.all([...sessions.entries()].filter(([id, record]) =>
+        record.ready === true && !record.session.closed && lifecycle.owns(id, record.session)).map(async ([id, record]) => {
+        if (record.session.closed || !lifecycle.owns(id, record.session)) return;
         const externalOperation = activeOperation;
         const operationToken = externalOperation?.token ?? nextOperationToken();
         record.operationToken = operationToken;
@@ -752,60 +764,80 @@ async function runWatch(options) {
       }));
       throw error;
     }
-    if (next.revision === current.revision) return;
-    current = next;
+    const desiredChanged = next.revision !== desiredPayload.revision;
+    if (desiredChanged) {
+      desiredOpacityOnly = desiredPayload.theme?.artMetadata?.video === true && next.theme?.artMetadata?.video === true &&
+        desiredPayload.theme.id === next.theme.id && typeof desiredPayload.theme.opacityUpdateKey === "string" &&
+        /^[a-f0-9]{64}$/.test(desiredPayload.theme.opacityUpdateKey) && desiredPayload.theme.opacityUpdateKey === next.theme.opacityUpdateKey;
+    }
+    desiredPayload = next;
+    if (next.revision === current.revision && !desiredChanged) return;
     if (!lifecycle.canMutate(refreshEpoch)) {
+      current = next;
       console.log(`[dream-skin] staged theme ${current.theme.id} while skin is paused`);
       return;
     }
-    for (const record of sessions.values()) {
+    const opacityOnly = desiredOpacityOnly;
+    let failures = 0;
+    const acceptedSessions = [...sessions.entries()].filter(([id, record]) =>
+      record.ready === true && !record.session.closed && lifecycle.owns(id, record.session));
+    for (const [id, record] of acceptedSessions) {
       const { session } = record;
-      if (session.closed) continue;
+      const stillAccepted = () => record.ready === true && !session.closed && lifecycle.owns(id, session);
+      if (!stillAccepted()) continue;
       const externalOperation = activeOperation;
       const operationToken = externalOperation?.token ?? nextOperationToken();
       record.operationToken = operationToken;
       record.operationExternal = Boolean(externalOperation);
       try {
         await presentOperationUi(
-          session, operationToken, "loading", `正在应用「${current.theme.name}」…`,
+          session, operationToken, "loading", `正在应用「${next.theme.name}」…`,
         );
-        if (!lifecycle.canMutate(refreshEpoch)) continue;
-        const nextIdentifier = await registerEarlyForRecord(
-          record, current.payload, current.revision,
-        );
-        if (!lifecycle.canMutate(refreshEpoch)) {
-          await removeEarlyIdentifier(record, nextIdentifier);
-          continue;
+        if (!lifecycle.canMutate(refreshEpoch) || !stillAccepted()) continue;
+        if (!opacityOnly) {
+          const nextIdentifier = await registerEarlyForRecord(
+            record, next.payload, next.revision,
+          );
+          if (!lifecycle.canMutate(refreshEpoch) || !stillAccepted()) {
+            await removeEarlyIdentifier(record, nextIdentifier);
+            continue;
+          }
+          if (record.earlyScriptId) {
+            await removeEarlyIdentifier(record, record.earlyScriptId);
+          }
+          if (!lifecycle.canMutate(refreshEpoch) || !stillAccepted()) {
+            await removeEarlyIdentifier(record, nextIdentifier);
+            continue;
+          }
+          record.earlyScriptId = nextIdentifier;
+          record.needsLoadFallback = !nextIdentifier;
         }
-        if (record.earlyScriptId) {
-          await removeEarlyIdentifier(record, record.earlyScriptId);
-        }
-        if (!lifecycle.canMutate(refreshEpoch)) {
-          await removeEarlyIdentifier(record, nextIdentifier);
-          continue;
-        }
-        record.earlyScriptId = nextIdentifier;
-        record.needsLoadFallback = !nextIdentifier;
-        await applyLoadedToSession(session, current);
-        if (!lifecycle.canMutate(refreshEpoch)) continue;
+        await applyLoadedToSession(session, next, { opacityOnly });
+        if (!lifecycle.canMutate(refreshEpoch) || !stillAccepted()) continue;
         const verification = await waitForVerifiedSession(
           session,
           Math.min(options.timeoutMs, 8000),
-          current.theme.id,
-          current.revision,
+          next.theme.id,
+          next.revision,
         );
+        if (!lifecycle.canMutate(refreshEpoch) || !stillAccepted()) continue;
         if (!verification?.pass) throw new Error("Theme refresh verification failed");
         if (!externalOperation) {
-          await presentOperationUi(session, operationToken, "success", `已应用「${current.theme.name}」`);
+          await presentOperationUi(session, operationToken, "success", `已应用「${next.theme.name}」`);
         }
       } catch (error) {
-        record.needsLoadFallback = true;
+        if (!stillAccepted()) continue;
+        failures += 1;
+        if (!opacityOnly) record.needsLoadFallback = true;
         if (!externalOperation) {
           await presentOperationUi(session, operationToken, "error", "主题切换失败，未确认应用");
         }
         console.error(`[dream-skin] theme refresh failed: ${error.message}`);
       }
     }
+    if (failures) throw new Error(`Theme refresh failed for ${failures} renderer(s); the revision remains pending`);
+    current = next;
+    if (!lifecycle.canMutate(refreshEpoch)) return;
     console.log(`[dream-skin] refreshed theme ${current.theme.id} (${current.timings.buildMs}ms)`);
   };
 
@@ -952,12 +984,21 @@ async function runWatch(options) {
         let record;
         let connectionEpoch;
         let recoveryOperation = cycleRecovery;
+        // Do not start a target while a queued refresh is waiting for setup to finish.
+        while (!lifecycle.stopping) {
+          const pendingRefresh = reloadChain;
+          await pendingRefresh;
+          if (pendingRefresh === reloadChain) break;
+        }
+        if (lifecycle.stopping) break;
+        if (sessions.has(target.id)) continue;
         beginTargetSetup();
         try {
           session = await connectTarget(target, options.port);
           if (lifecycle.stopping) throw new Error("Watcher stopped during renderer setup");
           record = {
             session,
+            ready: false,
             earlyScriptId: null,
             earlyScriptIds: new Set(),
             needsLoadFallback: false,
@@ -968,14 +1009,15 @@ async function runWatch(options) {
           sessions.set(target.id, record);
           session.on("Page.loadEventFired", () => {
             if (!lifecycle.canMutate() || !lifecycle.owns(target.id, session)) return;
-            if (!record.needsLoadFallback && !current.mediaFilePath) return;
+            if (!record.needsLoadFallback && !desiredPayload.mediaFilePath) return;
             const fallbackEpoch = lifecycle.epoch;
             setTimeout(() => {
               if (!lifecycle.canMutate(fallbackEpoch) || !lifecycle.owns(target.id, session)
-                || (!record.needsLoadFallback && !current.mediaFilePath)) return;
-              const operation = (record.needsLoadFallback || current.theme?.artMetadata?.video)
-                ? applyLoadedToSession(session, current)
-                : bindMediaFileToSession(session, current);
+                || (!record.needsLoadFallback && !desiredPayload.mediaFilePath)) return;
+              const payload = desiredPayload;
+              const operation = (record.needsLoadFallback || payload.theme?.artMetadata?.video)
+                ? applyLoadedToSession(session, payload)
+                : bindMediaFileToSession(session, payload);
               operation.catch((error) => {
                 console.error(`[dream-skin] fallback reinject failed: ${error.message}`);
               });
@@ -985,12 +1027,13 @@ async function runWatch(options) {
           recoveryOperation = initialOperation ? null : cycleRecovery;
           const pausing = initialOperation?.status === "pausing";
           if (lifecycle.canMutate(connectionEpoch)) {
+            const bootstrapPayload = desiredPayload;
             try {
               record.earlyScriptId = await registerEarlyForRecord(
-                record, current.payload, current.revision,
+                record, bootstrapPayload.payload, bootstrapPayload.revision,
               );
               if (lifecycle.canMutate(connectionEpoch)) {
-                await session.evaluate(earlyPayloadFor(current.payload, current.revision));
+                await session.evaluate(earlyPayloadFor(bootstrapPayload.payload, bootstrapPayload.revision));
               }
               if (!lifecycle.canMutate(connectionEpoch)) await invalidateEarly(record);
             } catch (error) {
@@ -1034,28 +1077,29 @@ async function runWatch(options) {
               ? operationKindMessage(initialOperation.status === "pausing" ? "pause" : "apply")
               : recoveryOperation
                 ? "暂停未完成，正在恢复原皮肤…"
-              : `正在应用「${current.theme.name}」…`,
+              : `正在应用「${desiredPayload.theme.name}」…`,
           );
           if (!lifecycle.canMutate() || pausing) {
             continue;
           }
+          const setupPayload = desiredPayload;
           const earlyApplied = await session.evaluate(
-            `window.__CODEX_DREAM_SKIN_EARLY_APPLIED__ === ${JSON.stringify(current.revision)}`,
+            `window.__CODEX_DREAM_SKIN_EARLY_APPLIED__ === ${JSON.stringify(setupPayload.revision)}`,
           );
-          if (!earlyApplied || current.theme?.artMetadata?.video) {
+          if (!earlyApplied || setupPayload.theme?.artMetadata?.video) {
             if (!lifecycle.canMutate(connectionEpoch)) {
               await invalidateEarly(record);
               continue;
             }
             await session.evaluate(
-              `window.__CODEX_DREAM_SKIN_EARLY_GENERATION__ = ${JSON.stringify(`fallback:${current.revision}`)}`,
+              `window.__CODEX_DREAM_SKIN_EARLY_GENERATION__ = ${JSON.stringify(`fallback:${setupPayload.revision}`)}`,
             );
             if (!lifecycle.canMutate(connectionEpoch)) {
               await invalidateEarly(record);
               continue;
             }
-            await applyLoadedToSession(session, current);
-          } else if (lifecycle.canMutate(connectionEpoch)) await bindMediaFileToSession(session, current);
+            await applyLoadedToSession(session, setupPayload);
+          } else if (lifecycle.canMutate(connectionEpoch)) await bindMediaFileToSession(session, setupPayload);
           if (!lifecycle.canMutate(connectionEpoch)) {
             await invalidateEarly(record);
             continue;
@@ -1063,10 +1107,12 @@ async function runWatch(options) {
           const verification = await waitForVerifiedSession(
             session,
             Math.min(options.timeoutMs, 8000),
-            current.theme.id,
-            current.revision,
+            setupPayload.theme.id,
+            setupPayload.revision,
           );
           if (!verification?.pass) throw new Error("Initial theme verification failed");
+          if (!lifecycle.canMutate(connectionEpoch) || !lifecycle.owns(target.id, session)) continue;
+          record.ready = true;
           if (recoveryOperation && !activeOperation
             && pauseRecovery?.token === recoveryOperation.token) {
             await presentOperationUi(
@@ -1079,7 +1125,7 @@ async function runWatch(options) {
             recoveredPauseThisCycle = true;
           } else if (!record.operationExternal) {
             await presentOperationUi(
-              session, record.operationToken, "success", `已应用「${current.theme.name}」`,
+              session, record.operationToken, "success", `已应用「${setupPayload.theme.name}」`,
             );
           }
           console.log(`[dream-skin] injected verified ChatGPT target ${target.id}`);
@@ -1156,6 +1202,7 @@ if (path.resolve(process.argv[1] || "") === path.resolve(scriptPath)) {
         payloadIntegrity: "verified",
         themeId: loaded.theme.id,
         themeName: loaded.theme.name,
+        opacityUpdateKey: loaded.theme.opacityUpdateKey ?? null,
         imageBytes: loaded.imageBytes,
         payloadBytes: Buffer.byteLength(loaded.payload),
         safeCssStatus: loaded.safeCssStatus,

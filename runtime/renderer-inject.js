@@ -72,6 +72,8 @@
   const ART = THEME.art && typeof THEME.art === "object" ? THEME.art : {};
   const ART_METADATA = THEME.artMetadata && typeof THEME.artMetadata === "object"
     ? THEME.artMetadata : null;
+  const OPACITY_UPDATE_KEY = typeof THEME.opacityUpdateKey === "string" && /^[a-f0-9]{64}$/.test(THEME.opacityUpdateKey)
+    ? THEME.opacityUpdateKey : null;
   const ANALYSIS_CACHE_KEY = "__CODEX_DREAM_SKIN_ANALYSIS_CACHE__";
   const THEME_VARIABLES = [
     "--ds-bg", "--ds-panel", "--ds-panel-2", "--ds-green", "--ds-lime", "--ds-on-accent",
@@ -384,7 +386,7 @@
     };
   };
 
-  const surfaceOpacity = typeof ART.surfaceOpacity === "number" && Number.isFinite(ART.surfaceOpacity)
+  let surfaceOpacity = typeof ART.surfaceOpacity === "number" && Number.isFinite(ART.surfaceOpacity)
     ? clamp(ART.surfaceOpacity, 0, 1) : 0.3;
 
   const readableAccentInk = (accent, panel) => {
@@ -648,6 +650,36 @@
     setStyleProperty(root, "--ds-surface-opacity", String(Number(surfaceOpacity.toFixed(4))));
     setStyleProperty(root, "--ds-theme-image-focus-x", String(Number(focusX.toFixed(4))));
     setStyleProperty(root, "--ds-theme-image-focus-y", String(Number(focusY.toFixed(4))));
+  };
+
+  const updateVideoOpacity = (request) => {
+    if (!request || typeof request !== "object" || Array.isArray(request)) return false;
+    const fields = ["themeId", "opacityUpdateKey", "revision", "bubbleOpacity", "surfaceOpacity"];
+    const keys = Object.keys(request);
+    if (keys.length !== fields.length || keys.some((key) => !fields.includes(key))) return false;
+    const state = window[STATE_KEY];
+    const root = document.documentElement;
+    if (window[DISABLED_KEY] || videoDisposed || videoFailure || !root || root.getAttribute("data-dream-skin") !== "active" ||
+        state?.installToken !== installToken || state.mediaType !== "video" || artMediaType !== "video" ||
+        !videoLayer || state.videoLayer !== videoLayer || videoLayer.error || state.videoError ||
+        videoLayer.parentElement !== document.body || videoLayer.isConnected === false ||
+        document.getElementById("codex-dream-skin-video") !== videoLayer ||
+        typeof artUrl !== "string" || !artUrl.startsWith("blob:") || state.artUrl !== artUrl ||
+        videoLayer.src !== artUrl || !(videoLayer.readyState >= 1) || !(videoLayer.videoWidth > 0 && videoLayer.videoHeight > 0) ||
+        typeof request.themeId !== "string" || request.themeId !== (THEME.id || "custom") || request.themeId !== state.themeId ||
+        !OPACITY_UPDATE_KEY || request.opacityUpdateKey !== OPACITY_UPDATE_KEY || state.opacityUpdateKey !== OPACITY_UPDATE_KEY ||
+        typeof request.revision !== "string" || !/^[a-f0-9]{20}$/.test(request.revision) ||
+        ![request.bubbleOpacity, request.surfaceOpacity].every((value) =>
+          typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1)) return false;
+
+    // Persist the values used by later safety passes without touching video playback.
+    setStyleProperty(root, "--ds-bubble-opacity", String(Number(request.bubbleOpacity.toFixed(4))));
+    setStyleProperty(root, "--ds-surface-opacity", String(Number(request.surfaceOpacity.toFixed(4))));
+    ART.bubbleOpacity = request.bubbleOpacity;
+    ART.surfaceOpacity = request.surfaceOpacity;
+    surfaceOpacity = request.surfaceOpacity;
+    state.revision = request.revision;
+    return { applied: true, themeId: state.themeId, revision: state.revision };
   };
 
   const analyzeArt = () => new Promise((resolve) => {
@@ -1286,6 +1318,8 @@
     artUrl,
     artUrlOwned,
     bindMediaFile,
+    updateVideoOpacity,
+    opacityUpdateKey: OPACITY_UPDATE_KEY,
     mediaType: artMediaType,
     imageReady: false,
     imageError: null,

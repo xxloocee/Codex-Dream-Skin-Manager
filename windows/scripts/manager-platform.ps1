@@ -165,6 +165,8 @@ try {
     return
   }
   if ($Action -eq 'Apply') {
+    $refreshProbe = 'base64:' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($before | ConvertTo-Json -Depth 10 -Compress)))
+    $null = Invoke-ManagerPlatformWorker -Mode 'check-refresh' -VerifyPath $refreshProbe
     if ($null -ne $request.runtimeCommand) { $null = Invoke-ManagerRuntimeWorker -Mode 'check' -Probe $before }
     $repair = $null -ne $request.runtimeCommand -and $request.runtimeCommand.method -eq 'runtime.repair'
     $recoverByApply = $null -eq $request.runtimeCommand -and $before.recoveryRequired
@@ -174,6 +176,7 @@ try {
     $snapshot = Invoke-ManagerPlatformWorker -Mode 'prepare'
     if ($null -ne $request.runtimeCommand) { $effects.pausedCommitted = $null; $effects.rendererRemoved = $false }
     $applyArguments = @('-Action','ApplyTheme','-SkillRoot',$SkillRoot,'-StateRoot',$StateRoot,'-ThemeDirectory',"$($snapshot.directory)")
+    if ($null -ne $request.refresh -and $request.refresh.opacityOnly -eq $true) { $applyArguments += @('-OpacityOnly','-RefreshRequestPath',$RequestPath) }
     # From this boundary the old flow may already have changed the renderer,
     # even when its process later reports failure. Only verify can claim true.
     $effects.rendererApplied = $null
@@ -198,7 +201,7 @@ try {
       $committedRevision = "$($request.expectedRevision)"
     } else {
       $effects.themeCommitted = $null
-      $apply = Invoke-DreamSkinPowerShellScript -ScriptPath (Join-Path $PSScriptRoot 'platform-theme.ps1') -ArgumentList $applyArguments
+      $apply = Invoke-DreamSkinPowerShellScript -ScriptPath (Join-Path $PSScriptRoot 'platform-theme.ps1') -ArgumentList $applyArguments -SwitchParameters @('-DeferLiveApply','-SkipThemes','-OpacityOnly')
       if ($apply.ExitCode -ne 0) { throw 'The hot apply did not finish. A restart will not be attempted automatically.' }
       $applied = ($apply.Output -join "`n") | ConvertFrom-Json
       if ($applied.rendererApplied -ne $true -or -not $applied.rendererVerification) { throw 'The live renderer did not report a completed apply.' }

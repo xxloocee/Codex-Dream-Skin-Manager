@@ -177,6 +177,22 @@ try {
     "theme.json",
   ]);
 
+  for (const shellOpacity of [0, 0.37, 1]) {
+    const label = `official-shell-opacity-${shellOpacity}`;
+    const overlay = await makeOfficial(label, { mutateTheme: theme => { theme.art.shellOpacity = shellOpacity; } });
+    for (const platform of ["macos", "windows"]) {
+      const checked = await validate(overlay.source, platform, `${label}-${platform}`);
+      assert.equal(JSON.parse(await fs.readFile(path.join(checked.stage, "theme.json"), "utf8")).art.shellOpacity, shellOpacity);
+    }
+  }
+  for (const [index, shellOpacity] of [-0.01, 1.01, "0.5", null].entries()) {
+    const label = `official-invalid-shell-opacity-${index}`;
+    const overlay = await makeOfficial(label, { mutateTheme: theme => { theme.art.shellOpacity = shellOpacity; } });
+    for (const platform of ["macos", "windows"]) {
+      await expectRejected(overlay.source, platform, /shellOpacity must be between 0 and 1/, `${label}-${platform}`);
+    }
+  }
+
   const impossibleTimestamp = await makeOfficial("official-impossible-timestamp", {
     mutateManifest: (manifest) => { manifest.createdAt = "2026-02-30T00:00:00Z"; },
   });

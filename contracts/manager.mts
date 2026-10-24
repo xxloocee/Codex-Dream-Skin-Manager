@@ -36,6 +36,7 @@ export class ContractError extends Error {
   }
 }
 export interface ThemeRef { source: "preset" | "saved"; id: string }
+export interface ApplyRefresh { activeRevision: string; runtimeSessionId: string; opacityOnly?: true }
 export interface StartupAnimationSettings { enabled: boolean; theme: ThemeRef | null; themeName: string | null }
 export interface StartupAnimationUpdate { enabled?: boolean; theme?: ThemeRef | null; expectedRevision?: string }
 export interface Diagnostic { code: string; message: string }
@@ -53,6 +54,7 @@ export interface ThemeParameters {
   taskMode: "auto" | "ambient" | "banner" | "full" | "off" | null;
   bubbleOpacity: number | null;
   surfaceOpacity: number | null;
+  shellOpacity: number | null;
   accent: string | null;
 }
 export interface ThemeSummary {
@@ -223,7 +225,7 @@ export interface MethodMap {
   "media.activePreview": { params: { revision: string }; result: MediaResource };
   "media.release": { params: { leaseId: string }; result: { released: boolean } };
   "media.resolve": { params: { theme: ThemeRef; revision: string; variant: "thumbnail" | "preview" }; result: MediaResource };
-  "skin.apply": { params: { operationId: string; theme: ThemeRef; expectedRevision: string }; result: OperationSnapshot };
+  "skin.apply": { params: { operationId: string; theme: ThemeRef; expectedRevision: string; refresh?: ApplyRefresh }; result: OperationSnapshot };
   "themes.update": { params: ThemeEditRequest; result: OperationSnapshot };
   "themes.copy": { params: ThemeEditRequest & { name: string }; result: OperationSnapshot };
   "files.select": { params: { multiple: boolean }; result: SourceSelection };
@@ -276,7 +278,7 @@ export function parseThemePatch(value: unknown): ThemePatch {
     if (!record(value.parameters)) throw new ContractError("INVALID_REQUEST", "Invalid parameter patch.");
     const parameters = value.parameters;
     const ranges: Record<string, readonly [number, number]> = { focusX: [0, 1], focusY: [0, 1], positionX: [-1, 1], positionY: [-1, 1],
-      zoom: [1, 2], playbackRate: [0.25, 2], bubbleOpacity: [0, 1], surfaceOpacity: [0, 1] };
+      zoom: [1, 2], playbackRate: [0.25, 2], bubbleOpacity: [0, 1], surfaceOpacity: [0, 1], shellOpacity: [0, 1] };
     const choices: Record<string, readonly string[]> = { appearance: ["auto", "light", "dark"], positionMode: ["locked", "free"],
       safeArea: ["auto", "left", "right", "center", "none"], taskMode: ["auto", "ambient", "banner", "full", "off"] };
     fields(value.parameters, [...Object.keys(ranges), ...Object.keys(choices), "framingEnabled", "accent"]);
@@ -297,6 +299,15 @@ export function parseThemePatch(value: unknown): ThemePatch {
   }
   return value as ThemePatch;
 }
+export function parseApplyRefresh(value: unknown): ApplyRefresh {
+  if (!record(value)) throw new ContractError("INVALID_REQUEST", "Invalid hot refresh constraint.");
+  fields(value, ["activeRevision", "runtimeSessionId", "opacityOnly"]);
+  if (typeof value.activeRevision !== "string" || !/^[a-f0-9]{64}$/.test(value.activeRevision) ||
+      typeof value.runtimeSessionId !== "string" || !/^[a-f0-9]{64}$/.test(value.runtimeSessionId) ||
+      value.opacityOnly !== undefined && value.opacityOnly !== true) throw new ContractError("INVALID_REQUEST", "Invalid hot refresh constraint.");
+  return { activeRevision: value.activeRevision, runtimeSessionId: value.runtimeSessionId, ...(value.opacityOnly === true ? { opacityOnly: true } : {}) };
+}
+
 export function parseThemeRef(value: unknown): ThemeRef {
   if (!record(value)) throw new ContractError("INVALID_REQUEST", "Invalid theme reference.");
   fields(value, ["source", "id"]);
@@ -455,10 +466,11 @@ export function parseRequest(value: unknown): ManagerRequest {
       }
       break;
     case "skin.apply": case "themes.delete":
-      fields(params, ["operationId", "theme", "expectedRevision"]); parseThemeRef(params.theme);
+      fields(params, ["operationId", "theme", "expectedRevision", ...(value.method === "skin.apply" ? ["refresh"] : [])]); parseThemeRef(params.theme);
       if (!validOperationId(params.operationId) || typeof params.expectedRevision !== "string" || !/^[a-f0-9]{64}$/.test(params.expectedRevision)) {
         throw new ContractError("INVALID_REQUEST", "Invalid apply parameters.");
       }
+      if (params.refresh !== undefined) parseApplyRefresh(params.refresh);
       break;
     case "themes.update": case "themes.copy": {
       fields(params, ["operationId", "theme", "expectedRevision", "patch", ...(value.method === "themes.copy" ? ["name"] : [])]);

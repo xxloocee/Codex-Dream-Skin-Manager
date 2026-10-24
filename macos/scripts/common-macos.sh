@@ -885,6 +885,106 @@ ensure_node_runtime() {
   require_signed_node_runtime
 }
 
+run_injector_with_diagnostics() {
+  local phase="$1"
+  shift
+  case "$phase" in apply|verify) ;; *) return 2 ;; esac
+  # Raw renderer output stays in bounded memory, including on interruption.
+  "$NODE" - "$STATE_ROOT" "$phase" "$PROJECT_ROOT/assets/selectors.json" "$INJECTOR" "$@" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+const { constants } = require("node:os");
+const { randomUUID } = require("node:crypto");
+const { spawn } = require("node:child_process");
+const [state, phase, selectorsFile, injector, ...args] = process.argv.slice(2);
+const capture = maximum => {
+  const chunks = [];
+  let size = 0, truncated = false;
+  return {
+    append(bytes) {
+      const remaining = maximum - size;
+      if (bytes.length > remaining) truncated = true;
+      if (remaining > 0) { const kept = Buffer.from(bytes.subarray(0, remaining)); chunks.push(kept); size += kept.length; }
+    },
+    result() { return { text: Buffer.concat(chunks).toString("utf8"), truncated }; },
+  };
+};
+const classify = text => {
+  if (typeof text !== "string" || !text) return null;
+  if (text.includes("cannot be updated in place")) return "OPACITY_UPDATE_UNAVAILABLE";
+  if (/shell opacity|shell veil/i.test(text)) return "SHELL_OPACITY_UNVERIFIED";
+  if (text.includes("Validated media snapshot")) return "MEDIA_CACHE_INVALID";
+  if (/verification failed|did not verify|verify the exact/i.test(text)) return "RENDERER_UNVERIFIED";
+  if (/media file bridge|Video decode|decode-error|playback-rejected/i.test(text)) return "MEDIA_LOAD_FAILED";
+  if (/CDP|WebSocket|ECONN|fetch failed/i.test(text)) return "CDP_UNAVAILABLE";
+  if (/\b(?:EACCES|EPERM|ENOENT|ELOOP)\b/.test(text)) return "FILESYSTEM_ERROR";
+  return "INJECTOR_ERROR";
+};
+const record = value => value && typeof value === "object" && !Array.isArray(value) ? value : {};
+const flags = (value, keys) => Object.fromEntries(keys.filter(key => typeof record(value)[key] === "boolean").map(key => [key, value[key]]));
+const token = (value, pattern) => typeof value === "string" && pattern.test(value) ? value : null;
+const opacityReceipt = value => {
+  const source = record(value);
+  const numbers = ["shellOpacity", "shellVeilAlpha"].filter(key => source[key] === null ||
+    typeof source[key] === "number" && Number.isFinite(source[key]) && source[key] >= 0 && source[key] <= 1);
+  return { ...flags(source, ["shellOpacityVerified", "shellVeilVerified"]), ...Object.fromEntries(numbers.map(key => [key, source[key]])) };
+};
+let selectorKeys = new Set();
+try {
+  const contract = JSON.parse(fs.readFileSync(selectorsFile, "utf8"));
+  selectorKeys = new Set(contract.selectors.filter(value => value.tier === "L1" && value.required).map(value => value.key));
+} catch {}
+const output = capture(1024 * 1024), errors = capture(16384);
+const child = spawn(process.execPath, [injector, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+let launchFailed = false;
+child.stdout.on("data", bytes => output.append(bytes));
+child.stderr.on("data", bytes => errors.append(bytes));
+child.once("error", () => { launchFailed = true; });
+child.once("close", (code, signal) => {
+  const exitCode = Number.isInteger(code) && code >= 0 ? code : signal ? 128 + (constants.signals[signal] || 1) : 127;
+  let temporary;
+  try {
+    const stdout = output.result(), stderr = errors.result();
+    let parsed = {}, invalidOutput = stdout.truncated;
+    try { parsed = record(JSON.parse(stdout.text)); } catch { invalidOutput = true; }
+    if (!Array.isArray(parsed.targets)) invalidOutput = true;
+    const targets = Array.isArray(parsed.targets) ? parsed.targets.slice(0, 32).map(item => {
+      const target = record(item), result = record(target.result), scope = record(result.scope);
+      const opacity = opacityReceipt(target.opacity);
+      return {
+        targetId: token(target.targetId, /^[A-Za-z0-9._-]{1,200}$/), error: classify(target.error),
+        ...(Object.keys(opacity).length ? { opacity } : {}),
+        ...flags(result, ["pass", "installed", "stylePresent"]),
+        version: token(result.version, /^\d{1,6}\.\d{1,6}\.\d{1,6}(?:-[A-Za-z0-9.-]{1,40})?$/),
+        revision: token(result.revision, /^[a-f0-9]{20,64}$/),
+        checks: flags(result.checks, ["documentVisible", "fallbackWindowPass", "nativeWindowPass", "payloadPass", "structurePass", "viewportPass", "windowPass"]),
+        readiness: flags(result.readiness, ["windowPass", "documentPass", "viewportPass", "structurePass", "nativeWindowPass", "fallbackWindowPass"]),
+        scope: {
+          baseState: ["home", "thread", "settings"].includes(scope.baseState) ? scope.baseState : null,
+          level: ["L0", "L1"].includes(scope.level) ? scope.level : null,
+          missingL1: Array.isArray(scope.missingL1) ? [...new Set(scope.missingL1.filter(key => selectorKeys.has(key)))].slice(0, 32) : [],
+        },
+      };
+    }) : [];
+    const diagnostic = { schemaVersion: 1, capturedAt: new Date().toISOString(), phase, exitCode, signal: signal ?? null,
+      invalidOutput, stdoutTruncated: stdout.truncated, stderrTruncated: stderr.truncated,
+      error: launchFailed ? "INJECTOR_START_FAILED" : classify(stderr.text), targets };
+    const directory = fs.lstatSync(state);
+    if (!directory.isDirectory() || directory.isSymbolicLink()) throw new Error("Invalid diagnostic directory");
+    temporary = path.join(state, `.hot-apply-${process.pid}-${randomUUID()}.json`);
+    fs.writeFileSync(temporary, JSON.stringify(diagnostic, null, 2) + "\n", { flag: "wx", mode: 0o600 });
+    fs.chmodSync(temporary, 0o600);
+    fs.renameSync(temporary, path.join(state, phase === "verify" ? "last-hot-verify.json" : "last-hot-apply.json"));
+  } catch {
+    // Diagnostic persistence must not change the completed injector's outcome.
+  } finally {
+    if (temporary) { try { fs.unlinkSync(temporary); } catch {} }
+    process.exitCode = exitCode;
+  }
+});
+NODE
+}
+
 # Fast path when CDP is already open: restart injector + one-shot inject.
 # Returns 0 on success, 1 if CDP is not ready (caller should full-start).
 hot_reapply_theme() {
@@ -892,12 +992,14 @@ hot_reapply_theme() {
   local port="${1:-9341}"
   local timeout_ms="${2:-8000}"
   local operation_token="${3:-}"
+  local opacity_only="${4:-false}"
   local operation_args=()
   local inj_pid=""
   local injector_protocol=""
   local injector_mode=""
   local started_at=""
   local codex_pid=""
+  case "$opacity_only" in true|false) ;; *) return 1 ;; esac
 
   # A generic HTTP listener is not enough for a hot re-apply: only use the
   # endpoint already verified as belonging to the official Codex process.
@@ -906,6 +1008,7 @@ hot_reapply_theme() {
   [ -n "$operation_token" ] || operation_token="$(new_operation_token)"
   write_operation_state applying "$(dreamskin_text applying_selected_theme)" "$operation_token" || return 1
   operation_args=(--operation-token "$operation_token")
+  [ "$opacity_only" != "true" ] || operation_args+=(--opacity-only)
 
   injector_protocol="$(state_field injectorProtocol 2>/dev/null || true)"
   injector_mode="$(state_field injectorMode 2>/dev/null || true)"
@@ -914,14 +1017,15 @@ hot_reapply_theme() {
       index($0, inj) && index($0, "--watch") && index($0, "--port " port " --theme-dir ") { print $1; exit }
     ')"
   fi
-  if ! "$NODE" "$INJECTOR" --once --port "$port" --theme-dir "$THEME_DIR" \
-    --timeout-ms "$timeout_ms" "${operation_args[@]}" >/dev/null 2>&1; then
+  if ! run_injector_with_diagnostics apply --once --port "$port" --theme-dir "$THEME_DIR" \
+    --timeout-ms "$timeout_ms" "${operation_args[@]}"; then
     return 1
   fi
 
-  # A current watcher reloads theme files itself. Start one only when absent.
-  if [ -n "$inj_pid" ] && /bin/kill -0 "$inj_pid" 2>/dev/null \
-    && [ "$injector_mode" != "control" ]; then
+  # Strict opacity saves must not start a watcher that would replace the video.
+  # A normal apply can restore a missing watcher through the existing path.
+  if [ "$opacity_only" = "true" ] || { [ -n "$inj_pid" ] && /bin/kill -0 "$inj_pid" 2>/dev/null \
+    && [ "$injector_mode" != "control" ]; }; then
     mark_state_active || return 1
     write_operation_state success "$(dreamskin_text skin_applied)" "$operation_token" || return 1
     return 0
