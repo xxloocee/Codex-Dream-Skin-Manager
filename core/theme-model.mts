@@ -42,6 +42,7 @@ export function parameters(config: Record<string, unknown>): { stored: ThemePara
     safeArea: choice(art, "safeArea", ["auto", "left", "right", "center", "none"]),
     taskMode: choice(art, "taskMode", ["auto", "ambient", "banner", "full", "off"]),
     bubbleOpacity: numeric(art, "bubbleOpacity", 0, 1), surfaceOpacity: numeric(art, "surfaceOpacity", 0, 1),
+    shellOpacity: numeric(art, "shellOpacity", 0, 1),
     accent: accent === "" ? null : accent as string | null,
   };
   const framing = stored.framingEnabled ?? ["positionX", "positionY", "zoom", "positionMode"].some(key => Object.hasOwn(art, key));
@@ -52,6 +53,7 @@ export function parameters(config: Record<string, unknown>): { stored: ThemePara
     playbackRate: stored.playbackRate ?? 1,
     framingEnabled: framing, safeArea: stored.safeArea ?? "auto", taskMode: stored.taskMode ?? "auto",
     bubbleOpacity: stored.bubbleOpacity ?? 0, surfaceOpacity: stored.surfaceOpacity ?? 0.3, accent: stored.accent,
+    shellOpacity: stored.shellOpacity ?? (stored.appearance === "light" ? 0.64 : 0.58),
   } };
 }
 

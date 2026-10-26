@@ -325,7 +325,7 @@ function validateOfficialTheme(value) {
     assertExactKeys(
       art,
       [],
-      ["focusX", "focusY", "bubbleOpacity", "surfaceOpacity", "safeArea", "taskMode", "positionX", "positionY", "zoom", "positionMode", "framingEnabled", "playbackRate"],
+      ["focusX", "focusY", "bubbleOpacity", "surfaceOpacity", "shellOpacity", "safeArea", "taskMode", "positionX", "positionY", "zoom", "positionMode", "framingEnabled", "playbackRate"],
       "theme.json.art",
     );
     for (const key of ["focusX", "focusY"]) {
@@ -338,6 +338,9 @@ function validateOfficialTheme(value) {
     }
     if (art.surfaceOpacity !== undefined && (typeof art.surfaceOpacity !== "number" || !Number.isFinite(art.surfaceOpacity) || art.surfaceOpacity < 0 || art.surfaceOpacity > 1)) {
       fail("theme.json.art.surfaceOpacity must be between 0 and 1");
+    }
+    if (art.shellOpacity !== undefined && (typeof art.shellOpacity !== "number" || !Number.isFinite(art.shellOpacity) || art.shellOpacity < 0 || art.shellOpacity > 1)) {
+      fail("theme.json.art.shellOpacity must be between 0 and 1");
     }
     for (const key of ["positionX", "positionY"]) {
       if (art[key] !== undefined && (typeof art[key] !== "number" || !Number.isFinite(art[key]) || art[key] < -1 || art[key] > 1)) {

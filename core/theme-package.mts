@@ -29,7 +29,7 @@ export function packageFingerprint(config: Record<string, unknown>, media: Uint8
     const container = semantic[key];
     if (record(container)) { delete container.accent; if (!Object.keys(container).length) delete semantic[key]; }
   }
-  const render = { ...preview, focusX: stored.focusX, focusY: stored.focusY, accent: stored.accent?.toUpperCase() ?? null };
+  const render = { ...preview, focusX: stored.focusX, focusY: stored.focusY, shellOpacity: stored.shellOpacity, accent: stored.accent?.toUpperCase() ?? null };
   const origin: Record<string, unknown> = record(config.packageOrigin) && record(config.packageOrigin.manifest) ? config.packageOrigin.manifest : {};
   const attribution = { license: origin.license ?? null, publisher: origin.publisher ?? null, provenance: origin.provenance ?? null };
   return sha256([Buffer.from("dreamskin-package-semantic/1"), Buffer.from(canonicalJson({ config: semantic, render, attribution,

@@ -5,9 +5,18 @@ param(
   [Parameter(Mandatory = $true)][string]$SkillRoot,
   [string]$StateRoot = (Join-Path $env:LOCALAPPDATA 'CodexDreamSkin'),
   [string]$ThemeDirectory,
-  [switch]$DeferLiveApply
+  [switch]$DeferLiveApply,
+  [switch]$OpacityOnly,
+  [string]$RefreshRequestPath
 )
 $ErrorActionPreference = 'Stop'
+if ($OpacityOnly -and ($Action -ne 'ApplyTheme' -or $DeferLiveApply)) {
+  throw 'Opacity-only updates require immediate theme application.'
+}
+if ($OpacityOnly -and ($env:CODEX_MANAGER_RUNTIME_INTERNAL -ne '1' -or
+  $env:CODEX_DREAM_SKIN_RECOVERY_LOCK_HELD -ne '1' -or -not $RefreshRequestPath)) {
+  throw 'Opacity-only updates require a locked shared-manager refresh request.'
+}
 . (Join-Path $PSScriptRoot 'common-windows.ps1')
 . (Join-Path $PSScriptRoot 'theme-windows.ps1')
 . (Join-Path $PSScriptRoot 'runtime-version.ps1')
@@ -120,6 +129,7 @@ function Get-ManagerInjectorStatus {
 }
 
 function Invoke-ManagerLiveApplyIfRunning {
+  param([switch]$OpacityOnly)
   $state = Read-DreamSkinState -Path $paths.State
   $identity = Get-ManagerInjectorStatus -State $state
   # The packaged Node process can be running while Windows hides its command
@@ -128,7 +138,7 @@ function Invoke-ManagerLiveApplyIfRunning {
   # of forcing a Codex restart merely because PID identity is uninspectable.
   $hasLiveSession = $null -ne $state -and $state.port -and $state.browserId
   if (-not $identity.Running -and -not $hasLiveSession) { return $false }
-  $live = Invoke-DreamSkinLiveApply -StateRoot $StateRoot
+  $live = Invoke-DreamSkinLiveApply -StateRoot $StateRoot -OpacityOnly:$OpacityOnly
   # Only this failure means the theme was committed but the live session did
   # not apply it. Callers may reconcile startup; validation/write errors must
   # keep failing without being mistaken for a recoverable connection race.
@@ -158,12 +168,70 @@ $snapshotRoot = Join-Path $StateRoot 'manager-operations\snapshots'
 if (-not $ThemeDirectory -or -not (Test-DreamSkinThemePathWithin -Path $ThemeDirectory -Root $snapshotRoot)) {
   throw 'Theme publication requires a manager snapshot.'
 }
+if ($OpacityOnly -and (Test-DreamSkinPaused -StateRoot $StateRoot)) {
+  throw 'Opacity-only updates cannot resume a paused skin.'
+}
+if ($OpacityOnly) {
+  $fixedSkillRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+  $applicationRoot = Split-Path -Parent $fixedSkillRoot
+  $fixedStateRoot = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'CodexDreamSkin'))
+  if (-not (Test-DreamSkinPathEqual -Left $SkillRoot -Right $fixedSkillRoot) -or
+    -not (Test-DreamSkinPathEqual -Left $StateRoot -Right $fixedStateRoot)) {
+    throw 'Opacity-only refresh must use the installed manager runtime and state.'
+  }
+  $requestFile = [IO.Path]::GetFullPath($RefreshRequestPath)
+  $requestsRoot = Join-Path $fixedStateRoot 'manager-operations\requests'
+  Assert-DreamSkinNoReparseComponents -Path $requestFile
+  if ([IO.Path]::GetDirectoryName($requestFile) -ine $requestsRoot -or
+    [IO.Path]::GetFileName($requestFile) -cnotmatch '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json$' -or
+    -not (Test-Path -LiteralPath $requestFile -PathType Leaf) -or
+    (Get-Item -LiteralPath $requestFile).Length -gt 16KB) {
+    throw 'Invalid shared-manager opacity refresh request.'
+  }
+  $refreshRequest = (Read-DreamSkinUtf8File -Path $requestFile) | ConvertFrom-Json
+  if ($refreshRequest.schemaVersion -ne 1 -or $refreshRequest.refresh.opacityOnly -isnot [bool] -or
+    $refreshRequest.refresh.opacityOnly -ne $true) {
+    throw 'The manager request does not authorize an opacity-only refresh.'
+  }
+  $expectedSnapshot = Join-Path $snapshotRoot ([IO.Path]::GetFileNameWithoutExtension($requestFile))
+  if (-not (Test-DreamSkinPathEqual -Left $ThemeDirectory -Right $expectedSnapshot)) {
+    throw 'The opacity-only snapshot does not match its manager request.'
+  }
+  $probeResult = Invoke-DreamSkinPowerShellScript -ScriptPath (Join-Path $PSScriptRoot 'manager-platform.ps1') `
+    -ArgumentList @('-Action', 'Probe', '-ApplicationRoot', $applicationRoot)
+  if ($probeResult.ExitCode -ne 0) { throw 'Could not inspect the opacity-only runtime session.' }
+  $probe = ($probeResult.Output -join "`n") | ConvertFrom-Json
+  $encodedProbe = 'base64:' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($probe | ConvertTo-Json -Depth 10 -Compress)))
+  $managerNode = Get-DreamSkinValidatedNodeRuntime -Path (Join-Path $applicationRoot 'runtime\node\node.exe')
+  $refreshCheck = Invoke-DreamSkinNative -FilePath $managerNode.Path -ArgumentList @(
+    (Join-Path $applicationRoot 'shared\core\apply-worker.mjs'), 'check-refresh', $applicationRoot, $requestFile, $encodedProbe
+  ) -DiscardStderr
+  if ($refreshCheck.ExitCode -ne 0) { throw 'The active session or watcher cannot perform this opacity-only refresh.' }
+  $node = Get-DreamSkinNodeRuntime
+  $checkedThemes = @()
+  foreach ($directory in @($ThemeDirectory, $paths.Active)) {
+    $checked = Invoke-DreamSkinNative -FilePath $node.Path -ArgumentList @(
+      (Join-Path $PSScriptRoot 'injector.mjs'), '--check-payload', '--theme-dir', $directory
+    ) -DiscardStderr
+    if ($checked.ExitCode -ne 0) { throw 'Could not verify the opacity-only theme before publication.' }
+    $payload = ($checked.Output -join "`n") | ConvertFrom-Json
+    if ($payload.pass -ne $true -or $payload.artMetadata.video -ne $true -or
+      "$($payload.opacityUpdateKey)" -cnotmatch '^[a-f0-9]{64}$' -or -not $payload.themeId) {
+      throw 'Opacity-only publication requires an existing valid video theme.'
+    }
+    $checkedThemes += $payload
+  }
+  if ("$($checkedThemes[0].themeId)" -cne "$($checkedThemes[1].themeId)" -or
+    "$($checkedThemes[0].opacityUpdateKey)" -cne "$($checkedThemes[1].opacityUpdateKey)") {
+    throw 'Opacity-only publication cannot change the active video, theme or non-opacity settings.'
+  }
+}
 Initialize-DreamSkinThemeStore -SkillRoot $SkillRoot -StateRoot $StateRoot -PrepareOnly | Out-Null
 $saved = Read-DreamSkinTheme -ThemeDirectory $ThemeDirectory -SkipImageMetadata
 $css = Join-Path $ThemeDirectory 'theme.css'
 if (-not (Test-Path -LiteralPath $css -PathType Leaf)) { $css = $null }
 if ($css) { Assert-DreamSkinSafeCssFile -Path $css }
-$result = Set-DreamSkinActiveTheme -ImagePath $saved.ImagePath -Theme $saved.Theme -SafeCssPath $css -SkipImageArchive -StateRoot $StateRoot
-Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null
-$applied = if ($DeferLiveApply) { $false } else { Invoke-ManagerLiveApplyIfRunning }
+$result = Set-DreamSkinActiveTheme -ImagePath $saved.ImagePath -Theme $saved.Theme -SafeCssPath $css -SkipImageArchive -StateRoot $StateRoot -OpacityOnly:$OpacityOnly
+if (-not $OpacityOnly) { Set-DreamSkinPaused -Paused $false -StateRoot $StateRoot | Out-Null }
+$applied = if ($DeferLiveApply) { $false } else { Invoke-ManagerLiveApplyIfRunning -OpacityOnly:$OpacityOnly }
 [ordered]@{ id = "$($result.Theme.id)"; rendererApplied = [bool]$applied; rendererVerification = $script:liveVerification } | ConvertTo-Json -Depth 20 -Compress

@@ -143,6 +143,17 @@ test("visible L1 renderer passes exact macOS verification", async () => {
   assert.equal(result.sidebar.visible, true);
 });
 
+test("a failed opacity update cannot pass exact verification even with the requested revision", async () => {
+  const dom = makeDomFixture();
+  dom.window.__CODEX_DREAM_SKIN_STATE__.opacityUpdateFailed = true;
+  const failed = await verify({ dom });
+  assert.equal(failed.opacityUpdateFailed, true);
+  assert.equal(failed.checks.payloadPass, true);
+  assert.equal(failed.pass, false);
+  delete dom.window.__CODEX_DREAM_SKIN_STATE__.opacityUpdateFailed;
+  assert.equal((await verify({ dom })).pass, true);
+});
+
 test("CSS-hidden, detached, and offscreen anchors cannot satisfy L1", async () => {
   const cases = [
     ["display none", makeElement({ style: { display: "none" } })],

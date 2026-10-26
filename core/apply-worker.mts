@@ -3,13 +3,14 @@ import path from "node:path";
 import { finishPublication } from "../platforms/publication-history.mjs";
 import { pathToFileURL } from "node:url";
 import { mkdir, writeFile } from "node:fs/promises";
-import { ContractError, parseThemeRef, record } from "../contracts/manager.mjs";
+import { ContractError, parseApplyRefresh, parseThemeRef, record } from "../contracts/manager.mjs";
 import { fileBytes, jsonObject, optionalBytes, safePath } from "./local-files.mjs";
 import { privateDirectory } from "./write-files.mjs";
 import { readThemeContent, themeDetails } from "./theme-model.mjs";
 import { dataRoot, readAdapter } from "../platforms/factory.mjs";
 import { activeTheme } from "./active-theme.mjs";
 import { defaultRuntimeTheme } from "./runtime-targets.mjs";
+import { runtimeEngine } from "./runtime-engine.mjs";
 
 try {
   const [action, applicationRoot, requestFile, verifyFile] = process.argv.slice(2);
@@ -33,7 +34,7 @@ try {
     }
     process.stdout.write(JSON.stringify({ committedRevision: details.revision, verifiedRendererRevision: actual.revision }) + "\n");
   } else {
-  if (!["prepare", "verify", "settle"].includes(action ?? "") || !applicationRoot || !requestFile ||
+  if (!["prepare", "verify", "settle", "check-refresh"].includes(action ?? "") || !applicationRoot || !requestFile ||
       !path.isAbsolute(applicationRoot) || !path.isAbsolute(requestFile) ||
       (action === "prepare" ? verifyFile !== undefined : !verifyFile)) throw new ContractError("INVALID_REQUEST", "Invalid worker arguments.");
   const operationsRoot = path.join(dataRoot(), "manager-operations");
@@ -42,8 +43,24 @@ try {
   const request = jsonObject(await fileBytes(requestFile, requestsRoot, 16 * 1024));
   const ref = parseThemeRef(request.theme), revision = request.expectedRevision;
   if (typeof revision !== "string" || !/^[a-f0-9]{64}$/.test(revision)) throw new ContractError("INVALID_REQUEST", "Invalid requested revision.");
+  const refresh = request.refresh === undefined ? null : parseApplyRefresh(request.refresh);
   const directory = path.join(operationsRoot, "snapshots", id);
-  if (action === "settle") {
+  if (action === "check-refresh") {
+    if (refresh) {
+      const probe = jsonObject(Buffer.from(verifyFile!.startsWith("base64:") ? verifyFile!.slice(7) : verifyFile!, verifyFile!.startsWith("base64:") ? "base64" : "utf8"));
+      const current = await activeTheme(dataRoot(), process.platform === "win32" ? "windows" : "macos");
+      if (request.runtimeCommand || probe.startRequired !== false || probe.recoveryRequired !== false || probe.paused !== false || probe.runtimeSessionId !== refresh.runtimeSessionId ||
+          !current || current.ref.id !== ref.id || current.ref.source !== ref.source || (await themeDetails(current)).revision !== refresh.activeRevision) {
+        throw new ContractError("RUNTIME_CHANGED", "The active skin changed; hot refresh cannot start or restart Codex.");
+      }
+      if (refresh.opacityOnly) {
+        const platform = process.platform === "win32" ? "windows" : "macos", state = dataRoot();
+        const engine = await runtimeEngine(applicationRoot, state, platform, await optionalBytes(path.join(state, "state.json"), state), probe.watcherVerified === true);
+        if (!engine.engineRevision || engine.runningEngineRevision !== engine.engineRevision) throw new ContractError("RUNTIME_UNAVAILABLE", "The current watcher cannot guarantee an in-place video update.");
+      }
+    }
+    process.stdout.write("{}\n");
+  } else if (action === "settle") {
     await finishPublication(dataRoot(), requestFile, jsonObject(Buffer.from(verifyFile!.startsWith("base64:") ? verifyFile!.slice(7) : verifyFile!, verifyFile!.startsWith("base64:") ? "base64" : "utf8")));
     process.stdout.write("{}\n");
   } else if (action === "prepare") {
@@ -63,6 +80,18 @@ try {
     if (css) await writeFile(path.join(directory, "theme.css"), css, { flag: "wx", mode: 0o600 });
     const config: Record<string, unknown> = { ...local.config, image: name };
     await writeFile(path.join(directory, "theme.json"), JSON.stringify(config) + "\n", { flag: "wx", mode: 0o600 });
+    if (refresh?.opacityOnly) {
+      const active = await activeTheme(dataRoot(), process.platform === "win32" ? "windows" : "macos");
+      if (!active || active.ref.id !== ref.id || active.ref.source !== ref.source || (await themeDetails(active)).revision !== refresh.activeRevision) throw new ContractError("RUNTIME_CHANGED", "The active video changed before its opacity update.");
+      const platform = process.platform === "win32" ? "windows" : "macos";
+      const injector = await import(pathToFileURL(path.join(applicationRoot, platform, "scripts", "injector.mjs")).href);
+      // Same-media validation must not race chmod/rename in the shared cache.
+      const cache = path.join(directory, ".payload-cache");
+      const load = (source: string) => platform === "windows" ? injector.loadPayload(source, null, cache) : injector.loadPayload(source, cache);
+      const candidate = await load(directory);
+      const current = await load(active.mediaRoot);
+      if (!candidate.theme.artMetadata?.video || !current.theme.artMetadata?.video || !candidate.theme.opacityUpdateKey || candidate.theme.opacityUpdateKey !== current.theme.opacityUpdateKey) throw new ContractError("THEME_CHANGED", "Opacity-only refresh cannot replace the video or other theme settings.");
+    }
     process.stdout.write(JSON.stringify({ directory, expectedRevision: revision, appearance: config.appearance ?? "auto", video: name.endsWith(".mp4") }) + "\n");
   } else {
     if (path.dirname(path.resolve(verifyFile!)) !== requestsRoot || !path.basename(verifyFile!).startsWith(id + ".") ||

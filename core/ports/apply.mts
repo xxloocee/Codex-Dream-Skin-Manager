@@ -1,4 +1,4 @@
-import type { ConfirmationCopy, OperationSnapshot, ThemeRef } from "../../contracts/manager.mjs";
+import type { ApplyRefresh, ConfirmationCopy, OperationSnapshot, ThemeRef } from "../../contracts/manager.mjs";
 
 export interface ApplyPreflight {
   fingerprint: string;
@@ -17,6 +17,6 @@ export interface ApplyOutcome {
 export interface ApplyPort {
   receipt?(id: string, theme: ThemeRef, revision: string): Promise<ApplyOutcome | null>;
   inspect?(theme: ThemeRef | null): Promise<ApplyOutcome | null>;
-  preflight(theme: ThemeRef, revision: string): Promise<ApplyPreflight>;
-  apply(theme: ThemeRef, revision: string, preflight: ApplyPreflight, confirmed: boolean, operationId?: string): Promise<ApplyOutcome>;
+  preflight(theme: ThemeRef, revision: string, refresh?: ApplyRefresh): Promise<ApplyPreflight>;
+  apply(theme: ThemeRef, revision: string, preflight: ApplyPreflight, confirmed: boolean, operationId?: string, refresh?: ApplyRefresh): Promise<ApplyOutcome>;
 }

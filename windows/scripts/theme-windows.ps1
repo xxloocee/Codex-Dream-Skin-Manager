@@ -306,6 +306,7 @@ function Set-DreamSkinActiveTheme {
     [string]$Name,
     [AllowNull()][string]$SafeCssPath,
     [switch]$SkipImageArchive,
+    [switch]$OpacityOnly,
     [string]$StateRoot = (Join-Path $env:LOCALAPPDATA 'CodexDreamSkin')
   )
   $paths = Get-DreamSkinThemePaths -StateRoot $StateRoot
@@ -317,6 +318,7 @@ function Set-DreamSkinActiveTheme {
   # source media twice before validating that immutable snapshot.
   Assert-DreamSkinImageFile -Path $source -SkipImageMetadata
   $extension = [System.IO.Path]::GetExtension($source).ToLowerInvariant()
+  if ($OpacityOnly -and $extension -ne '.mp4') { throw 'Opacity-only updates require a video theme.' }
   $oldImage = $null
   try { $oldImage = (Read-DreamSkinTheme -ThemeDirectory $paths.Active -SkipImageMetadata).ImagePath } catch {}
   if ($null -eq $Theme) {
@@ -346,7 +348,7 @@ function Set-DreamSkinActiveTheme {
     Copy-Item -LiteralPath $source -Destination $temporary -Force
     Assert-DreamSkinNoReparseComponents -Path $temporary
     Assert-DreamSkinImageFile -Path $temporary
-    Assert-DreamSkinVideoDecodable -Path $temporary -StateRoot $StateRoot
+    if (-not $OpacityOnly) { Assert-DreamSkinVideoDecodable -Path $temporary -StateRoot $StateRoot }
     Move-Item -LiteralPath $temporary -Destination $target -Force
     Assert-DreamSkinNoReparseComponents -Path $target
     Assert-DreamSkinImageFile -Path $target -SkipImageMetadata
@@ -616,7 +618,8 @@ function Invoke-DreamSkinLiveRemove {
 function Invoke-DreamSkinLiveApply {
   param(
     [string]$StateRoot = (Join-Path $env:LOCALAPPDATA 'CodexDreamSkin'),
-    [int]$TimeoutMs = 8000
+    [int]$TimeoutMs = 8000,
+    [switch]$OpacityOnly
   )
   if ($TimeoutMs -lt 250 -or $TimeoutMs -gt 120000) {
     throw "Invalid live-apply timeout: $TimeoutMs"
@@ -645,6 +648,7 @@ function Invoke-DreamSkinLiveApply {
     '--theme-dir', $session.Paths.Active,
     '--timeout-ms', "$TimeoutMs"
   )
+  if ($OpacityOnly) { $argumentList += '--opacity-only' }
   $application = Invoke-DreamSkinNative -FilePath $session.NodePath -ArgumentList $argumentList -DiscardStderr
   return [pscustomobject]@{
     Attempted = $true

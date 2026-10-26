@@ -42,7 +42,8 @@ export class Operations {
     let record = await this.record(id);
     if (record.operation.state === "indeterminate" && record.operation.method === "skin.apply" && this.port.receipt) {
       const outcome = await this.port.receipt(id, record.operation.theme, record.operation.expectedRevision).catch(() => null);
-      if (outcome?.effects.themeCommitted === true && outcome.effects.rendererApplied === true && outcome.committedRevision === record.operation.expectedRevision && outcome.verifiedRendererRevision && outcome.runtimeSessionId) {
+      if (outcome?.effects.themeCommitted === true && outcome.effects.rendererApplied === true && outcome.committedRevision === record.operation.expectedRevision && outcome.verifiedRendererRevision && outcome.runtimeSessionId &&
+          (!record.refresh || outcome.effects.codexRestarted === false && outcome.runtimeSessionId === record.refresh.runtimeSessionId)) {
         record = { ...record, operation: { ...record.operation, ...outcome, state: "succeeded", stage: "reconciledReceipt", confirmation: null, error: null } };
       } else if (outcome?.effects.rollbackVerified === true) {
         record = { ...record, operation: { ...record.operation, ...outcome, state: "failed", stage: "rolledBack", confirmation: null,
@@ -127,7 +128,7 @@ export class Operations {
     } finally { if (value.operation.state !== "awaitingConfirmation") { if (this.activeId === value.operation.id) this.activeId = null; this.runtimeCommands.delete(value.operation.id); } }
   }
   async apply(params: MethodMap["skin.apply"]["params"], override?: { context: string; port: ApplyPort }): Promise<OperationSnapshot> {
-    const requestDigest = createHash("sha256").update(JSON.stringify([params.theme.source, params.theme.id, params.expectedRevision, ...(override ? [override.context] : [])])).digest("hex");
+    const requestDigest = createHash("sha256").update(JSON.stringify([params.theme.source, params.theme.id, params.expectedRevision, ...(override ? [override.context] : []), ...(params.refresh ? [canonicalJson(params.refresh)] : [])])).digest("hex");
     const known = this.live.get(params.operationId) ?? await this.store.read(params.operationId);
     if (known) {
       if (known.requestDigest !== requestDigest) throw new ContractError("OPERATION_CONFLICT", "This operation identity was already used for another request.");
@@ -140,7 +141,7 @@ export class Operations {
     }
     await this.validate(params.theme, params.expectedRevision);
     const now = new Date().toISOString();
-    const value: OperationRecord = { schemaVersion: 1, requestDigest, preflight: null,
+    const value: OperationRecord = { schemaVersion: 1, requestDigest, preflight: null, ...(params.refresh ? { refresh: structuredClone(params.refresh) } : {}),
       operation: { id: params.operationId, method: "skin.apply", state: "queued", stage: "queued", theme: params.theme,
         expectedRevision: params.expectedRevision, committedRevision: null, verifiedRendererRevision: null, runtimeSessionId: null,
         startedAt: now, updatedAt: now, confirmation: null, effects: { themeCommitted: false, rendererApplied: false, codexRestarted: false }, error: null, snapshot: null } };
@@ -307,16 +308,19 @@ export class Operations {
     try {
       const current = value.operation;
       const port = this.applyPorts.get(current.id) ?? this.port;
-      const preflight = await port.preflight(current.theme, current.expectedRevision);
+      const refresh = value.refresh;
+      const preflight = await port.preflight(current.theme, current.expectedRevision, refresh);
+      if (refresh && preflight.requiresConfirmation) throw new ContractError("RUNTIME_UNAVAILABLE", "Hot refresh cannot start or restart Codex.");
       if (preflight.requiresConfirmation && (!confirmed || !value.preflight || value.preflight.fingerprint !== preflight.fingerprint)) {
         await this.awaiting(value, preflight); return;
       }
       if (confirmed && value.preflight?.fingerprint !== preflight.fingerprint) { await this.awaiting(value, preflight); return; }
       await this.update(value, { state: "running", stage: "applying" }, preflight);
       executing = true;
-      const outcome = await port.apply(current.theme, current.expectedRevision, preflight, confirmed, current.id);
+      const outcome = await port.apply(current.theme, current.expectedRevision, preflight, confirmed, current.id, refresh);
       const succeeded = outcome.effects.themeCommitted === true && outcome.effects.rendererApplied === true &&
-        outcome.committedRevision === current.expectedRevision && !!outcome.verifiedRendererRevision && !!outcome.runtimeSessionId;
+        outcome.committedRevision === current.expectedRevision && !!outcome.verifiedRendererRevision && !!outcome.runtimeSessionId &&
+        (!refresh || outcome.effects.codexRestarted === false && outcome.runtimeSessionId === refresh.runtimeSessionId);
       const untouched = Object.values(outcome.effects).every(value => value === false);
       const rolledBack = outcome.effects.rollbackVerified === true;
       await this.update(value, { ...outcome, state: succeeded ? "succeeded" : rolledBack || untouched ? "failed" : "indeterminate", stage: succeeded ? "verified" : rolledBack ? "rolledBack" : untouched ? "preconditionChanged" : "reconciliationRequired",

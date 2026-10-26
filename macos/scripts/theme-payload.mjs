@@ -134,6 +134,7 @@ async function loadTheme(themeDir) {
     focusY: unit(rawArt.focusY, "art.focusY"),
     bubbleOpacity: range(rawArt.bubbleOpacity, "art.bubbleOpacity", 0, 1, 0),
     surfaceOpacity: range(rawArt.surfaceOpacity, "art.surfaceOpacity", 0, 1, 0.3),
+    shellOpacity: range(rawArt.shellOpacity, "art.shellOpacity", 0, 1, undefined),
     playbackRate: range(rawArt.playbackRate, "art.playbackRate", 0.25, 2, 1),
     safeArea: choice(rawArt.safeArea, "art.safeArea", ["auto", "left", "right", "center", "none"]),
     taskMode: choice(rawArt.taskMode, "art.taskMode", ["auto", "ambient", "banner", "full", "off"]),
@@ -279,6 +280,14 @@ async function loadPayload(themeDir, candidateTheme = null, mediaCacheRoot = MED
       : extension === ".gif" ? "image/gif"
         : extension === ".mp4" ? "video/mp4" : "image/png";
   const artDataUrl = `dreamskin-file:${mime}`;
+  const opacityIndependentArt = { ...theme.art };
+  delete opacityIndependentArt.bubbleOpacity;
+  delete opacityIndependentArt.surfaceOpacity;
+  delete opacityIndependentArt.shellOpacity;
+  theme.opacityUpdateKey = createHash("sha256")
+    .update(SKIN_VERSION).update(combinedCss).update(template).update(art)
+    .update(JSON.stringify({ ...theme, image: undefined, opacityUpdateKey: undefined, art: opacityIndependentArt }))
+    .digest("hex");
   const revision = createHash("sha256")
     .update(SKIN_VERSION)
     .update(combinedCss)

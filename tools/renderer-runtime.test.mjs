@@ -53,6 +53,9 @@ function makeFixture({
   const revoked = [];
   let deferredVideoReject = null;
   let videoPlayCalls = 0;
+  let videoPauseCalls = 0;
+  let videoLoadCalls = 0;
+  let videoSourceWrites = 0;
   let nextId = 0;
   let nextBlob = 0;
   const attributesFor = (values) => [...values].map(([name, value]) => ({ name, value }));
@@ -217,6 +220,7 @@ function makeFixture({
   };
   const makeVideoNode = () => {
     const videoListeners = new Map();
+    let source = "";
     return {
       id: "",
       tagName: "VIDEO",
@@ -228,9 +232,15 @@ function makeFixture({
       playsInline: false,
       preload: "",
       paused: true,
+      currentTime: 0,
+      readyState: 0,
+      videoWidth: 0,
+      videoHeight: 0,
       hidden: false,
       error: null,
       dataset: {},
+      get src() { return source; },
+      set src(value) { videoSourceWrites += 1; source = String(value); },
       setAttribute(name, value) { this[name] = String(value); },
       removeAttribute(name) { this[name] = ""; },
       addEventListener(type, callback) { videoListeners.set(type, callback); },
@@ -245,8 +255,8 @@ function makeFixture({
         this.paused = false;
         return Promise.resolve();
       },
-      pause() { this.paused = true; },
-      load() {},
+      pause() { videoPauseCalls += 1; this.paused = true; },
+      load() { videoLoadCalls += 1; },
       remove() { if (this.id) nodes.delete(this.id); this.parentElement = null; },
     };
   };
@@ -369,6 +379,7 @@ function makeFixture({
   return {
     addDynamicMessage, attrs, context, document, domNodes, flushTimers, intervals, listeners,
     nodes, observers, partFixtures, payloadFor, revoked, root, rootClasses, rootStyle,
+    get videoCalls() { return { play: videoPlayCalls, pause: videoPauseCalls, load: videoLoadCalls, source: videoSourceWrites }; },
     rejectDeferredVideo(error = new Error("Deferred playback rejected")) {
       deferredVideoReject?.(error);
       deferredVideoReject = null;
@@ -837,8 +848,10 @@ export async function runRendererRuntimeTest(assetRoot) {
   assert.equal(fileImage.nodes.has("codex-dream-skin-media-file"), false);
 
   const fileVideo = makeFixture({ nativeAppearance: "dark" });
+  const opacityUpdateKey = "a".repeat(64);
   vm.runInNewContext(
-    fileVideo.payloadFor({}, undefined, "dreamskin-file:video/mp4"), fileVideo.context,
+    fileVideo.payloadFor({ opacityUpdateKey, art: { bubbleOpacity: 0.2, surfaceOpacity: 0.6 } },
+      undefined, "dreamskin-file:video/mp4"), fileVideo.context,
   );
   const fileVideoState = fileVideo.window.__CODEX_DREAM_SKIN_STATE__;
   const fileInput = fileVideo.nodes.get("codex-dream-skin-media-file");
@@ -846,12 +859,80 @@ export async function runRendererRuntimeTest(assetRoot) {
   assert.ok(fileInput, "File-backed MP4 payloads must expose the private CDP file bridge");
   assert.equal(fileVideoState.artUrl, null);
   assert.equal(fileVideoLayer.paused, true);
+  const opacityRequest = {
+    themeId: "fixture", opacityUpdateKey, revision: "1".repeat(20), bubbleOpacity: 0.37, surfaceOpacity: 0.61,
+  };
+  const opacitySnapshot = () => ({
+    currentTime: fileVideoLayer.currentTime, src: fileVideoLayer.src, artUrl: fileVideoState.artUrl,
+    paused: fileVideoLayer.paused, revision: fileVideoState.revision,
+    styles: [...fileVideo.rootStyle.values], attributes: [...fileVideo.attrs],
+    calls: fileVideo.videoCalls, revoked: [...fileVideo.revoked], metrics: { ...fileVideoState.metrics },
+  });
+  const unboundOpacitySnapshot = opacitySnapshot();
+  assert.equal(fileVideoState.updateVideoOpacity(opacityRequest), false,
+    "Opacity updates must not bind or start a video whose media file is still missing.");
+  assert.deepEqual(opacitySnapshot(), unboundOpacitySnapshot);
   fileInput.files = [{ name: "background.mp4", size: 20 * 1024 * 1024, type: "video/mp4" }];
   assert.equal(fileVideoState.bindMediaFile(), true);
   assert.equal(fileVideoState.artUrl, "blob:fixture-1");
   assert.equal(fileVideoState.artUrlOwned, true);
   assert.equal(fileVideoLayer.src, "blob:fixture-1");
   assert.equal(fileVideoLayer.paused, false);
+  fileVideoLayer.currentTime = 7.25;
+  fileVideoLayer.readyState = 4;
+  fileVideoLayer.videoWidth = 1920;
+  fileVideoLayer.videoHeight = 1080;
+  const playbackBeforeOpacity = {
+    currentTime: fileVideoLayer.currentTime, src: fileVideoLayer.src, artUrl: fileVideoState.artUrl,
+    calls: fileVideo.videoCalls, revoked: [...fileVideo.revoked],
+  };
+  const assertVideoPlaybackUnchanged = () => {
+    assert.equal(fileVideo.window.__CODEX_DREAM_SKIN_STATE__, fileVideoState);
+    assert.equal(fileVideo.nodes.get("codex-dream-skin-video"), fileVideoLayer);
+    assert.equal(fileVideoState.videoLayer, fileVideoLayer);
+    assert.equal(fileVideo.nodes.get("codex-dream-skin-media-file"), fileInput);
+    assert.deepEqual({
+      currentTime: fileVideoLayer.currentTime, src: fileVideoLayer.src, artUrl: fileVideoState.artUrl,
+      calls: fileVideo.videoCalls, revoked: [...fileVideo.revoked],
+    }, playbackBeforeOpacity, "Opacity-only saves must not reload, replay, pause, rebind or revoke the active video.");
+  };
+  assert.deepEqual({ ...fileVideoState.updateVideoOpacity(opacityRequest) }, {
+    applied: true, themeId: "fixture", revision: opacityRequest.revision,
+  });
+  assert.equal(fileVideo.rootStyle.getPropertyValue("--ds-bubble-opacity"), "0.37");
+  assert.equal(fileVideo.rootStyle.getPropertyValue("--ds-surface-opacity"), "0.61");
+  assert.equal(fileVideoState.revision, opacityRequest.revision);
+  assertVideoPlaybackUnchanged();
+  fileVideoState.ensure({ root: true });
+  assert.equal(fileVideo.rootStyle.getPropertyValue("--ds-bubble-opacity"), "0.37");
+  assert.equal(fileVideo.rootStyle.getPropertyValue("--ds-surface-opacity"), "0.61");
+  assert.equal(fileVideoState.revision, opacityRequest.revision);
+  assertVideoPlaybackUnchanged();
+
+  const invalidOpacityRequests = [
+    null, [], {},
+    { ...opacityRequest, themeId: "another-theme" },
+    { ...opacityRequest, opacityUpdateKey: "b".repeat(64) },
+    { ...opacityRequest, opacityUpdateKey: "invalid-key" },
+    { ...opacityRequest, revision: "invalid-revision" },
+    { ...opacityRequest, extra: true },
+    ...["bubbleOpacity", "surfaceOpacity"].flatMap(key =>
+      [-0.1, 1.1, NaN, Infinity, "0.5", null].map(value => ({ ...opacityRequest, [key]: value }))),
+  ];
+  for (const request of invalidOpacityRequests) {
+    const before = opacitySnapshot();
+    assert.equal(fileVideoState.updateVideoOpacity(request), false,
+      "Invalid or mismatched opacity requests must be rejected before any renderer changes.");
+    assert.deepEqual(opacitySnapshot(), before);
+    assertVideoPlaybackUnchanged();
+  }
+  fileVideo.window.__CODEX_DREAM_SKIN_DISABLED__ = true;
+  const disabledOpacitySnapshot = opacitySnapshot();
+  assert.equal(fileVideoState.updateVideoOpacity({ ...opacityRequest, revision: "2".repeat(20) }), false,
+    "Saving opacity must never re-enable a disabled skin.");
+  assert.deepEqual(opacitySnapshot(), disabledOpacitySnapshot);
+  assertVideoPlaybackUnchanged();
+  delete fileVideo.window.__CODEX_DREAM_SKIN_DISABLED__;
   assert.equal(fileVideoState.cleanup(), true);
   assert.deepEqual(fileVideo.revoked, ["blob:fixture-1"]);
   assert.equal(fileVideo.nodes.has("codex-dream-skin-media-file"), false);

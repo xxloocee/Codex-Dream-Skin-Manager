@@ -220,7 +220,7 @@ assert.match(
 );
 assert.match(
   source,
-  /const earlyApplied = await session\.evaluate\([\s\S]*if \(!earlyApplied \|\| current\.theme\?\.artMetadata\?\.video\) \{[\s\S]*applyLoadedToSession/,
+  /const setupPayload = desiredPayload;[\s\S]*const earlyApplied = await session\.evaluate\([\s\S]*if \(!earlyApplied \|\| setupPayload\.theme\?\.artMetadata\?\.video\) \{[\s\S]*applyLoadedToSession\(session, setupPayload\)/,
   "The watcher must preserve early image installs and always preflight video installs.",
 );
 assert.match(

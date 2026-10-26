@@ -25,6 +25,7 @@ export function assessRendererVerification(renderer, nativeWindow, expected) {
     && (nativeWindowPass || fallbackWindowPass);
   const basePass = result.installed && result.version === expected.skinVersion
     && result.stylePresent && result.businessClassPollution === 0
+    && result.opacityUpdateFailed !== true
     && structurePass && windowPass && !result.documentOverflow?.x;
   const payloadPass = (!expected.expectedThemeId || result.themeId === expected.expectedThemeId)
     && (!expected.expectedRevision || result.revision === expected.expectedRevision);
@@ -164,6 +165,7 @@ async function verifyRenderer(session, nativeWindow, expectedThemeId = null, exp
       version: runtime?.version ?? null,
       themeId: runtime?.themeId ?? null,
       revision: runtime?.revision ?? null,
+      opacityUpdateFailed: runtime?.opacityUpdateFailed === true,
       styleMode: runtime?.styleMode ?? null,
       stylePresent: Boolean(adopted || fallback),
       scope: runtime?.scope ?? null,

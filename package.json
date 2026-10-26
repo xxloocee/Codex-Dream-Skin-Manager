@@ -6,7 +6,7 @@
     "build:core": "tsc -p tsconfig.core.json",
     "build:ui": "vite build --config ui/manager/vite.config.mts",
     "check:ui": "tsc -p ui/manager/tsconfig.json",
-    "test:shared": "npm run build:core && node --test tests/shared-manager.test.mjs tests/shared-library-transactions.test.mjs tests/shared-library-worker.test.mjs",
+    "test:shared": "npm run build:core && node --test tests/shared-manager.test.mjs tests/shared-library-transactions.test.mjs tests/shared-library-worker.test.mjs tests/shared-opacity-refresh.test.mjs",
     "manager:read": "node build/shared/core/main.mjs"
   },
   "devDependencies": {

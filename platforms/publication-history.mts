@@ -1,7 +1,7 @@
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { readdir, rm, unlink } from "node:fs/promises";
-import { record, validOperationId } from "../contracts/manager.mjs";
+import { parseApplyRefresh, record, validOperationId } from "../contracts/manager.mjs";
 import { jsonObject, optionalBytes, safePath } from "../core/local-files.mjs";
 import { durableJson, privateDirectory } from "../core/write-files.mjs";
 
@@ -16,6 +16,12 @@ export async function finishPublication(state: string, request: string, outcome:
   if (!bytes) throw new Error("Missing publication request.");
   const value = jsonObject(bytes);
   if (!record(outcome.effects) || outcome.effects.themeCommitted !== true || outcome.effects.rendererApplied !== true || outcome.committedRevision !== value.expectedRevision || !outcome.verifiedRendererRevision || !outcome.runtimeSessionId) throw new Error("Publication was not verified.");
+  if (value.refresh !== undefined) {
+    const refresh = parseApplyRefresh(value.refresh);
+    if (outcome.effects.codexRestarted !== false || outcome.runtimeSessionId !== refresh.runtimeSessionId) {
+      throw new Error("Hot refresh publication did not preserve the confirmed runtime session.");
+    }
+  }
   if (record(value.community) && typeof value.community.recoveryTransaction === "string") outcome = { ...outcome, recoveryTransaction: value.community.recoveryTransaction };
   const command = record(value.runtimeCommand) ? value.runtimeCommand : null;
   const operationId = command && record(command.params) ? command.params.operationId : value.operationId;
