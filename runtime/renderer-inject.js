@@ -1019,14 +1019,58 @@
     else if (previous !== undefined) node.setAttribute?.(SURFACE_ATTR, previous);
     surfaceNodes.delete(node);
   };
+  const composerDecorationNodes = (composerNodes) => {
+    const decorations = new Set();
+    const main = resolvedMainNode();
+    if (!main || typeof getComputedStyle !== "function") return decorations;
+    const protectedContent = PROTECTED_SURFACE_CONTENT +
+      ', [tabindex], a[href], [role]:not([role="none"]):not([role="presentation"])';
+    const floatingSurface = '[role="dialog"], [role="menu"], [role="tooltip"], ' +
+      '[aria-modal="true"], [data-radix-popper-content-wrapper]';
+    for (const composer of composerNodes) {
+      if (!main.contains?.(composer) || composer.closest?.(floatingSurface)) continue;
+      // Follow the input's outside branch. A sibling may hold both transcript
+      // content and a separate hidden fade: inspect hidden descendants without
+      // treating the content container itself as decorative paint.
+      for (let branch = composer, parent = branch.parentElement;
+        parent && parent !== main; branch = parent, parent = parent.parentElement) {
+        if (parent.closest?.(floatingSurface)) break;
+        for (const sibling of parent.children ?? []) {
+          if (sibling === branch) continue;
+          const emptyBranch = !sibling.textContent?.trim() &&
+            !sibling.matches?.(protectedContent) && !sibling.querySelector?.(protectedContent);
+          const paintNodes = emptyBranch ? [
+            sibling,
+            ...Array.from(sibling.querySelectorAll?.('div, section, [aria-hidden="true"]') ?? []),
+          ] : Array.from(sibling.querySelectorAll?.('[aria-hidden="true"]') ?? []);
+          for (const node of paintNodes) {
+            if (node.textContent?.trim() || node.matches?.(protectedContent) ||
+              node.querySelector?.(protectedContent) || node.closest?.(PROTECTED_SURFACE_CONTENT) ||
+              node.closest?.(floatingSurface)) continue;
+            metrics.layoutReads += 1;
+            const style = getComputedStyle(node);
+            // Older decorations have no aria-hidden. An empty positioned layer
+            // with no pointer/focus targets is equally safe to clear.
+            if (style.pointerEvents === "none" && (decorations.has(node.parentElement) ||
+              node.getAttribute?.("aria-hidden") === "true" ||
+              ["absolute", "fixed", "sticky"].includes(style.position))) decorations.add(node);
+          }
+        }
+        // Include siblings of the footer (older fade placement), then stop at
+        // the conversation boundary instead of walking into unrelated panes.
+        if (parent.matches?.('[data-ds-part="thread"], .thread-scroll-container')) break;
+      }
+    }
+    return decorations;
+  };
   const refreshSurfaces = (parts, composerNodes) => {
     const shellParts = new Set(["root", "main", "home", "thread", "header"]);
     const sceneNodes = [...parts].filter(([, part]) => part === "main" || part === "home")
       .map(([node]) => node);
-    const moduleComposerDecorations = new Set(selectorNodes("thread-composer-decoration"));
+    const decorativeNodes = composerDecorationNodes(composerNodes);
     const candidates = new Set([
       ...genericNodes(NEUTRAL_SURFACE_SELECTOR), ...genericNodes(SURFACE_BOUNDARIES),
-      ...moduleComposerDecorations,
+      ...decorativeNodes,
       ...composerNodes, ...selectorNodes("home-utility"),
       ...[...parts].filter(([, part]) => part === "sidebar").map(([node]) => node),
     ].filter((node) => !shellParts.has(parts.get(node)) &&
@@ -1035,31 +1079,6 @@
     // extra panel or cause every independent panel beneath it to lose its tint.
     const sceneWrappers = new Set([...candidates]
       .filter((node) => sceneNodes.some((scene) => node.contains?.(scene))));
-
-    // The composer footer owns a full-width decorative fade behind the real
-    // input. It is a neutral surface candidate, but it is part of the canvas,
-    // not an adjustable panel. Keep the exact utility signature narrow so
-    // dialogs, menus and other aria-hidden transitions remain independent.
-    const isComposerDecoration = (node) => {
-      if (!node || node.getAttribute?.("role") ||
-        node.closest?.('[role="dialog"], [role="menu"], [role="tooltip"]')) return false;
-      // 26.1013 moved both paints into CSS modules. The fade no longer has a
-      // neutral bg-* class, so include it explicitly and reuse the clear
-      // surface paint for both layers; their native geometry stays intact.
-      if (moduleComposerDecorations.has(node)) return true;
-      if (!node.matches?.(
-        '[class~="pointer-events-none"][class~="absolute"][class~="inset-x-0"]' +
-        '[class~="-top-8"]',
-      )) return false;
-      const fadeSurface = node.matches?.('[class~="z-0"][class~="bg-surface"]') ||
-        node.matches?.('[aria-hidden="true"][class~="bg-surface"]') ||
-        node.matches?.('[aria-hidden="true"][class~="backdrop-blur-lg"]');
-      return fadeSurface && Boolean(
-        node.closest?.('[data-thread-scroll-footer]') &&
-        node.closest?.('[data-ds-part="thread"]'),
-      );
-    };
-    const decorativeNodes = new Set([...candidates].filter(isComposerDecoration));
 
     for (const node of surfaceNodes.keys()) {
       if (!candidates.has(node)) restoreSurface(node);
@@ -1361,7 +1380,8 @@
       // Ignore our own part/surface attributes and inline palette writes.
       attributeFilter: ["class", "role", "data-composer-surface-variant",
         "data-composer-home-utility-bar-position", "data-summary-panel-variant",
-        "data-radix-popper-content-wrapper", "data-testid", "contenteditable"],
+        "data-radix-popper-content-wrapper", "data-testid", "contenteditable",
+        "aria-hidden", "tabindex"],
     });
   };
   observeAttributes(document.documentElement);
