@@ -45,6 +45,7 @@
         "scripts/manager-platform.sh",
         "scripts/manager-trash-macos.js",
         "scripts/pause-dream-skin-macos.sh",
+        "scripts/process-identity-macos.sh",
         "scripts/restore-dream-skin-macos.sh",
         "scripts/seed-gui-presets-macos.sh",
         "scripts/snapshot-active-theme-macos.sh",

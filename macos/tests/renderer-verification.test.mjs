@@ -80,7 +80,10 @@ function makeDomFixture({
           selector === selectors.gameSource || selector === selectors.suggestions) return null;
       return null;
     },
-    querySelectorAll: () => [],
+    querySelectorAll(selector) {
+      const node = this.querySelector(selector);
+      return node ? [makeElement({ rect: makeRect(0, 0) }), node] : [];
+    },
     getElementById: (id) => id === "codex-dream-skin-style" ? styleNode : null,
   };
   const window = {
@@ -172,7 +175,7 @@ test("CSS-hidden, detached, and offscreen anchors cannot satisfy L1", async () =
     const result = await verify({ dom: makeDomFixture({ shell }) });
     assert.equal(result.pass, false, label);
     assert.equal(result.checks.structurePass, false, label);
-    assert.equal(result.shell.visible, false, label);
+    assert.equal(Boolean(result.shell?.visible), false, label);
   }
 });
 
@@ -200,4 +203,11 @@ test("verification rethrows the last transient error when no sample succeeds", a
     waitForVerifiedSession(session, 15, "fixture-theme", "fixture-revision", 1),
     /Execution context stayed unavailable/,
   );
+});
+
+test("an inactive home scope cannot override the visible thread DOM", async () => {
+  const result = await verify({ scope: { level: "L1", baseState: "home", missingL1: [] } });
+  assert.equal(result.homePresent, false);
+  assert.equal(result.shell.visible, true);
+  assert.equal(result.pass, true);
 });

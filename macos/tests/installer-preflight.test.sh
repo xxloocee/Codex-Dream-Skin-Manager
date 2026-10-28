@@ -40,7 +40,7 @@ FIXTURE_SCRIPTS="$FIXTURE_SOURCE/scripts"
 /bin/chmod 700 "$TMP/dscl-mock.sh"
 /usr/bin/sed "s|/usr/bin/dscl|$TMP/dscl-mock.sh|g" \
   "$ROOT/scripts/common-macos.sh" > "$FIXTURE_SCRIPTS/common-macos.sh"
-/bin/cp "$ROOT/scripts/localization-macos.sh" "$ROOT/scripts/install-dream-skin-macos.sh" "$FIXTURE_SCRIPTS/"
+/bin/cp "$ROOT/scripts/localization-macos.sh" "$ROOT/scripts/process-identity-macos.sh" "$ROOT/scripts/install-dream-skin-macos.sh" "$FIXTURE_SCRIPTS/"
 /usr/bin/printf '%s\n' \
   '#include <signal.h>' \
   '#include <unistd.h>' \

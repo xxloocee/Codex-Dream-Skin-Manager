@@ -7,6 +7,7 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 . "$SCRIPT_DIR/localization-macos.sh"
+. "$SCRIPT_DIR/process-identity-macos.sh"
 
 SHORT="false"
 JSON="false"
@@ -86,7 +87,7 @@ injector_identity_matches() {
   local expected_node="$3"
   local expected_injector="$4"
   local expected_port="$5"
-  local command_line command_lower node_lower injector_lower actual_start
+  local command_line command_lower node_lower injector_lower
 
   case "$pid" in ''|*[!0-9]*) return 1 ;; esac
   [ "$pid" != "0" ] || return 1
@@ -104,8 +105,7 @@ injector_identity_matches() {
   # Requiring that following token prevents 93410 from matching saved port
   # 9341 via a loose prefix pattern.
   case "$command_lower" in *"--port $expected_port --theme-dir "*) ;; *) return 1 ;; esac
-  actual_start="$(/bin/ps -p "$pid" -o lstart= 2>/dev/null | /usr/bin/awk '{$1=$1; print}')"
-  [ -n "$actual_start" ] && [ "$actual_start" = "$expected_start" ]
+  process_start_matches "$pid" "$expected_start"
 }
 
 # Codex process: cheap name match only.  26.707 renamed Codex.app to

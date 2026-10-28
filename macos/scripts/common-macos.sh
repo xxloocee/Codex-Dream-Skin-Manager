@@ -11,6 +11,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 . "$SCRIPT_DIR/localization-macos.sh"
+. "$SCRIPT_DIR/process-identity-macos.sh"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 INJECTOR="$SCRIPT_DIR/injector.mjs"
 INSTALL_ROOT="$HOME/.codex/codex-dream-skin-studio"
@@ -430,10 +431,6 @@ sync_appearance_pin() {
   "$NODE" "$SCRIPT_DIR/theme-config.mjs" install "$CONFIG_PATH" "$THEME_BACKUP_PATH" "$(active_theme_appearance)"
 }
 
-process_started_at() {
-  /bin/ps -p "$1" -o lstart= 2>/dev/null | /usr/bin/awk '{$1=$1; print}'
-}
-
 recorded_injector_process_matches() {
   local pid="$1"
   local expected_start="${2:-}"
@@ -444,7 +441,6 @@ recorded_injector_process_matches() {
   local command_lower=""
   local node_lower=""
   local injector_lower=""
-  local actual_start=""
 
   # A recorded PID is only safe to signal when the complete launch identity
   # was persisted.  Do not fall back to the current process paths: a stale or
@@ -466,8 +462,7 @@ recorded_injector_process_matches() {
     *"$injector_lower --watch --port $expected_port --theme-dir "*) ;;
     *) return 1 ;;
   esac
-  actual_start="$(process_started_at "$pid")"
-  [ -n "$actual_start" ] && [ "$actual_start" = "$expected_start" ] || return 1
+  process_start_matches "$pid" "$expected_start" || return 1
   return 0
 }
 
