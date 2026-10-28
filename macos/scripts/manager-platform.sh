@@ -28,7 +28,7 @@ probe() {
   fi
   while IFS= read -r pid; do
     [ -n "$pid" ] || continue
-    started="$(/bin/ps -p "$pid" -o lstart=)" || return 1
+    started="$(process_started_at "$pid")" || return 1
     processes="$processes$pid:$started
 "
   done < <(codex_main_pids | /usr/bin/sort -n)

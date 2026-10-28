@@ -141,7 +141,7 @@ try {
     const entryNames = ["start-dream-skin-macos.sh", "restore-dream-skin-macos.sh", "switch-theme-macos.sh",
       "pause-dream-skin-macos.sh", "install-dream-skin-macos.sh", "apply-community-theme-macos.sh",
       "manager-community.sh", "manager-maintenance.sh", "manager-platform.sh"];
-    for (const name of ["localization-macos.sh", "theme-switch-lock-macos.sh", ...entryNames]) {
+    for (const name of ["localization-macos.sh", "process-identity-macos.sh", "theme-switch-lock-macos.sh", ...entryNames]) {
       await writeFile(path.join(scripts, name), await readFile(new URL(name, sourceDirectory)));
     }
     // Even if an entry guard regresses, app discovery selects this unsigned
@@ -230,6 +230,7 @@ appendFileSync(process.env.FIXTURE_LAUNCH_LOG, JSON.stringify({ command: process
     }
     await writeFile(path.join(launchScripts, "common-macos.sh"), launchCommon);
     await writeFile(path.join(launchScripts, "localization-macos.sh"), await readFile(new URL("localization-macos.sh", sourceDirectory)));
+    await writeFile(path.join(launchScripts, "process-identity-macos.sh"), await readFile(new URL("process-identity-macos.sh", sourceDirectory)));
     const helperSource = await readFile(new URL("launch-environment-macos.mjs", sourceDirectory), "utf8");
     assert.equal(helperSource.split("os.userInfo().homedir").length, 2,
       "Only the account identity lookup may be substituted in the real helper.");

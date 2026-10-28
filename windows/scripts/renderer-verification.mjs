@@ -9,7 +9,8 @@ export function assessRendererVerification(renderer, nativeWindow, expected) {
   const viewportPass = hasReasonableDimensions(viewportWidth, viewportHeight);
   const documentVisible = result.documentVisibility === "visible" && !result.documentHidden;
   const settingsRoute = result.scope?.baseState === "settings";
-  const homeRoute = result.scope?.baseState === "home" || result.homeRoute || result.homePresent;
+  // Scope can still describe a mounted, inactive home tab. Use visible DOM evidence.
+  const homeRoute = result.homeRoute || result.homePresent;
   const l1ScopePass = result.scope?.level === "L1" &&
     Array.isArray(result.scope?.missingL1) && result.scope.missingL1.length === 0;
   const genericStructurePass = l1ScopePass && Boolean(result.genericMain?.visible) &&
@@ -93,14 +94,17 @@ async function verifyRenderer(session, nativeWindow, expectedThemeId = null, exp
         visible: Boolean(node.isConnected !== false && cssVisible && intersectsViewport),
       };
     };
-    const homeIndicator = document.querySelector(${selectorLiteral("home-icon")});
-    const homeSignal = homeIndicator ?? document.querySelector(${selectorLiteral("game-source")}) ??
-      document.querySelector(${selectorLiteral("home-suggestions")});
+    // Inactive tabs remain mounted in recent Codex releases.
+    const visibleQuery = (selector) => [...document.querySelectorAll(selector)]
+      .find((node) => box(node)?.visible) ?? null;
+    const homeIndicator = visibleQuery(${selectorLiteral("home-icon")});
+    const homeSignal = homeIndicator ?? visibleQuery(${selectorLiteral("game-source")}) ??
+      visibleQuery(${selectorLiteral("home-suggestions")});
     const homeRoute = homeSignal?.closest('[role="main"]') ?? null;
     // Codex 26.721.x can render the home content before home-icon. Reuse the
     // already-resolved semantic home container so a healthy home session is
     // not rejected solely because the stricter home-icon selector is late.
-    const home = document.querySelector(${selectorLiteral("home-route")}) ?? homeRoute;
+    const home = visibleQuery(${selectorLiteral("home-route")}) ?? homeRoute;
     const suggestions = home?.querySelector(${selectorLiteral("home-suggestions")}) ?? null;
     const cardButtons = suggestions ? [...suggestions.querySelectorAll('button')] : [];
     const cardBoxes = cardButtons.map(box);
@@ -139,15 +143,15 @@ async function verifyRenderer(session, nativeWindow, expectedThemeId = null, exp
       ?? siblingCandidates.find((item) => item?.visible)
       ?? box(boxableChain[boxableChain.length - 1]);
     const projectButton = box(home?.querySelector(${selectorLiteral("project-selector")} + " > button"));
-    const shell = box(document.querySelector(${selectorLiteral("shell-main")}));
-    const composer = box(document.querySelector(${selectorLiteral("composer-chrome")}));
-    const sidebar = box(document.querySelector(${selectorLiteral("left-panel")}));
-    const genericMain = box(document.querySelector('[data-ds-part="main"], [data-ds-part="home"]'));
-    const genericInput = box(document.querySelector('[data-ds-part="composer"]'));
+    const shell = box(visibleQuery(${selectorLiteral("shell-main")}));
+    const composer = box(visibleQuery(${selectorLiteral("composer-chrome")}));
+    const sidebar = box(visibleQuery(${selectorLiteral("left-panel")}));
+    const genericMain = box(visibleQuery('[data-ds-part="main"], [data-ds-part="home"]'));
+    const genericInput = box(visibleQuery('[data-ds-part="composer"]'));
     const settingsBoxes = [
-      box(document.querySelector(${selectorLiteral("settings-panel")})),
-      box(document.querySelector(${selectorLiteral("appearance-radio")})),
-      box(document.querySelector(${stableTestidLiteral("theme-preview")})),
+      box(visibleQuery(${selectorLiteral("settings-panel")})),
+      box(visibleQuery(${selectorLiteral("appearance-radio")})),
+      box(visibleQuery(${stableTestidLiteral("theme-preview")})),
     ];
     const settings = settingsBoxes.find((item) => item?.visible) ??
       settingsBoxes.find(Boolean) ?? null;
