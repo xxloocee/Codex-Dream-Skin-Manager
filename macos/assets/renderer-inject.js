@@ -1,6 +1,6 @@
 // Canonical cross-platform renderer. Run tools/sync-runtime-assets.mjs after editing.
 ((cssText, artDataUrl, themeConfig) => {
-  const SELECTOR_CONTRACT = {"schema":"codex-dream-skin-selectors/1","selectors":[{"key":"shell-main","selector":"main:is(.main-surface, [data-app-shell-main-surface], [class*=\"_MainContentSurface_\"])","tier":"L1","scope":"all","required":true},{"key":"left-panel","selector":"aside.app-shell-left-panel","tier":"L1","scope":"all","required":true},{"key":"header-tint","selector":"header:is(.app-header-tint, [data-app-shell-header-edge-scroll], [class*=\"_Header_\"])","tier":"L1","scope":"all","required":true},{"key":"main-content-top-fade","selector":":is(.app-shell-main-content-top-fade, [class*=\"_MainContentTopFade_\"], [data-app-shell-main-content-top-fade]:empty)","tier":"L2","scope":"all","required":false},{"key":"home-icon","selector":"[data-testid=\"home-icon\"]","tier":"L1","scope":"home","required":true},{"key":"home-route","selector":"[role=\"main\"]:has([data-testid=\"home-icon\"])","tier":"L1","scope":"home","required":true},{"key":"home-route-css","selector":"[role=\"main\"]","tier":"L1","scope":"home","required":true},{"key":"home-banners","selector":".home-banners","tier":"L2","scope":"home","required":false},{"key":"composer-chrome","selector":":is(.composer-surface-chrome, [class*=\"_ComposerLayoutRoot_\"], [data-composer-surface-variant][data-composer-radius-variant])","tier":"L2","scope":"home+thread","required":false},{"key":"thread-composer-decoration","selector":".thread-scroll-container :is([data-thread-scroll-footer] > [class*=\"_background_\"][class*=\"_surface_\"], [aria-hidden=\"true\"][class~=\"pointer-events-none\"][class~=\"sticky\"][class~=\"bottom-0\"] > [class*=\"_background_\"][class*=\"_fade_\"])[aria-hidden=\"true\"][class~=\"pointer-events-none\"][class~=\"absolute\"][class~=\"inset-x-0\"]","tier":"L2","scope":"thread","required":false},{"key":"composer-toolbar","selector":":is(.composer-surface-chrome [class*=\"_footer_\"], [class*=\"_ComposerLayoutRoot_\"] [class*=\"_ComposerLayoutFooter_\"], [data-composer-surface-variant][data-composer-radius-variant] :is([data-composer-footer-responsive], [class*=\"_ComposerLayoutFooter_\"], [class*=\"_footer_\"]))","tier":"L2","scope":"home+thread","required":false},{"key":"home-utility","selector":":is([class*=\"_homeUtilityBar_\"], [class*=\"_ComposerHomeUtilityBar_\"])","tier":"L2","scope":"home","required":false},{"key":"game-source","selector":"[data-feature=\"game-source\"]","tier":"L2","scope":"home","required":false},{"key":"home-suggestions","selector":".group\\/home-suggestions","tier":"L2","scope":"home","required":false},{"key":"project-selector","selector":".group\\/project-selector","tier":"L2","scope":"home config","required":false},{"key":"markdown","selector":"[class*=\"_markdown\"]","tier":"L2","scope":"thread","required":false},{"key":"thread-surface","selector":".thread-scroll-container","tier":"L2","scope":"thread","required":false},{"key":"message","selector":":is([data-message-author-role], [data-local-conversation-user-anchor], [data-local-conversation-final-assistant])","tier":"L2","scope":"thread","required":false},{"key":"settings-panel","selector":"[data-settings-panel-slug=\"general-settings\"]","tier":"L2","scope":"settings","required":false},{"key":"appearance-radio","selector":"input[name=\"appearance-theme\"]","tier":"L2","scope":"settings","required":false},{"key":"overlay-menu","selector":"[role=\"menu\"]","tier":"L2","scope":"overlay","required":false},{"key":"overlay-dialog","selector":"[role=\"dialog\"]","tier":"L2","scope":"overlay","required":false},{"key":"overlay-popper","selector":"[data-radix-popper-content-wrapper]","tier":"L2","scope":"overlay","required":false}],"stableTestids":["app-shell-header-context-menu-surface","home-icon","theme-preview"]};
+  const SELECTOR_CONTRACT = {"schema":"codex-dream-skin-selectors/1","selectors":[{"key":"shell-main","selector":"main:is(.main-surface, [data-app-shell-main-surface], [class*=\"_MainContentSurface_\"])","tier":"L1","scope":"all","required":true},{"key":"left-panel","selector":"aside.app-shell-left-panel","tier":"L1","scope":"all","required":true},{"key":"header-tint","selector":"header:is(.app-header-tint, [data-app-shell-header-edge-scroll], [class*=\"_Header_\"])","tier":"L1","scope":"all","required":true},{"key":"main-content-top-fade","selector":":is(.app-shell-main-content-top-fade, [class*=\"_MainContentTopFade_\"], [data-app-shell-main-content-top-fade]:empty)","tier":"L2","scope":"all","required":false},{"key":"home-icon","selector":"[data-testid=\"home-icon\"]","tier":"L1","scope":"home","required":true},{"key":"home-route","selector":"[role=\"main\"]:has([data-testid=\"home-icon\"])","tier":"L1","scope":"home","required":true},{"key":"home-route-css","selector":"[role=\"main\"]","tier":"L1","scope":"home","required":true},{"key":"home-banners","selector":".home-banners","tier":"L2","scope":"home","required":false},{"key":"composer-chrome","selector":":is(.composer-surface-chrome, [class*=\"_ComposerLayoutRoot_\"], [data-composer-surface-variant][data-composer-radius-variant])","tier":"L2","scope":"home+thread","required":false},{"key":"composer-toolbar","selector":":is(.composer-surface-chrome [class*=\"_footer_\"], [class*=\"_ComposerLayoutRoot_\"] [class*=\"_ComposerLayoutFooter_\"], [data-composer-surface-variant][data-composer-radius-variant] :is([data-composer-footer-responsive], [class*=\"_ComposerLayoutFooter_\"], [class*=\"_footer_\"]))","tier":"L2","scope":"home+thread","required":false},{"key":"home-utility","selector":":is([class*=\"_homeUtilityBar_\"], [class*=\"_ComposerHomeUtilityBar_\"])","tier":"L2","scope":"home","required":false},{"key":"game-source","selector":"[data-feature=\"game-source\"]","tier":"L2","scope":"home","required":false},{"key":"home-suggestions","selector":".group\\/home-suggestions","tier":"L2","scope":"home","required":false},{"key":"project-selector","selector":".group\\/project-selector","tier":"L2","scope":"home config","required":false},{"key":"markdown","selector":"[class*=\"_markdown\"]","tier":"L2","scope":"thread","required":false},{"key":"thread-surface","selector":".thread-scroll-container","tier":"L2","scope":"thread","required":false},{"key":"message","selector":":is([data-message-author-role], [data-local-conversation-user-anchor], [data-local-conversation-final-assistant])","tier":"L2","scope":"thread","required":false},{"key":"settings-panel","selector":"[data-settings-panel-slug=\"general-settings\"]","tier":"L2","scope":"settings","required":false},{"key":"appearance-radio","selector":"input[name=\"appearance-theme\"]","tier":"L2","scope":"settings","required":false},{"key":"overlay-menu","selector":"[role=\"menu\"]","tier":"L2","scope":"overlay","required":false},{"key":"overlay-dialog","selector":"[role=\"dialog\"]","tier":"L2","scope":"overlay","required":false},{"key":"overlay-popper","selector":"[data-radix-popper-content-wrapper]","tier":"L2","scope":"overlay","required":false}],"stableTestids":["app-shell-header-context-menu-surface","home-icon","theme-preview"]};
   const STATE_KEY = "__CODEX_DREAM_SKIN_STATE__";
   const DISABLED_KEY = "__CODEX_DREAM_SKIN_DISABLED__";
   const STYLE_REGISTRY_KEY = "__CODEX_DREAM_SKIN_STYLE_SHEETS__";
@@ -1019,14 +1019,58 @@
     else if (previous !== undefined) node.setAttribute?.(SURFACE_ATTR, previous);
     surfaceNodes.delete(node);
   };
+  const composerDecorationNodes = (composerNodes) => {
+    const decorations = new Set();
+    const main = resolvedMainNode();
+    if (!main || typeof getComputedStyle !== "function") return decorations;
+    const protectedContent = PROTECTED_SURFACE_CONTENT +
+      ', [tabindex], a[href], [role]:not([role="none"]):not([role="presentation"])';
+    const floatingSurface = '[role="dialog"], [role="menu"], [role="tooltip"], ' +
+      '[aria-modal="true"], [data-radix-popper-content-wrapper]';
+    for (const composer of composerNodes) {
+      if (!main.contains?.(composer) || composer.closest?.(floatingSurface)) continue;
+      // Follow the input's outside branch. A sibling may hold both transcript
+      // content and a separate hidden fade: inspect hidden descendants without
+      // treating the content container itself as decorative paint.
+      for (let branch = composer, parent = branch.parentElement;
+        parent && parent !== main; branch = parent, parent = parent.parentElement) {
+        if (parent.closest?.(floatingSurface)) break;
+        for (const sibling of parent.children ?? []) {
+          if (sibling === branch) continue;
+          const emptyBranch = !sibling.textContent?.trim() &&
+            !sibling.matches?.(protectedContent) && !sibling.querySelector?.(protectedContent);
+          const paintNodes = emptyBranch ? [
+            sibling,
+            ...Array.from(sibling.querySelectorAll?.('div, section, [aria-hidden="true"]') ?? []),
+          ] : Array.from(sibling.querySelectorAll?.('[aria-hidden="true"]') ?? []);
+          for (const node of paintNodes) {
+            if (node.textContent?.trim() || node.matches?.(protectedContent) ||
+              node.querySelector?.(protectedContent) || node.closest?.(PROTECTED_SURFACE_CONTENT) ||
+              node.closest?.(floatingSurface)) continue;
+            metrics.layoutReads += 1;
+            const style = getComputedStyle(node);
+            // Older decorations have no aria-hidden. An empty positioned layer
+            // with no pointer/focus targets is equally safe to clear.
+            if (style.pointerEvents === "none" && (decorations.has(node.parentElement) ||
+              node.getAttribute?.("aria-hidden") === "true" ||
+              ["absolute", "fixed", "sticky"].includes(style.position))) decorations.add(node);
+          }
+        }
+        // Include siblings of the footer (older fade placement), then stop at
+        // the conversation boundary instead of walking into unrelated panes.
+        if (parent.matches?.('[data-ds-part="thread"], .thread-scroll-container')) break;
+      }
+    }
+    return decorations;
+  };
   const refreshSurfaces = (parts, composerNodes) => {
     const shellParts = new Set(["root", "main", "home", "thread", "header"]);
     const sceneNodes = [...parts].filter(([, part]) => part === "main" || part === "home")
       .map(([node]) => node);
-    const moduleComposerDecorations = new Set(selectorNodes("thread-composer-decoration"));
+    const decorativeNodes = composerDecorationNodes(composerNodes);
     const candidates = new Set([
       ...genericNodes(NEUTRAL_SURFACE_SELECTOR), ...genericNodes(SURFACE_BOUNDARIES),
-      ...moduleComposerDecorations,
+      ...decorativeNodes,
       ...composerNodes, ...selectorNodes("home-utility"),
       ...[...parts].filter(([, part]) => part === "sidebar").map(([node]) => node),
     ].filter((node) => !shellParts.has(parts.get(node)) &&
@@ -1035,31 +1079,6 @@
     // extra panel or cause every independent panel beneath it to lose its tint.
     const sceneWrappers = new Set([...candidates]
       .filter((node) => sceneNodes.some((scene) => node.contains?.(scene))));
-
-    // The composer footer owns a full-width decorative fade behind the real
-    // input. It is a neutral surface candidate, but it is part of the canvas,
-    // not an adjustable panel. Keep the exact utility signature narrow so
-    // dialogs, menus and other aria-hidden transitions remain independent.
-    const isComposerDecoration = (node) => {
-      if (!node || node.getAttribute?.("role") ||
-        node.closest?.('[role="dialog"], [role="menu"], [role="tooltip"]')) return false;
-      // 26.1013 moved both paints into CSS modules. The fade no longer has a
-      // neutral bg-* class, so include it explicitly and reuse the clear
-      // surface paint for both layers; their native geometry stays intact.
-      if (moduleComposerDecorations.has(node)) return true;
-      if (!node.matches?.(
-        '[class~="pointer-events-none"][class~="absolute"][class~="inset-x-0"]' +
-        '[class~="-top-8"]',
-      )) return false;
-      const fadeSurface = node.matches?.('[class~="z-0"][class~="bg-surface"]') ||
-        node.matches?.('[aria-hidden="true"][class~="bg-surface"]') ||
-        node.matches?.('[aria-hidden="true"][class~="backdrop-blur-lg"]');
-      return fadeSurface && Boolean(
-        node.closest?.('[data-thread-scroll-footer]') &&
-        node.closest?.('[data-ds-part="thread"]'),
-      );
-    };
-    const decorativeNodes = new Set([...candidates].filter(isComposerDecoration));
 
     for (const node of surfaceNodes.keys()) {
       if (!candidates.has(node)) restoreSurface(node);
@@ -1361,7 +1380,8 @@
       // Ignore our own part/surface attributes and inline palette writes.
       attributeFilter: ["class", "role", "data-composer-surface-variant",
         "data-composer-home-utility-bar-position", "data-summary-panel-variant",
-        "data-radix-popper-content-wrapper", "data-testid", "contenteditable"],
+        "data-radix-popper-content-wrapper", "data-testid", "contenteditable",
+        "aria-hidden", "tabindex"],
     });
   };
   observeAttributes(document.documentElement);

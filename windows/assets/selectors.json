@@ -3,6 +3,20 @@
   "description": "双端统一选择器契约。scope 与 required 来自双端 DOM 快照实测；shell-main 与 header-tint 另由 2026-07-31 Codex 26.727.40816 真实 macOS renderer 复核。doctor / CI 应逐条 querySelector 并按 tier 判级：L1 缺失=皮肤主行为受损，L2 缺失=精修静默降级。",
   "sourceInspections": [
     {
+      "date": "2026-10-29",
+      "version": "26.1023.6123.0",
+      "platform": "windows",
+      "evidence": "只读 renderer DOM/computed style：前版已将 footer surface 标为 clear，但约38px高的不透明底部渐变仍保留。fade 位于 transcript 包装容器内的独立空 aria-hidden sticky 分支，前版跳过含正文的整个兄弟容器而漏检。改为逐节点检查此类容器中的 aria-hidden 装饰，保留文本、交互、媒体、消息及浮层保护，不绑定 fade 类名或层级。",
+      "limits": "修复前只读诊断，未注入新代码；实际换肤与视觉验收待用户测试。"
+    },
+    {
+      "date": "2026-10-28",
+      "version": "26.1023.6123.0",
+      "platform": "windows",
+      "evidence": "只读 renderer DOM/computed style：输入区 footer 背景仍为 aria-hidden、pointer-events:none 的空节点，但已无 inset-x-0，旧 thread-composer-decoration 选择器漏匹配，节点被误标 panel 并叠加 blur(10px)。改由 renderer 沿真实 composer 的外侧分支识别无内容、无交互的隐藏装饰，不再维护模块名/偏移/固定层级签名。",
+      "limits": "修复前只读诊断；未注入新代码、未运行测试、未做修复后视觉验收或 macOS 实测。"
+    },
+    {
       "date": "2026-10-16",
       "version": "26.1013.3656.0",
       "platform": "windows",
@@ -95,7 +109,6 @@
     { "key": "home-route-css", "selector": "[role=\"main\"]", "tier": "L1", "scope": "home", "required": true, "notes": "home-route 的 CSS 可组合别名：不含 :has()。CSS 禁止 :has() 嵌套，home-route 原选择器一旦写进 :has()/:not(:has()) 整条规则会被解析器丢弃（v1.3.1 全窗口首页与任务页氛围背景因此失效）。依据与 home-route 相同的实测：[role=main] 仅存在于首页；该锚点缺失时 CSS 路由门控整体失效，故必须按 L1 必需项监控" },
     { "key": "home-banners", "selector": ".home-banners", "tier": "L2", "scope": "home", "required": false, "notes": "Codex 26.721+ 新增的原生首页 banner 插槽，位于 home-route 第一个子节点内、通常为空（0 子节点）靠原生 empty:hidden 折叠。真正的首页内容（标题/建议卡/输入框）在这个版本上已变成该插槽外层容器的兄弟节点，不再是它的后代（见 #244 实测：home-route > div:first-child 被撑到 100% 高度会把内容挤出视口）。用于判定新旧 home DOM 形态，皮肤据此把 first-child 链路的强制尺寸限定在旧形态或改走兄弟节点" },
     { "key": "composer-chrome", "selector": ":is(.composer-surface-chrome, [class*=\"_ComposerLayoutRoot_\"], [data-composer-surface-variant][data-composer-radius-variant])", "tier": "L2", "scope": "home+thread", "required": false, "notes": "输入框视觉壳。兼容旧语义类、26.814 ComposerLayoutRoot CSS Module 与稳定 surface/radius 语义属性；hash 随版本变化。win 实测存在无 composer 的 detail 路由，不可当全局锚点" },
-    { "key": "thread-composer-decoration", "selector": ".thread-scroll-container :is([data-thread-scroll-footer] > [class*=\"_background_\"][class*=\"_surface_\"], [aria-hidden=\"true\"][class~=\"pointer-events-none\"][class~=\"sticky\"][class~=\"bottom-0\"] > [class*=\"_background_\"][class*=\"_fade_\"])[aria-hidden=\"true\"][class~=\"pointer-events-none\"][class~=\"absolute\"][class~=\"inset-x-0\"]", "tier": "L2", "scope": "thread", "required": false, "notes": "26.1013 输入框背后的两层装饰底色/渐变；限定会话滚动区、footer或sticky装饰父节点及隐藏/不交互标记。只清除背景和模糊，不修改输入框、布局或完整CSS Module hash。" },
     { "key": "composer-toolbar", "selector": ":is(.composer-surface-chrome [class*=\"_footer_\"], [class*=\"_ComposerLayoutRoot_\"] [class*=\"_ComposerLayoutFooter_\"], [data-composer-surface-variant][data-composer-radius-variant] :is([data-composer-footer-responsive], [class*=\"_ComposerLayoutFooter_\"], [class*=\"_footer_\"]))", "tier": "L2", "scope": "home+thread", "required": false, "notes": "输入框工具栏；兼容旧 footer、ComposerLayoutFooter CSS Module 与 data-composer-footer-responsive，hash 随版本变化" },
     { "key": "home-utility", "selector": ":is([class*=\"_homeUtilityBar_\"], [class*=\"_ComposerHomeUtilityBar_\"])", "tier": "L2", "scope": "home", "required": false, "notes": "CSS Modules 前缀匹配；兼容旧 homeUtilityBar 与 ComposerHomeUtilityBar，模块名跨端稳定、hash 随版本变，禁止匹配完整 hash" },
     { "key": "game-source", "selector": "[data-feature=\"game-source\"]", "tier": "L2", "scope": "home", "required": false },
