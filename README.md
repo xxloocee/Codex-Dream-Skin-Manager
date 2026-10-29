@@ -4,14 +4,14 @@
 
 ## 下载与安装
 
-当前版本：`3.1.0`。前往 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载对应安装包：
+当前版本：`3.1.1`。前往 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载对应安装包：
 
 | 平台 | 系统要求 | 安装包 |
 | --- | --- | --- |
-| Windows 安装版 | Windows 10/11 x64 | `CodexDreamSkinManager-v3.1.0-windows-x64-setup.exe` |
-| Windows 便携版 | Windows 10/11 x64 | `CodexDreamSkinManager-v3.1.0-windows-x64-portable.zip` |
-| macOS Intel | macOS 13+ | `CodexDreamSkinManager-v3.1.0-macos-x64.dmg` |
-| macOS Apple Silicon | macOS 13+ | `CodexDreamSkinManager-v3.1.0-macos-arm64.dmg` |
+| Windows 安装版 | Windows 10/11 x64 | `CodexDreamSkinManager-v3.1.1-windows-x64-setup.exe` |
+| Windows 便携版 | Windows 10/11 x64 | `CodexDreamSkinManager-v3.1.1-windows-x64-portable.zip` |
+| macOS Intel | macOS 13+ | `CodexDreamSkinManager-v3.1.1-macos-x64.dmg` |
+| macOS Apple Silicon | macOS 13+ | `CodexDreamSkinManager-v3.1.1-macos-arm64.dmg` |
 
 请先安装 Codex 桌面客户端。发布包已内置 Node.js，无需单独配置运行环境；Windows 便携版须完整解压，不能只复制 EXE。`SHA256SUMS.txt` 提供下载包校验值。
 
@@ -72,7 +72,7 @@ bash macos/scripts/build-app.sh
 
 公共运行时修改后用 `node tools/sync-runtime-assets.mjs` 生成两端镜像。
 开发说明见 [CONTRIBUTING.md](CONTRIBUTING.md)，打包布局见 [hosts/README.md](hosts/README.md)。
-3.0.0 起已切换到共享管理器入口。当前发布内容、验证范围与已知限制见 [版本说明](.github/release-notes/v3.1.0.md)。
+3.0.0 起已切换到共享管理器入口。当前发布内容、验证范围与已知限制见 [版本说明](.github/release-notes/v3.1.1.md)。
 
 ## 致谢与许可
 

@@ -60,7 +60,7 @@ const stableTestidLiteral = (testid) => {
   return JSON.stringify(`[data-testid="${testid}"]`);
 };
 const operationUiExpression = (action, token, state, message) => sharedOperationUiExpression(action, token, state, message, selectorLiteral);
-const SKIN_VERSION = "3.1.0";
+const SKIN_VERSION = "3.1.1";
 // .github/workflows/ci.yml's version-consistency check greps this file for a
 // literal `const SKIN_VERSION = "...";` line, so the export stays a separate
 // statement rather than an inline `export const`.
