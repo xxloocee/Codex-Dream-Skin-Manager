@@ -20,7 +20,7 @@ export function SystemPanel({ client, hello, disabled, onBusy, info, onInfo, onC
   const [ids, setIds] = useState<string[]>([]), [operations, setOperations] = useState<Record<string, MaintenanceOperation>>({});
   const working = useRef(false), alive = useRef(true), attempted = useRef(false), records = useRef<string[]>([]);
   const canMaintain = hello.capabilities.methods.includes("maintenance.inspect");
-  const active = Object.values(operations).some(pending);
+  const latestId = ids.at(-1), active = latestId ? pending(operations[latestId]) : false;
   useEffect(() => {
     alive.current = true;
     if (canMaintain) {
@@ -43,33 +43,31 @@ export function SystemPanel({ client, hello, disabled, onBusy, info, onInfo, onC
   }
   async function read(id: string) {
     const value = await client.call("maintenance.get", { operationId: id });
-    if (alive.current) setOperations(previous => ({ ...previous, [id]: value }));
+    if (alive.current) {
+      setOperations(previous => ({ ...previous, [id]: value }));
+      if (records.current[records.current.length - 1] === id) onBusy(pending(value));
+    }
     return value;
   }
   useEffect(() => {
-    if (!ids.length || !canMaintain) return;
+    if (!latestId || !canMaintain) return;
+    const id = latestId;
     let cancelled = false, timer: number | undefined;
     const query = async () => {
-      const values: MaintenanceOperation[] = [];
-      let failed = false;
-      for (const id of ids) {
-        if (cancelled) return;
-        try { values.push(await read(id)); }
-        catch (error) {
-          // A rejected submission has no journal entry. Keep its id for inspection
-          // without permanently locking the UI or submitting it again.
-          if (!(error instanceof BridgeError && error.detail.code === "OPERATION_UNKNOWN")) failed = true;
-          if (!cancelled) setNotice(errorMessage(error, copy.maintenanceError[0]));
-        }
+      try {
+        const value = await read(id);
+        if (!cancelled && pending(value)) timer = window.setTimeout(() => void query(), 1500);
+      } catch (error) {
+        if (cancelled || records.current[records.current.length - 1] !== id) return;
+        setNotice(errorMessage(error, copy.maintenanceError[0]));
+        // A rejected submission has no journal. Other failures retain the
+        // current writer's busy state; old history never participates here.
+        if (error instanceof BridgeError && error.detail.code === "OPERATION_UNKNOWN") onBusy(false);
+        else timer = window.setTimeout(() => void query(), 5000);
       }
-      if (cancelled || records.current[records.current.length - 1] !== ids[ids.length - 1]) return;
-      if (values.some(pending)) onBusy(true);
-      else if (!failed) onBusy(false);
-      // A query failure is not evidence that an accepted writer finished.
-      if (failed || values.some(pending)) timer = window.setTimeout(() => void query(), failed ? 5000 : 1500);
     };
     void query(); return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer); };
-  }, [client, ids, canMaintain, onBusy]);
+  }, [client, latestId, canMaintain, onBusy]);
   async function prepare(action: MaintenanceAction) {
     const value = await client.call("maintenance.prepare", { action });
     if (alive.current) { setProposal(value); attempted.current = false; }

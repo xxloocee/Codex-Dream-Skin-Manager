@@ -309,20 +309,16 @@ function App() {
     setOperationBusy(true); setOperationError(""); setLibraryNotice("");
     let saved = false;
     try {
-      let refresh: ApplyRefresh | undefined, refreshError: UiMessage | null = null;
+      let refresh: ApplyRefresh | undefined;
       if (copyName === null && !applyAfter) {
-        try {
-          const current = await client.call("status.get", {});
-          setSnapshot(previous => !previous || previous.backendSessionId !== current.backendSessionId || previous.sequence <= current.sequence ? current : previous);
-          setStatusError("");
-          if (current.runtime?.activeRevision && current.engine.runtimeSessionId && current.desired.paused === false && current.engine.health === "healthy" &&
-              current.desired.theme?.source === source.ref.source && current.desired.theme.id === source.ref.id) {
-            const editedParameters = Object.keys(patch.parameters ?? {});
-            const opacityOnly = source.mediaKind === "video" && Object.keys(patch).every(key => key === "parameters") && editedParameters.length > 0 &&
-              editedParameters.every(key => key === "bubbleOpacity" || key === "surfaceOpacity" || key === "shellOpacity");
-            refresh = { activeRevision: current.runtime.activeRevision, runtimeSessionId: current.engine.runtimeSessionId, ...(opacityOnly ? { opacityOnly: true as const } : {}) };
-          }
-        } catch (error) { refreshError = message(error); }
+        const current = snapshot;
+        if (current?.runtime?.activeRevision && current.engine.runtimeSessionId && current.desired.paused === false && current.engine.health === "healthy" &&
+            current.desired.theme?.source === source.ref.source && current.desired.theme.id === source.ref.id) {
+          const editedParameters = Object.keys(patch.parameters ?? {});
+          const opacityOnly = source.mediaKind === "video" && Object.keys(patch).every(key => key === "parameters") && editedParameters.length > 0 &&
+            editedParameters.every(key => key === "bubbleOpacity" || key === "surfaceOpacity" || key === "shellOpacity");
+          refresh = { activeRevision: current.runtime.activeRevision, runtimeSessionId: current.engine.runtimeSessionId, ...(opacityOnly ? { opacityOnly: true as const } : {}) };
+        }
       }
       if (!mounted.current) return;
       sessionStorage.setItem(storageKey, id); setOperationId(null); setOperation(null);
@@ -350,23 +346,10 @@ function App() {
         const values = previous.map(theme => identity(theme) === identity(current) ? current : theme);
         return values.some(theme => identity(theme) === identity(current)) ? values : [...values, current];
       });
-      try { const library = await readLibrary(client); if (mounted.current) {
-        setThemes(library.themes.some(theme => identity(theme) === identity(current)) ? library.themes : [...library.themes, current]);
-        if (library.warnings.length) setLibraryNotice(uiMessage("部分主题无法读取，请刷新主题库后重试。"));
-      } } catch { setLibraryNotice(uiMessage("主题已保存，主题库刷新未完成。")); }
       if ((applyAfter || refresh) && mounted.current) {
-        // Explicit apply is independent of the status observer. Only an automatic
-        // refresh must establish that the previously active skin is still current.
-        const status = applyAfter ? null : await client.call("status.get", {});
-        if (!applyAfter && (!status || !refresh || status.runtime?.activeRevision !== refresh.activeRevision || status.engine.runtimeSessionId !== refresh.runtimeSessionId || status.desired.paused !== false ||
-            status.engine.health !== "healthy" || status.desired.theme?.source !== source.ref.source || status.desired.theme.id !== source.ref.id)) {
-          setLibraryNotice(uiMessage("主题已保存；当前皮肤已变化，未自动刷新。"));
-        } else {
-          await startApply(value.resultTheme, value.resultRevision, applyAfter ? undefined : refresh);
-          setLibraryNotice(uiMessage(applyAfter ? "主题已保存，正在准备应用；启动或重启时仍须确认。" : "主题已保存，正在刷新当前皮肤。"));
-        }
-      } else if (refreshError) {
-        setLibraryNotice(uiMessage("主题已保存到主题库，当前 Codex 外观未切换。", undefined, { after: refreshError }));
+        // The backend validates this refresh binding against the live session.
+        await startApply(value.resultTheme, value.resultRevision, applyAfter ? undefined : refresh);
+        setLibraryNotice(uiMessage(applyAfter ? "主题已保存，正在准备应用；启动或重启时仍须确认。" : "主题已保存，正在刷新当前皮肤。"));
       }
     } catch (error) {
       const reason = saved ? uiMessage("主题已保存，后续操作未完成：", undefined, { after: message(error) }) : message(error);
@@ -488,7 +471,7 @@ function App() {
     </ConfirmationDialog>}
     <section id="page-import" className="manager-page" aria-labelledby="page-import-title" hidden={page !== "import"}>
       <h2 id="page-import-title" className="visually-hidden" tabIndex={-1}>{tr("导入图片")}</h2>
-      {client && hello?.capabilities.methods.includes("themes.create") && <ImportPanel client={client} hello={hello} busy={busy} visible={page === "import"}
+      {client && hello?.capabilities.methods.includes("themes.create") && <ImportPanel client={client} hello={hello} busy={busy} visible={page === "import"} operation={operation}
         canApply={!draftDirty && hello.capabilities.methods.includes("skin.apply")}
         onApplySaved={applyImported} onBusy={onImportBusy} onOperation={onImportOperation} onIntent={onImportIntent} onSaved={onImported} onNotice={onNotice} />}
     </section>
