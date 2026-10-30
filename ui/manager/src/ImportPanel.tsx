@@ -10,8 +10,9 @@ import { importParameters, previewParameters } from "./preview-model";
 import { importRefused, rememberImport, sourceName, trackImport } from "./import-operations";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 
-export function ImportPanel({ client, hello, busy, visible, canApply, onApplySaved, onBusy, onOperation, onIntent, onSaved, onNotice }: {
+export function ImportPanel({ client, hello, busy, visible, canApply, operation, onApplySaved, onBusy, onOperation, onIntent, onSaved, onNotice }: {
   client: ManagerClient; hello: HelloResult; busy: boolean; visible: boolean; canApply: boolean;
+  operation: OperationSnapshot | null;
   onApplySaved(result: OperationSnapshot): Promise<void>; onBusy(value: boolean): void;
   onOperation(value: OperationSnapshot): void; onIntent(id: string): void; onSaved(): void; onNotice(value: UiMessage): void;
 }) {
@@ -20,8 +21,24 @@ export function ImportPanel({ client, hello, busy, visible, canApply, onApplySav
   const [dirty, setDirty] = useState(false), [draft, setDraft] = useState<ThemeParameters | null>(null), [confirmation, setConfirmation] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const alive = useRef(true), working = useRef(false), attempted = useRef(false), sourceRef = useRef(source); sourceRef.current = source;
+  const submission = useRef<{ id: string; source: SourceGrant } | null>(null);
   const onDirty = useCallback((value: boolean) => setDirty(value), []), onPreview = useCallback((value: ThemeParameters | null) => setDraft(value), []);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, [client]);
+  useEffect(() => {
+    if (!running && operation && settle(operation) && operation.state === "succeeded") {
+      onNotice(uiMessage(operation.disposition === "duplicate" ? "素材与渲染参数已存在，返回已有主题。" : "主题已保存。"));
+    }
+  }, [operation, running]);
+  function settle(value: OperationSnapshot) {
+    const current = submission.current;
+    if (!current || current.id !== value.id || !["succeeded", "failed", "cancelled"].includes(value.state)) return false;
+    submission.current = null; attempted.current = false; setSubmitted(false);
+    if (value.state === "succeeded") {
+      onSaved(); setDirty(false); setSource(null);
+      void client.call("sources.release", { handles: [current.source.handle] }).catch(() => {});
+    }
+    return true;
+  }
   const theme = useMemo<ThemeDetails>(() => ({ ref: { source: "saved", id: "draft" }, name: source ? sourceName(source) : "",
     storageCategory: "custom", displayCategories: ["art"], tags: [], mediaKind: source?.extension === ".mp4" ? "video" : source && [".gif", ".apng"].includes(source.extension) ? "animatedImage" : "image",
     catalogOrder: 0, addedAt: null, modifiedAt: null, revision: source?.handle ?? "empty", storedParameters: importParameters, previewParameters: previewParameters(importParameters),
@@ -36,7 +53,7 @@ export function ImportPanel({ client, hello, busy, visible, canApply, onApplySav
       if (!alive.current || selection.cancelled) return;
       const next = selection.sources[0];
       if (next) {
-        const old = sourceRef.current; setSource(next); attempted.current = false; setSubmitted(false); setDirty(false);
+        const old = sourceRef.current; submission.current = null; setSource(next); attempted.current = false; setSubmitted(false); setDirty(false);
         if (old) void client.call("sources.release", { handles: [old.handle] }).catch(() => {});
       }
       if (selection.failures.length) onNotice(selection.failures.map(value => `${value.name}：${value.error.message}`).join("；"));
@@ -50,17 +67,16 @@ export function ImportPanel({ client, hello, busy, visible, canApply, onApplySav
     try {
       const name = patch.name ?? sourceName(source), next = { ...patch, parameters: { ...importParameters, ...patch.parameters } }; delete next.name;
       const id = rememberImport(hello.backendSessionId, name); attempted.current = true; setSubmitted(true);
+      submission.current = { id, source };
       let initial: OperationSnapshot;
       try { initial = await client.call("themes.create", { operationId: id, handle: source.handle, name, patch: next }); }
-      catch (error) { if (importRefused(error)) { attempted.current = false; setSubmitted(false); } throw error; }
+      catch (error) { if (importRefused(error)) { submission.current = null; attempted.current = false; setSubmitted(false); } throw error; }
       finally { if (alive.current) onIntent(id); }
       const result = await trackImport(client, initial, () => alive.current, onOperation);
+      settle(result);
       if (result.state !== "succeeded") {
-        if (["failed", "cancelled"].includes(result.state)) { attempted.current = false; setSubmitted(false); }
         throw new UiMessageError(result.error?.message ?? uiMessage("导入结果尚未确认。"));
       }
-      onSaved(); setDirty(false); setSource(null); attempted.current = false; setSubmitted(false);
-      void client.call("sources.release", { handles: [source.handle] }).catch(() => {});
       if (applyAfter) {
         try { await onApplySaved(result); }
         catch (error) { if (alive.current) onNotice(uiMessage("主题已保存，应用未能继续：", undefined, { after: errorMessage(error, "请刷新状态后再操作。") })); }

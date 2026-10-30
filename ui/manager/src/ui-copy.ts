@@ -66,6 +66,7 @@ export const messages: Readonly<Record<string, string>> = {
   "已打开发布页。": "Release page opened.",
   "更新结果暂不可用，正在重新查询；不会重复安装。": "Update status is unavailable. Checking again; installation will not be repeated.",
   "请先核对上次更新结果，不会重复安装。": "Check the previous update first. Installation will not be repeated.",
+  "上次更新结果待核对，可继续检查版本；不会重复安装。": "The previous update needs checking. You can still check versions; installation will not be repeated.",
   "正在进行的 Codex 工作可能中断，是否继续？": "Your current Codex work may be interrupted. Continue?",
   "添加图片": "Add images", "导出主题": "Export theme", "更多": "More",
   "当前主题": "Current theme", "应用皮肤": "Apply skin", "下载素材": "Download media",

@@ -12,7 +12,6 @@ $script:DreamSkinRepository = 'xxloocee/Codex-Dream-Skin-Manager'
 $script:DreamSkinUpdateManifestUrl = "https://github.com/$script:DreamSkinRepository/releases/latest/download/update.json"
 $script:DreamSkinReleasePage = "https://github.com/$script:DreamSkinRepository/releases/latest"
 $script:DreamSkinMaximumChecksumBytes = 1MB
-$script:DreamSkinMaximumInstallerBytes = 512MB
 $script:DreamSkinEngineRoot = Split-Path -Parent $PSScriptRoot
 $script:DreamSkinVersionPath = Join-Path $script:DreamSkinEngineRoot 'VERSION'
 . (Join-Path $PSScriptRoot 'localization-windows.ps1')
@@ -170,8 +169,8 @@ function Assert-DreamSkinInstallerChecksum {
   if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
     throw 'The downloaded installer cannot be a reparse point.'
   }
-  if ($item.Length -le 0 -or $item.Length -gt $script:DreamSkinMaximumInstallerBytes) {
-    throw 'The downloaded installer size is outside the allowed range.'
+  if ($item.Length -le 0) {
+    throw 'The downloaded installer is empty.'
   }
   $actualHash = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -cne $ExpectedHash) {
@@ -230,6 +229,7 @@ function Install-DreamSkinUpdate {
     [string]$Expected = '',
     [string]$ApprovedHash = ''
   )
+  $script:DreamSkinUpdateStage = 'approval'
   if (-not $Result.updateAvailable) { throw 'No newer release is available to install.' }
   if ($Expected) {
     $expectedParsed = ConvertTo-DreamSkinVersion -Value $Expected
@@ -253,7 +253,9 @@ function Install-DreamSkinUpdate {
   $installerPath = Join-Path $downloadRoot $Result.installerAssetName
   $keepDownload = $false
   try {
+    $script:DreamSkinUpdateStage = 'checksumDownload'
     Invoke-DreamSkinUpdateDownload -Url $Result.checksumAssetUrl -Destination $checksumPath -TimeoutSeconds 30
+    $script:DreamSkinUpdateStage = 'checksumValidation'
     $checksumItem = Get-Item -LiteralPath $checksumPath -Force
     if (($checksumItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0 -or
       $checksumItem.Length -le 0 -or $checksumItem.Length -gt $script:DreamSkinMaximumChecksumBytes) {
@@ -264,10 +266,15 @@ function Install-DreamSkinUpdate {
     if ($Result.installerSha256 -and $expectedHash -cne $Result.installerSha256) {
       throw 'The installer checksum in update.json does not match SHA256SUMS.txt.'
     }
+    $script:DreamSkinUpdateStage = 'installerDownload'
     Invoke-DreamSkinUpdateDownload -Url $Result.installerAssetUrl -Destination $installerDownload -TimeoutSeconds 180
+    $script:DreamSkinUpdateStage = 'installerValidation'
     Assert-DreamSkinInstallerChecksum -Path $installerDownload -ExpectedHash $expectedHash
     Move-Item -LiteralPath $installerDownload -Destination $installerPath
     Assert-DreamSkinInstallerChecksum -Path $installerPath -ExpectedHash $expectedHash
+    $script:DreamSkinUpdateStage = 'installerLaunch'
+    # Once launch is attempted, an exception cannot prove that no installer ran.
+    $script:DreamSkinInstallerLaunchAttempted = $true
     $process = Start-Process -FilePath $installerPath -WorkingDirectory $downloadRoot -PassThru
     if ($null -eq $process -or $process.Id -le 0) { throw 'The verified installer could not be started.' }
     $keepDownload = $true

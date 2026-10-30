@@ -4,6 +4,7 @@ import { pruneHistory } from "./history-retention.mjs";
 import { ContractError, failure, record, validOperationId } from "../contracts/manager.mjs";
 import type { MethodMap, UpdateCheck, UpdateOperation } from "../contracts/manager.mjs";
 import type { UpdateCandidate, UpdatePort } from "./ports/updates.mjs";
+import { UpdateNotStartedError } from "./ports/updates.mjs";
 import { jsonObject, optionalBytes, sha256 } from "./local-files.mjs";
 import { durableJson, privateDirectory } from "./write-files.mjs";
 
@@ -89,7 +90,8 @@ export class Updates {
         await this.update(value, { state: "handoff", stage: outcome.managerMustQuit ? "waitingForManagerExit" : "installerStarted", managerMustQuit: outcome.managerMustQuit });
       } catch (error) {
         const response = failure(null, error);
-        try { await this.update(value, { state: executing ? "indeterminate" : "failed", stage: executing ? "reconciliationRequired" : "preconditionChanged", error: response.ok ? null : response.error }); }
+        const uncertain = executing && !(error instanceof UpdateNotStartedError);
+        try { await this.update(value, { state: uncertain ? "indeterminate" : "failed", stage: uncertain ? "reconciliationRequired" : executing ? "downloadOrVerificationFailed" : "preconditionChanged", error: response.ok ? null : response.error }); }
         catch { value.operation.state = "indeterminate"; value.operation.stage = "journalUnavailable"; }
       } finally { this.active = value.operation.state === "handoff" && value.operation.managerMustQuit ? value.operation.id : null; }
     });

@@ -29,7 +29,7 @@ export async function serve(input: Readable, output: Writable, service: ManagerS
     if (recentIds.length > 1024) ids.delete(recentIds.shift()!);
   };
   let greeted = false;
-  let statusJob: Promise<void> | null = null;
+  const readJobs = new Map<string, Promise<void>>();
   let outputError: Error | undefined;
   const line = async (bytes: Buffer): Promise<boolean> => {
     if (service.isClosing) return false;
@@ -51,11 +51,11 @@ export async function serve(input: Readable, output: Writable, service: ManagerS
       }
       const request = parseRequest(value);
       if (!greeted && request.method !== "system.hello") throw new ContractError("INVALID_REQUEST", "system.hello must precede other methods.");
-      // Runtime probes may take seconds. Keep one read-only status request
-      // outside the serial business queue so it cannot hold up the library.
-      if (request.method === "status.get") {
-        if (statusJob) throw new ContractError("BUSY", "A status request is already in progress.", true);
-        statusJob = (async () => {
+      // Independent probes must not hold up theme operations while waiting for
+      // the runtime or network. Mutations keep their serial admission order.
+      if (["status.get", "updates.check", "community.inspect"].includes(request.method)) {
+        if (readJobs.has(request.method)) throw new ContractError("BUSY", "This read request is already in progress.", true);
+        const job = (async () => {
           let response: ManagerResponse;
           try {
             const result = await service.execute(request);
@@ -65,7 +65,8 @@ export async function serve(input: Readable, output: Writable, service: ManagerS
         })().catch(error => {
           outputError = error instanceof Error ? error : new Error("The manager output closed.");
           input.destroy();
-        }).finally(() => { statusJob = null; });
+        }).finally(() => { readJobs.delete(request.method); });
+        readJobs.set(request.method, job);
         return true;
       }
       const result = await service.execute(request);
@@ -99,7 +100,7 @@ export async function serve(input: Readable, output: Writable, service: ManagerS
   } finally {
     // Also drain on EOF, oversized input, session.close and native shutdown
     // before main closes the service and its resource owners.
-    await statusJob;
+    await Promise.all(readJobs.values());
     if (outputError) throw outputError;
   }
 }

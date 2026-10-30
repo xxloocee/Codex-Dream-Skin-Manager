@@ -5,11 +5,24 @@ import { constants } from "node:fs";
 import { spawn } from "node:child_process";
 import { ContractError, record, validOperationId } from "../contracts/manager.mjs";
 import type { UpdateCandidate, UpdatePort } from "../core/ports/updates.mjs";
+import { UpdateNotStartedError } from "../core/ports/updates.mjs";
 import { fileBytes, jsonObject, optionalBytes, safePath, sha256 } from "../core/local-files.mjs";
 import { stableVersion } from "../core/updates.mjs";
 import { transactionProcess } from "./transaction-process.mjs";
 
 const repository = "xxloocee/Codex-Dream-Skin-Manager";
+const windowsUpdateErrors: Record<string, string> = {
+  checking: "无法获取或解析更新清单，请检查网络连接后重新检查。",
+  approval: "更新版本或安装包身份已改变，请重新检查后再安装。",
+  checksumDownload: "更新校验清单下载失败，请检查网络连接后重试。",
+  checksumValidation: "更新校验清单无效，已停止安装，请重新检查更新。",
+  installerDownload: "安装包下载失败，请检查网络连接后重试。",
+  installerValidation: "安装包文件校验失败，已停止安装，请重新下载。",
+  checksumMismatch: "安装包 SHA-256 与发布清单不一致，已停止安装。",
+  installerEmpty: "下载的安装包为空，已停止安装，请重新下载。",
+  installerLaunch: "安装器启动结果未确认，请核对系统安装提示。",
+  downloadTimeout: "更新下载超时，请检查网络连接后重试。",
+};
 interface PrivateCandidate { raw: Record<string, unknown>; repo: string; target: string | null; bundle: string | null }
 export class PlatformUpdates implements UpdatePort {
   private readonly candidates = new Map<string, PrivateCandidate>();
@@ -20,8 +33,14 @@ export class PlatformUpdates implements UpdatePort {
     const system = process.env.SystemRoot;
     if (!system || !path.isAbsolute(system)) throw new ContractError("BACKEND_UNAVAILABLE", "Windows system directory unavailable.");
     const approved = candidate ? this.candidates.get(candidate.binding) : null;
-    return transactionProcess(path.join(system, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+    const raw = await transactionProcess(path.join(system, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
       await powerShellArgs(this.root, script, ["-Action", action, ...(candidate ? ["-ExpectedVersion", candidate.latestVersion, "-ApprovedHash", String(approved?.raw.installerSha256)] : [])]), action === "Check" ? 45000 : 360000, action === "Install");
+    if (typeof raw.updateError === "string") {
+      const message = windowsUpdateErrors[raw.updateError] ?? "更新处理失败，请重新检查更新。";
+      if (action === "Install" && raw.installerLaunchAttempted === false) throw new UpdateNotStartedError(message);
+      throw new ContractError("IO_ERROR", message);
+    }
+    return raw;
   }
   private async signed(action: "inspect" | "prepare", candidate?: UpdateCandidate): Promise<Record<string, unknown>> {
     const script = path.join(this.root, "macos", "scripts", "gui-update.mjs"); await safePath(script, this.root);
