@@ -1021,14 +1021,19 @@
   };
   const composerDecorationNodes = (composerNodes) => {
     const decorations = new Set();
-    const main = resolvedMainNode();
-    if (!main || typeof getComputedStyle !== "function") return decorations;
+    const fallbackMain = resolvedMainNode();
+    if (typeof getComputedStyle !== "function") return decorations;
     const protectedContent = PROTECTED_SURFACE_CONTENT +
       ', [tabindex], a[href], [role]:not([role="none"]):not([role="presentation"])';
     const floatingSurface = '[role="dialog"], [role="menu"], [role="tooltip"], ' +
       '[aria-modal="true"], [data-radix-popper-content-wrapper]';
     for (const composer of composerNodes) {
-      if (!main.contains?.(composer) || composer.closest?.(floatingSurface)) continue;
+      // macOS keeps multiple chat pages mounted. Resolve each composer's own
+      // main, including cached pages, instead of only clearing the first tab.
+      const main = /Mac/i.test(navigator.platform)
+        ? composer.closest?.('main, [role="main"]') ?? fallbackMain
+        : fallbackMain;
+      if (!main || !main.contains?.(composer) || composer.closest?.(floatingSurface)) continue;
       // Follow the input's outside branch. A sibling may hold both transcript
       // content and a separate hidden fade: inspect hidden descendants without
       // treating the content container itself as decorative paint.
