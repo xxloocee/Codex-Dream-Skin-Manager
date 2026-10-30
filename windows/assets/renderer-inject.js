@@ -1241,6 +1241,7 @@
     }
     if (state?.timer) clearInterval(state.timer);
     if (state?.scheduler?.timeout) clearTimeout(state.scheduler.timeout);
+    if (state?.scheduler?.frame != null) window.cancelAnimationFrame(state.scheduler.frame);
     if (analysisTimer) clearTimeout(analysisTimer);
     if (state?.mediaHandler && state?.mediaQuery) {
       try { state.mediaQuery.removeEventListener("change", state.mediaHandler); } catch {}
@@ -1279,10 +1280,12 @@
     return true;
   };
 
-  const scheduler = { timeout: null, root: false, scope: false, parts: false };
+  const scheduler = { timeout: null, frame: null, root: false, scope: false, parts: false };
   const flushScheduledEnsure = () => {
     if (scheduler.timeout) clearTimeout(scheduler.timeout);
+    if (scheduler.frame !== null) window.cancelAnimationFrame(scheduler.frame);
     scheduler.timeout = null;
+    scheduler.frame = null;
     const pending = { root: scheduler.root, scope: scheduler.scope, parts: scheduler.parts };
     scheduler.root = false;
     scheduler.scope = false;
@@ -1293,7 +1296,20 @@
     scheduler.root ||= root;
     scheduler.scope ||= scope;
     scheduler.parts ||= parts;
-    if (scheduler.timeout) return;
+    // New route surfaces must be bound before paint. A pending root/navigation
+    // timeout must not leave native composer backgrounds visible for 64–180 ms.
+    // Coalesce mutation batches into one pass per frame during streaming.
+    if (parts) {
+      if (scheduler.timeout) clearTimeout(scheduler.timeout);
+      scheduler.timeout = null;
+      if (typeof window.requestAnimationFrame === "function") {
+        if (scheduler.frame === null) scheduler.frame = window.requestAnimationFrame(flushScheduledEnsure);
+      } else {
+        flushScheduledEnsure();
+      }
+      return;
+    }
+    if (scheduler.frame !== null || scheduler.timeout) return;
     scheduler.timeout = setTimeout(flushScheduledEnsure, delay);
   };
   if (typeof MutationObserver === "function") {
@@ -1301,7 +1317,7 @@
     // SPA route changes are observable as DOM mutations even when Chromium's
     // Navigation API emits no event. Keep verification scope and public parts
     // derived from the same post-mutation tree.
-    partObserver = new MutationObserver(() => scheduleEnsure({ scope: true, parts: true }, 80));
+    partObserver = new MutationObserver(() => scheduleEnsure({ scope: true, parts: true }));
   }
 
   let mediaQuery = null;
@@ -1322,7 +1338,7 @@
     ? window.navigation : null;
   const navigationHandler = navigationApi ? () => {
     metrics.navigationEvents += 1;
-    scheduleEnsure({ scope: true, parts: true }, 180);
+    scheduleEnsure({ scope: true, parts: true });
   } : null;
 
   window[STATE_KEY] = {
