@@ -166,6 +166,7 @@ main { height: 100%; max-width: 1440px; margin: 0 auto; padding: 22px 24px 12px;
 .message-bar button { padding: 2px 6px; white-space: nowrap; font-size: 11px; }
 .utility-panel, .confirmation-dialog { width: min(640px, calc(100vw - 40px)); max-height: calc(100dvh - 60px); overflow: auto; border: 1px solid #d9dee5; border-radius: 8px; padding: 24px; color: #20242a; background: #f4f6f8; }
 .confirmation-dialog { width: min(520px, calc(100vw - 40px)); }
+.confirmation-dialog > .editor-actions { justify-content: flex-end; }
 .utility-panel::backdrop, .confirmation-dialog::backdrop { background: #20242a55; }
 .utility-close { display: block; margin: 0 0 12px auto; }
 .notice, .error { padding: 12px 16px; border-radius: 7px; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
