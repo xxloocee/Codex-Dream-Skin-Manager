@@ -18,8 +18,8 @@
 
 ## 分支与 PR
 
-- 所有功能、修复和文档改动都从最新的主仓库 `main` 新建分支，通过 PR 合并回 `main`；不得直接在 `main` 开发、提交或推送。Fork 贡献也以主仓库 `main` 为基线。
-- 分支格式：`<type>/<short-description>`。使用小写英文和短横线，例如 `feature/theme-preview`、`fix/composer-background`、`docs/development-guide`；其他类型可用 `refactor/`、`chore/`、`test/`。不复用已合并分支。
+- 功能、修复和文档改动建议从最新的主仓库 `main` 新建分支；是否新建分支可按任务范围和当前分支状态决定，不要求每次修改或对话都新建分支，同一事项可继续使用未合并的现有分支。改动通过 PR 合并回 `main`，不得直接在 `main` 开发、提交或推送。Fork 贡献也以主仓库 `main` 为基线。
+- 分支命名建议采用 `<type>/<short-description>`，使用小写英文和短横线，例如 `feature/theme-preview`、`fix/composer-background`、`docs/development-guide`；其他类型可用 `refactor/`、`chore/`、`test/`。通常不复用已合并分支；命名和新建分支均作为推荐规范，不作为开发的强制前置条件。
 - PR 标题说明具体改动；按 [PR 模板](.github/pull_request_template.md) 填写问题或关联 Issue、实现方式、影响平台、验证结果和已知限制。涉及界面时附截图或交互说明，涉及数据或兼容性时说明影响与恢复方式。
 - 验证写明实际命令和结果，未运行或不适用的项目说明原因，不把旧包、旧报告或编译成功当作功能验收。处理审查意见并满足适用的 CI 检查后，由维护者合并。
 
