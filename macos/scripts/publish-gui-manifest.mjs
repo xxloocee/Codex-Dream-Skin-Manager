@@ -9,7 +9,7 @@ const key=createPrivateKey(await fs.readFile(keyFile));if(key.asymmetricKeyType!
 const assets=[];
 for(const arch of ['arm64','x64']){
  const name=`CodexDreamSkin-${version}-${arch}.zip`;
- try{const data=await fs.readFile(path.join(directory,name));assets.push({arch,name,bytes:data.length,sha256:createHash('sha256').update(data).digest('hex')});}
+ try{const data=await fs.readFile(path.join(directory,name));if(data.length<1||data.length>1024*1048576)throw Error('Update archives must be nonempty and at most 1 GiB.');assets.push({arch,name,bytes:data.length,sha256:createHash('sha256').update(data).digest('hex')});}
  catch(e){if(e.code!=='ENOENT')throw e;}
 }
 if(!assets.length)throw Error('No release archives.');

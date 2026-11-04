@@ -12,6 +12,7 @@ import { stableVersion } from "../core/updates.mjs";
 import { transactionProcess } from "./transaction-process.mjs";
 
 const repository = "xxloocee/Codex-Dream-Skin-Manager";
+const maxPackageBytes = 1024 * 1048576;
 const windowsUpdateErrors: Record<string, string> = {
   checking: "无法获取或解析更新清单，请检查网络连接后重新检查。",
   approval: "更新版本或安装包身份已改变，请重新检查后再安装。",
@@ -48,10 +49,10 @@ export class PlatformUpdates implements UpdatePort {
     const approved = candidate ? this.candidates.get(candidate.binding) : null;
     // Preparation only writes a private download stage. It never replaces the
     // application, so a timed-out downloader can be stopped before retrying.
-    return transactionProcess(process.execPath, [script, action, ...(candidate ? [candidate.latestVersion, String(approved?.raw.manifestDigest)] : [])], action === "inspect" ? 120000 : 600000, false, undefined, value => {
+    return transactionProcess(process.execPath, [script, action, ...(candidate ? [candidate.latestVersion, String(approved?.raw.manifestDigest)] : [])], action === "inspect" ? 120000 : 1200000, false, undefined, value => {
       if (!onProgress || value.kind !== "update.progress") return;
       if (value.stage === "downloading" && Number.isSafeInteger(value.downloadedBytes) && Number.isSafeInteger(value.totalBytes) &&
-          (value.downloadedBytes as number) >= 0 && (value.totalBytes as number) > 0 && (value.totalBytes as number) <= 512 * 1048576 && (value.downloadedBytes as number) <= (value.totalBytes as number)) {
+          (value.downloadedBytes as number) >= 0 && (value.totalBytes as number) > 0 && (value.totalBytes as number) <= maxPackageBytes && (value.downloadedBytes as number) <= (value.totalBytes as number)) {
         onProgress({ stage: "downloading", downloadedBytes: value.downloadedBytes as number, totalBytes: value.totalBytes as number });
       } else if (value.stage === "verifying" || value.stage === "preparing") onProgress({ stage: value.stage });
     });
@@ -103,7 +104,7 @@ export class PlatformUpdates implements UpdatePort {
         if (target) { mode = "macos-signed"; reason = "验证签名和应用身份后，正常退出管理器，由外部 helper 替换 app 并保留旧 bundle。"; }
         else reason = "当前应用安装身份与签名通道不匹配，或位于只读/DMG 目录；请前往该签名发布页，请手动安装。";
         trust = "固定公钥 Ed25519 校验清单；包大小/hash、架构、codesign、bundle/GUI 版本、下一版本更新源与公钥均核对。";
-        if (typeof raw.manifestDigest !== "string" || !/^[a-f0-9]{64}$/.test(raw.manifestDigest) || typeof raw.packageSha256 !== "string" || !/^[a-f0-9]{64}$/.test(raw.packageSha256) || !Number.isSafeInteger(raw.packageBytes) || (raw.packageBytes as number) < 1 || (raw.packageBytes as number) > 512 * 1048576) throw new ContractError("IO_ERROR", "签名更新检查缺少批准包绑定。");
+        if (typeof raw.manifestDigest !== "string" || !/^[a-f0-9]{64}$/.test(raw.manifestDigest) || typeof raw.packageSha256 !== "string" || !/^[a-f0-9]{64}$/.test(raw.packageSha256) || !Number.isSafeInteger(raw.packageBytes) || (raw.packageBytes as number) < 1 || (raw.packageBytes as number) > maxPackageBytes) throw new ContractError("IO_ERROR", "签名更新检查缺少批准包绑定。");
       } else {
         const script = path.join(this.root, "macos", "scripts", "check-update-macos.sh"); await safePath(script, this.root);
         raw = await transactionProcess("/bin/bash", [script, "--json"], 45000, false,
