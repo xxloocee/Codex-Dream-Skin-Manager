@@ -5,12 +5,14 @@ import { constants } from "node:fs";
 import { spawn } from "node:child_process";
 import { ContractError, record, validOperationId } from "../contracts/manager.mjs";
 import type { UpdateCandidate, UpdatePort } from "../core/ports/updates.mjs";
+import type { UpdateProgress } from "../contracts/manager.mjs";
 import { UpdateNotStartedError } from "../core/ports/updates.mjs";
 import { fileBytes, jsonObject, optionalBytes, safePath, sha256 } from "../core/local-files.mjs";
 import { stableVersion } from "../core/updates.mjs";
 import { transactionProcess } from "./transaction-process.mjs";
 
 const repository = "xxloocee/Codex-Dream-Skin-Manager";
+const maxPackageBytes = 1024 * 1048576;
 const windowsUpdateErrors: Record<string, string> = {
   checking: "无法获取或解析更新清单，请检查网络连接后重新检查。",
   approval: "更新版本或安装包身份已改变，请重新检查后再安装。",
@@ -42,10 +44,18 @@ export class PlatformUpdates implements UpdatePort {
     }
     return raw;
   }
-  private async signed(action: "inspect" | "prepare", candidate?: UpdateCandidate): Promise<Record<string, unknown>> {
+  private async signed(action: "inspect" | "prepare", candidate?: UpdateCandidate, onProgress?: (progress: UpdateProgress) => void): Promise<Record<string, unknown>> {
     const script = path.join(this.root, "macos", "scripts", "gui-update.mjs"); await safePath(script, this.root);
     const approved = candidate ? this.candidates.get(candidate.binding) : null;
-    return transactionProcess(process.execPath, [script, action, ...(candidate ? [candidate.latestVersion, String(approved?.raw.manifestDigest)] : [])], action === "inspect" ? 120000 : 600000, action === "prepare");
+    // Preparation only writes a private download stage. It never replaces the
+    // application, so a timed-out downloader can be stopped before retrying.
+    return transactionProcess(process.execPath, [script, action, ...(candidate ? [candidate.latestVersion, String(approved?.raw.manifestDigest)] : [])], action === "inspect" ? 120000 : 1200000, false, undefined, value => {
+      if (!onProgress || value.kind !== "update.progress") return;
+      if (value.stage === "downloading" && Number.isSafeInteger(value.downloadedBytes) && Number.isSafeInteger(value.totalBytes) &&
+          (value.downloadedBytes as number) >= 0 && (value.totalBytes as number) > 0 && (value.totalBytes as number) <= maxPackageBytes && (value.downloadedBytes as number) <= (value.totalBytes as number)) {
+        onProgress({ stage: "downloading", downloadedBytes: value.downloadedBytes as number, totalBytes: value.totalBytes as number });
+      } else if (value.stage === "verifying" || value.stage === "preparing") onProgress({ stage: value.stage });
+    });
   }
   private async plist(file: string, field: string): Promise<string> {
     await safePath(file, path.parse(file).root);
@@ -69,7 +79,7 @@ export class PlatformUpdates implements UpdatePort {
     return target;
   }
   async check(): Promise<UpdateCandidate> {
-    let raw: Record<string, unknown>, repo = repository, channel: UpdateCandidate["channel"], mode: UpdateCandidate["installMode"] = "manual";
+    let raw: Record<string, unknown>, repo = repository, tagPrefix = "v", channel: UpdateCandidate["channel"], mode: UpdateCandidate["installMode"] = "manual";
     let config: Uint8Array | null = null, key: Uint8Array | null = null, target: string | null = null, bundle: string | null = null;
     let reason = "此通道通过发布页手动下载，不自动替换应用。", trust = "请通过发布页选择安装包并确认系统安装提示。";
     if (this.platform === "windows") {
@@ -84,14 +94,17 @@ export class PlatformUpdates implements UpdatePort {
       const parsed = config ? jsonObject(config) : null;
       if (parsed && parsed.enabled !== false) {
         if (typeof parsed.repository !== "string" || /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.exec(parsed.repository)?.[0] !== parsed.repository || typeof parsed.bundleIdentifier !== "string" || !/^[A-Za-z0-9.-]{1,120}$/.test(parsed.bundleIdentifier)) throw new ContractError("IO_ERROR", "签名更新源配置无效，未回退普通通道。");
-        repo = parsed.repository; bundle = parsed.bundleIdentifier; channel = "macos-gui";
+        repo = parsed.repository; bundle = parsed.bundleIdentifier;
+        tagPrefix = typeof parsed.tagPrefix === "string" ? parsed.tagPrefix : "gui-v";
+        if (!["v", "gui-v"].includes(tagPrefix)) throw new ContractError("IO_ERROR", "签名更新标签配置无效。");
+        channel = tagPrefix === "v" ? "macos-release" : "macos-gui";
         key = await fileBytes(path.join(this.root, "macos", "updater", "public-key.pem"), this.root, 65536);
         if (typeof parsed.version !== "string") throw new ContractError("IO_ERROR", "GUI 通道当前版本缺失。");
         raw = await this.signed("inspect"); target = await this.target(bundle, stableVersion(parsed.version));
         if (target) { mode = "macos-signed"; reason = "验证签名和应用身份后，正常退出管理器，由外部 helper 替换 app 并保留旧 bundle。"; }
         else reason = "当前应用安装身份与签名通道不匹配，或位于只读/DMG 目录；请前往该签名发布页，请手动安装。";
         trust = "固定公钥 Ed25519 校验清单；包大小/hash、架构、codesign、bundle/GUI 版本、下一版本更新源与公钥均核对。";
-        if (typeof raw.manifestDigest !== "string" || !/^[a-f0-9]{64}$/.test(raw.manifestDigest) || typeof raw.packageSha256 !== "string" || !/^[a-f0-9]{64}$/.test(raw.packageSha256) || !Number.isSafeInteger(raw.packageBytes) || (raw.packageBytes as number) < 1 || (raw.packageBytes as number) > 512 * 1048576) throw new ContractError("IO_ERROR", "签名更新检查缺少批准包绑定。");
+        if (typeof raw.manifestDigest !== "string" || !/^[a-f0-9]{64}$/.test(raw.manifestDigest) || typeof raw.packageSha256 !== "string" || !/^[a-f0-9]{64}$/.test(raw.packageSha256) || !Number.isSafeInteger(raw.packageBytes) || (raw.packageBytes as number) < 1 || (raw.packageBytes as number) > maxPackageBytes) throw new ContractError("IO_ERROR", "签名更新检查缺少批准包绑定。");
       } else {
         const script = path.join(this.root, "macos", "scripts", "check-update-macos.sh"); await safePath(script, this.root);
         raw = await transactionProcess("/bin/bash", [script, "--json"], 45000, false,
@@ -101,9 +114,9 @@ export class PlatformUpdates implements UpdatePort {
     }
     if (typeof raw.currentVersion !== "string" || typeof raw.latestVersion !== "string") throw new ContractError("IO_ERROR", "更新检查返回无效版本。");
     const currentVersion = stableVersion(raw.currentVersion), latestVersion = stableVersion(raw.latestVersion);
-    const tag = (channel === "macos-gui" ? "gui-v" : "v") + latestVersion;
+    const tag = tagPrefix + latestVersion;
     const releaseUrl = `https://github.com/${repo}/releases/tag/${tag}`;
-    if (channel !== "macos-release" && raw.releaseUrl !== releaseUrl) throw new ContractError("IO_ERROR", "更新发布页不属于批准通道。");
+    if ((channel !== "macos-release" || key !== null) && raw.releaseUrl !== releaseUrl) throw new ContractError("IO_ERROR", "更新发布页不属于批准通道。");
     const binding = sha256([Buffer.from(JSON.stringify({ currentVersion, latestVersion, channel, mode, repo, target, bundle,
       installerHash: raw.installerSha256 ?? null, manifest: raw.manifestDigest ?? null, packageHash: raw.packageSha256 ?? null })), config ?? new Uint8Array(), key ?? new Uint8Array()]);
     if (this.candidates.size >= 16) this.candidates.delete(this.candidates.keys().next().value!);
@@ -114,7 +127,7 @@ export class PlatformUpdates implements UpdatePort {
     if (!validOperationId(id)) throw new ContractError("INVALID_REQUEST", "Invalid update result identity.");
     return path.join(this.state, "updates", "manager-" + sha256([Buffer.from(id)]) + ".plist");
   }
-  async install(candidate: UpdateCandidate, id: string): Promise<{ managerMustQuit: boolean }> {
+  async install(candidate: UpdateCandidate, id: string, onProgress?: (progress: UpdateProgress) => void): Promise<{ managerMustQuit: boolean }> {
     const privateCandidate = this.candidates.get(candidate.binding);
     if (!privateCandidate) throw new ContractError("RESOURCE_EXPIRED", "更新批准绑定已失效。");
     if (candidate.installMode === "windows-installer") {
@@ -122,22 +135,28 @@ export class PlatformUpdates implements UpdatePort {
       if (raw.installerStarted !== true || typeof raw.installerProcessId !== "number" || raw.installerProcessId <= 0) throw new ContractError("IO_ERROR", "安装器未确认启动。");
       return { managerMustQuit: false };
     }
-    if (candidate.installMode !== "macos-signed" || !privateCandidate.bundle || !privateCandidate.target || await this.target(privateCandidate.bundle, candidate.currentVersion) !== privateCandidate.target) throw new ContractError("METHOD_UNSUPPORTED", "当前包不能自动替换。");
-    const raw = await this.signed("prepare", candidate), updates = path.join(this.state, "updates");
-    if (typeof raw.stage !== "string" || typeof raw.stagedApp !== "string" || path.dirname(raw.stage) !== updates || !path.basename(raw.stage).startsWith("download-") ||
-        path.basename(raw.stagedApp) !== "Codex Dream Skin.app" || path.dirname(raw.stagedApp) !== path.join(raw.stage, "payload")) throw new ContractError("IO_ERROR", "签名更新暂存位置无效。");
-    await safePath(raw.stage, this.state); await safePath(raw.stagedApp, raw.stage);
-    const source = path.join(this.root, "macos", "scripts", "gui-install-update.sh"); await safePath(source, this.root);
-    const helper = path.join(raw.stage, "manager-install.sh"); await copyFile(source, helper, constants.COPYFILE_EXCL); await safePath(helper, raw.stage);
-    const log = await open(path.join(raw.stage, "manager-install.log"), "wx", 0o600);
+    let helperStarted = false;
     try {
-      await new Promise<void>((resolve, reject) => {
-        const child = spawn("/bin/bash", [helper, raw.stagedApp as string, privateCandidate.target!, String(process.ppid), candidate.latestVersion, this.resultFile(id), privateCandidate.bundle!],
-          { shell: false, detached: true, cwd: raw.stage as string, stdio: ["ignore", log.fd, log.fd] });
-        child.once("error", reject); child.once("spawn", () => { child.unref(); resolve(); });
-      });
-    } finally { await log.close(); }
-    return { managerMustQuit: true };
+      if (candidate.installMode !== "macos-signed" || !privateCandidate.bundle || !privateCandidate.target || await this.target(privateCandidate.bundle, candidate.currentVersion) !== privateCandidate.target) throw new ContractError("METHOD_UNSUPPORTED", "当前包不能自动替换。");
+      const raw = await this.signed("prepare", candidate, onProgress), updates = path.join(this.state, "updates");
+      if (typeof raw.stage !== "string" || typeof raw.stagedApp !== "string" || path.dirname(raw.stage) !== updates || !path.basename(raw.stage).startsWith("download-") ||
+          path.basename(raw.stagedApp) !== "Codex Dream Skin.app" || path.dirname(raw.stagedApp) !== path.join(raw.stage, "payload")) throw new ContractError("IO_ERROR", "签名更新暂存位置无效。");
+      await safePath(raw.stage, this.state); await safePath(raw.stagedApp, raw.stage);
+      const source = path.join(this.root, "macos", "scripts", "gui-install-update.sh"); await safePath(source, this.root);
+      const helper = path.join(raw.stage, "manager-install.sh"); await copyFile(source, helper, constants.COPYFILE_EXCL); await safePath(helper, raw.stage);
+      const log = await open(path.join(raw.stage, "manager-install.log"), "wx", 0o600);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const child = spawn("/bin/bash", [helper, raw.stagedApp as string, privateCandidate.target!, String(process.ppid), candidate.latestVersion, this.resultFile(id), privateCandidate.bundle!],
+            { shell: false, detached: true, cwd: raw.stage as string, stdio: ["ignore", log.fd, log.fd] });
+          child.once("error", reject); child.once("spawn", () => { helperStarted = true; child.unref(); resolve(); });
+        });
+      } finally { await log.close(); }
+      return { managerMustQuit: true };
+    } catch (error) {
+      if (!helperStarted) throw new UpdateNotStartedError("更新下载或校验未完成，尚未替换应用，请重新检查后重试。");
+      throw error;
+    }
   }
   async receipt(id: string): Promise<"installed" | "failed" | null> {
     if (this.platform !== "macos") return null;

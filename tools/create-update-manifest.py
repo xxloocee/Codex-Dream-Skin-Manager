@@ -22,6 +22,11 @@ def main():
         f"CodexDreamSkinManager-{args.tag}-macos-x64.dmg",
         f"CodexDreamSkinManager-{args.tag}-macos-arm64.dmg",
     ]
+    # New releases also ship signed-updater archives. Keep accepting historical
+    # four-package inputs so old manual-download manifests can still be rebuilt.
+    update_names = [f"CodexDreamSkin-{args.tag[1:]}-{arch}.zip" for arch in ["arm64", "x64"]]
+    if any((args.directory / name).exists() for name in update_names):
+        package_names.extend(update_names)
     checksum_path = args.directory / "SHA256SUMS.txt"
     checksums = {}
     for line in checksum_path.read_text(encoding="utf-8").splitlines():
@@ -30,7 +35,7 @@ def main():
             raise ValueError("Malformed or duplicate SHA256SUMS.txt entry.")
         checksums[entry[2]] = entry[1]
     if set(checksums) != set(package_names):
-        raise ValueError("SHA256SUMS.txt must list exactly the four release packages.")
+        raise ValueError("SHA256SUMS.txt must list exactly the release packages.")
 
     assets = []
     for name in package_names + ["SHA256SUMS.txt"]:

@@ -2,16 +2,19 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {createHash,createPrivateKey,sign} from 'node:crypto';
 const [version,directory]=process.argv.slice(2),keyFile=process.env.DREAMSKIN_GUI_SIGNING_KEY_FILE;
+const tagPrefix=process.env.DREAMSKIN_UPDATE_TAG_PREFIX||'gui-v';
+if(!['v','gui-v'].includes(tagPrefix))throw Error('Invalid update tag prefix.');
 if(!/^\d+\.\d+\.\d+$/.test(version)||!keyFile)throw Error('Version and DREAMSKIN_GUI_SIGNING_KEY_FILE are required.');
 const key=createPrivateKey(await fs.readFile(keyFile));if(key.asymmetricKeyType!=='ed25519')throw Error('Ed25519 signing key required.');
 const assets=[];
 for(const arch of ['arm64','x64']){
  const name=`CodexDreamSkin-${version}-${arch}.zip`;
- try{const data=await fs.readFile(path.join(directory,name));assets.push({arch,name,bytes:data.length,sha256:createHash('sha256').update(data).digest('hex')});}
+ try{const data=await fs.readFile(path.join(directory,name));if(data.length<1||data.length>1024*1048576)throw Error('Update archives must be nonempty and at most 1 GiB.');assets.push({arch,name,bytes:data.length,sha256:createHash('sha256').update(data).digest('hex')});}
  catch(e){if(e.code!=='ENOENT')throw e;}
 }
 if(!assets.length)throw Error('No release archives.');
-const data=Buffer.from(JSON.stringify({channel:'macos-gui-stable',version,bundleIdentifier:'cc.dreamskin.manager',assets},null,2)+'\n');
+if(tagPrefix==='v'&&assets.length!==2)throw Error('Official updates require both arm64 and x64 archives.');
+const data=Buffer.from(JSON.stringify({channel:tagPrefix==='v'?'macos-release-stable':'macos-gui-stable',version,bundleIdentifier:'cc.dreamskin.manager',assets},null,2)+'\n');
 await fs.writeFile(path.join(directory,'gui-manifest.json'),data);
 await fs.writeFile(path.join(directory,'gui-manifest.sig'),sign(null,data,key).toString('base64')+'\n');
 console.log(`Signed GUI ${version}: ${assets.map(x=>x.arch).join(', ')}`);

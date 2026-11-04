@@ -149,6 +149,8 @@ jobs:
 
   macos:
     needs: validate
+    outputs:
+      signed_updates: ${{ steps.signing.outputs.enabled }}
     strategy:
       fail-fast: false
       matrix:
@@ -179,12 +181,33 @@ jobs:
       - name: Install shared manager dependencies
         run: npm ci
 
+      - name: Configure signed macOS updates
+        id: signing
+        env:
+          SIGNING_KEY: ${{ secrets.DREAMSKIN_GUI_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SIGNING_KEY" ]; then
+            echo 'macOS signing is not configured; preserving manual-download releases.'
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          umask 077
+          printf '%s\n' "$SIGNING_KEY" > "$RUNNER_TEMP/gui-signing-key.pem"
+          echo "DREAMSKIN_GUI_SIGNING_KEY_FILE=$RUNNER_TEMP/gui-signing-key.pem" >> "$GITHUB_ENV"
+          echo 'enabled=true' >> "$GITHUB_OUTPUT"
+
       - name: Build macOS DMG
         env:
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
           DREAMSKIN_ARCHS: ${{ matrix.target }}
           RELEASE_ARCH: ${{ matrix.arch }}
+          DREAMSKIN_UPDATE_REPOSITORY: ${{ github.repository }}
+          DREAMSKIN_UPDATE_TAG_PREFIX: v
         run: |
+          if [ -n "${DREAMSKIN_GUI_SIGNING_KEY_FILE:-}" ]; then
+            export DREAMSKIN_UPDATE_ARCHIVE="$PWD/macos/release/CodexDreamSkin-${RELEASE_VERSION}-${RELEASE_ARCH}.zip"
+          fi
           NODE="$(command -v node)" bash macos/scripts/build-dmg.sh
           mv "macos/release/CodexDreamSkin-v${RELEASE_VERSION}.dmg" \
             "macos/release/CodexDreamSkinManager-v${RELEASE_VERSION}-macos-${RELEASE_ARCH}.dmg"
@@ -193,9 +216,15 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-macos-${{ matrix.arch }}
-          path: macos/release/*-macos-${{ matrix.arch }}.dmg
+          path: |
+            macos/release/*-macos-${{ matrix.arch }}.dmg
+            macos/release/CodexDreamSkin-*-${{ matrix.arch }}.zip
           if-no-files-found: error
           retention-days: 30
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/gui-signing-key.pem"
 
   publish:
     if: github.event_name == 'push'
@@ -216,10 +245,16 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Set up manifest signing runtime
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+
       - name: Create SHA-256 manifest
         working-directory: dist
         env:
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+          SIGNED_MACOS_UPDATES: ${{ needs.macos.outputs.signed_updates }}
         run: |
           expected=(
             "CodexDreamSkinManager-v${RELEASE_VERSION}-windows-x64-setup.exe"
@@ -227,6 +262,12 @@ jobs:
             "CodexDreamSkinManager-v${RELEASE_VERSION}-macos-x64.dmg"
             "CodexDreamSkinManager-v${RELEASE_VERSION}-macos-arm64.dmg"
           )
+          if [ "$SIGNED_MACOS_UPDATES" = true ]; then
+            expected+=(
+              "CodexDreamSkin-${RELEASE_VERSION}-arm64.zip"
+              "CodexDreamSkin-${RELEASE_VERSION}-x64.zip"
+            )
+          fi
           diff -u <(printf '%s\n' "${expected[@]}" | LC_ALL=C sort) \
             <(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
           sha256sum "${expected[@]}" | LC_ALL=C sort -k2 > SHA256SUMS.txt
@@ -235,6 +276,21 @@ jobs:
         env:
           RELEASE_TAG: ${{ needs.validate.outputs.tag }}
         run: python3 tools/create-update-manifest.py --tag "$RELEASE_TAG" --directory dist
+
+      - name: Sign macOS update manifest
+        if: needs.macos.outputs.signed_updates == 'true'
+        env:
+          SIGNING_KEY: ${{ secrets.DREAMSKIN_GUI_SIGNING_KEY }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+          DREAMSKIN_GUI_SIGNING_KEY_FILE: ${{ runner.temp }}/gui-signing-key.pem
+          DREAMSKIN_UPDATE_TAG_PREFIX: v
+        run: |
+          set -euo pipefail
+          test -n "$SIGNING_KEY" || { echo 'Configure DREAMSKIN_GUI_SIGNING_KEY before publishing.' >&2; exit 1; }
+          umask 077
+          trap 'rm -f "$DREAMSKIN_GUI_SIGNING_KEY_FILE"' EXIT
+          printf '%s\n' "$SIGNING_KEY" > "$DREAMSKIN_GUI_SIGNING_KEY_FILE"
+          node macos/scripts/publish-gui-manifest.mjs "$RELEASE_VERSION" dist
 
       - name: Create GitHub Release
         env:

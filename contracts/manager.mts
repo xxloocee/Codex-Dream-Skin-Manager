@@ -134,7 +134,9 @@ export interface UpdateOperation {
   id: string; channel: UpdateCheck["channel"]; latestVersion: string;
   state: "queued" | "running" | "handoff" | "installed" | "failed" | "indeterminate";
   stage: string; startedAt: string; updatedAt: string; managerMustQuit: boolean; error: ManagerError | null;
+  progress?: { downloadedBytes: number; totalBytes: number };
 }
+export type UpdateProgress = { stage: "downloading"; downloadedBytes: number; totalBytes: number } | { stage: "verifying" | "preparing" };
 export interface SourceSelection { cancelled: boolean; sources: SourceGrant[]; failures: { name: string; error: ManagerError }[] }
 export interface ThemeCreateRequest { operationId: string; handle: string; name: string; patch: ThemePatch }
 export type ThemeCreateCommand = { method: "themes.create"; params: ThemeCreateRequest };

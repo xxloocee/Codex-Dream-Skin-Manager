@@ -10,8 +10,7 @@ const [action,argument,expectedManifestDigest]=process.argv.slice(2);
 const MB=1024*1024;
 const channel=JSON.parse(await fs.readFile(path.join(root,'updater/channel.json'),'utf8'));
 if(channel.enabled===false) {
-  // Ordinary DMGs have no GUI signing channel. Keep their static release
-  // check available, but never use that channel for automatic installation.
+  // Builds without a publisher key keep the manual release check.
   try {
     if(action!=='check')throw Error('此构建使用手动更新，请前往发布页下载安装包。');
     const {stdout}=await run('/bin/bash',[path.join(root,'scripts/check-update-macos.sh'),'--json'],{timeout:45000,maxBuffer:MB});
@@ -20,45 +19,61 @@ if(channel.enabled===false) {
   process.exit(process.exitCode??0);
 }
 const publicKey=await fs.readFile(path.join(root,'updater/public-key.pem'),'utf8');
+const tagPrefix=channel.tagPrefix??'gui-v';
 const stateRoot=path.join(process.env.HOME,'Library/Application Support/CodexDreamSkinStudio');
 const semver=v=>typeof v==='string'&&v.length<=64&&/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(v)?.[0]===v;
 const compare=(a,b)=>{const x=a.split('.').map(BigInt),y=b.split('.').map(BigInt);for(let i=0;i<3;i++){if(x[i]!==y[i])return x[i]>y[i]?1:-1;}return 0;};
 const hosts=new Set(['api.github.com','github.com','release-assets.githubusercontent.com','objects.githubusercontent.com']);
-async function download(url,limit) {
+const progress=value=>process.stderr.write(JSON.stringify({kind:'update.progress',...value})+'\n');
+async function download(url,limit,reportProgress=false) {
   for(let i=0;i<6;i++){
     const parsed=new URL(url);
     if(parsed.protocol!=='https:'||parsed.username||parsed.password||!hosts.has(parsed.hostname))throw Error('更新地址不在允许的 GitHub 服务中。');
-    const response=await fetch(url,{redirect:'manual',signal:AbortSignal.timeout(limit>MB?180000:20000),headers:{'User-Agent':'CodexDreamSkinGUI-Updater','Accept':parsed.hostname==='api.github.com'?'application/vnd.github+json':'application/octet-stream'}});
+    const response=await fetch(url,{redirect:'manual',signal:AbortSignal.timeout(limit>MB?600000:20000),headers:{'User-Agent':'CodexDreamSkinGUI-Updater','Accept':parsed.hostname==='api.github.com'?'application/vnd.github+json':'application/octet-stream'}});
     if(response.status>=300&&response.status<400){const location=response.headers.get('location');await response.body?.cancel();if(!location)throw Error('更新地址重定向无效。');url=new URL(location,url).href;continue;}
     if(!response.ok)throw Error(`更新服务返回 HTTP ${response.status}。`);
     if(Number(response.headers.get('content-length'))>limit){await response.body?.cancel();throw Error('更新文件超过限制。');}
-    const parts=[];let size=0;
-    for await(const chunk of response.body){size+=chunk.length;if(size>limit)throw Error('更新文件超过限制。');parts.push(chunk);}
+    const parts=[];let size=0,lastProgress=0;
+    if(reportProgress)progress({stage:'downloading',downloadedBytes:0,totalBytes:limit});
+    for await(const chunk of response.body){
+      size+=chunk.length;if(size>limit)throw Error('更新文件超过限制。');parts.push(chunk);
+      if(reportProgress&&Date.now()-lastProgress>=1000){progress({stage:'downloading',downloadedBytes:size,totalBytes:limit});lastProgress=Date.now();}
+    }
+    if(reportProgress)progress({stage:'downloading',downloadedBytes:size,totalBytes:limit});
     return Buffer.concat(parts);
   }
   throw Error('更新地址重定向过多。');
 }
 async function latest() {
-  if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(channel.repository)||!semver(channel.version))throw Error('本地更新配置无效。');
-  const releases=JSON.parse((await download(`https://api.github.com/repos/${channel.repository}/releases?per_page=30`,MB)).toString('utf8'));
-  if(!Array.isArray(releases))throw Error('更新服务返回无效发布列表。');
-  const release=releases.filter(r=>!r.draft&&!r.prerelease&&/^gui-v\d+\.\d+\.\d+$/.test(r.tag_name)).sort((a,b)=>compare(b.tag_name.slice(5),a.tag_name.slice(5)))[0];
-  if(!release)throw Error('该仓库尚未发布 Mac GUI 更新。');
-  const base=`https://github.com/${channel.repository}/releases/download/${release.tag_name}/`;
+  if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(channel.repository)||!semver(channel.version)||!['v','gui-v'].includes(tagPrefix))throw Error('本地更新配置无效。');
+  let tag;
+  if(tagPrefix==='v'){
+    const release=JSON.parse((await download(`https://github.com/${channel.repository}/releases/latest/download/update.json`,MB)).toString('utf8'));
+    if(release.schemaVersion!==1||release.draft!==false||release.prerelease!==false||typeof release.tag_name!=='string'||!release.tag_name.startsWith('v')||!semver(release.tag_name.slice(1)))throw Error('更新服务返回无效的正式版清单。');
+    tag=release.tag_name;
+  }
+  if(tagPrefix==='gui-v'){
+    const releases=JSON.parse((await download(`https://api.github.com/repos/${channel.repository}/releases?per_page=30`,MB)).toString('utf8'));
+    if(!Array.isArray(releases))throw Error('更新服务返回无效发布列表。');
+    const release=releases.filter(r=>!r.draft&&!r.prerelease&&/^gui-v\d+\.\d+\.\d+$/.test(r.tag_name)&&semver(r.tag_name.slice(5))).sort((a,b)=>compare(b.tag_name.slice(5),a.tag_name.slice(5)))[0];
+    if(!release)throw Error('该仓库尚未发布 Mac GUI 更新。');
+    tag=release.tag_name;
+  }
+  const base=`https://github.com/${channel.repository}/releases/download/${tag}/`;
   const [bytes,signature]=await Promise.all([download(base+'gui-manifest.json',65536),download(base+'gui-manifest.sig',1024)]);
   if(!verify(null,bytes,publicKey,Buffer.from(signature.toString('utf8').trim(),'base64')))throw Error('更新清单签名无效，已拒绝安装。');
   const manifest=JSON.parse(bytes);
-  if(manifest.version!==release.tag_name.slice(5)||manifest.channel!==channel.channel||manifest.bundleIdentifier!==channel.bundleIdentifier||!semver(manifest.version)||!Array.isArray(manifest.assets))throw Error('更新清单不兼容。');
+  if(!semver(manifest.version)||tag!==tagPrefix+manifest.version||manifest.channel!==channel.channel||manifest.bundleIdentifier!==channel.bundleIdentifier||!Array.isArray(manifest.assets))throw Error('更新清单不兼容。');
   const arch=process.arch==='arm64'?'arm64':'x64';
   const name=`CodexDreamSkin-${manifest.version}-${arch}.zip`;
   const asset=manifest.assets.find(a=>a.arch===arch);
-  if(!asset||asset.name!==name||!Number.isSafeInteger(asset.bytes)||asset.bytes<1||asset.bytes>512*MB||!/^[a-f0-9]{64}$/.test(asset.sha256))throw Error('没有兼容本机的安装包。');
-  const url=`https://github.com/${channel.repository}/releases/download/gui-v${manifest.version}/${asset.name}`;
+  if(!asset||asset.name!==name||!Number.isSafeInteger(asset.bytes)||asset.bytes<1||asset.bytes>1024*MB||!/^[a-f0-9]{64}$/.test(asset.sha256))throw Error('没有兼容本机的安装包。');
+  const url=`https://github.com/${channel.repository}/releases/download/${tagPrefix}${manifest.version}/${asset.name}`;
   return {manifest,asset,url,bytes,signature};
 }
 try {
   const release=await latest();
-  const result={currentVersion:channel.version,latestVersion:release.manifest.version,updateAvailable:compare(release.manifest.version,channel.version)>0,releaseUrl:`https://github.com/${channel.repository}/releases/tag/gui-v${release.manifest.version}`};
+  const result={currentVersion:channel.version,latestVersion:release.manifest.version,updateAvailable:compare(release.manifest.version,channel.version)>0,releaseUrl:`https://github.com/${channel.repository}/releases/tag/${tagPrefix}${release.manifest.version}`};
   if(action==='check'){console.log(JSON.stringify(result));}
   else if(action==='inspect'){console.log(JSON.stringify({...result,manifestDigest:createHash('sha256').update(release.bytes).digest('hex'),packageSha256:release.asset.sha256,packageBytes:release.asset.bytes}));}
   else if(action==='prepare'){
@@ -68,9 +83,11 @@ try {
     if((await fs.lstat(updates)).isSymbolicLink())throw Error('更新目录不安全。');
     const stage=await fs.mkdtemp(path.join(updates,'download-'));
     try {
-      const zip=await download(release.url,release.asset.bytes);
+      const zip=await download(release.url,release.asset.bytes,true);
+      progress({stage:'verifying'});
       if(zip.length!==release.asset.bytes||createHash('sha256').update(zip).digest('hex')!==release.asset.sha256)throw Error('安装包 SHA-256 校验失败。');
       const archive=path.join(stage,'app.zip');await fs.writeFile(archive,zip,{flag:'wx',mode:0o600});
+      progress({stage:'preparing'});
       // The archive is signed by this channel's publisher before extraction.
       const extracted=path.join(stage,'payload');await fs.mkdir(extracted,{mode:0o700});
       await run('/usr/bin/ditto',['-x','-k',archive,extracted],{timeout:120000,maxBuffer:MB});
@@ -81,9 +98,13 @@ try {
       const {stdout:identifier}=await run('/usr/libexec/PlistBuddy',['-c','Print :CFBundleIdentifier',plist]);
       const {stdout:version}=await run('/usr/libexec/PlistBuddy',['-c','Print :DreamSkinGUIVersion',plist]);
       if(identifier.trim()!==channel.bundleIdentifier||version.trim()!==release.manifest.version)throw Error('安装包身份或版本不匹配。');
+      if(tagPrefix==='v'){
+        const {stdout:applicationVersion}=await run('/usr/libexec/PlistBuddy',['-c','Print :CFBundleShortVersionString',plist]);
+        if(applicationVersion.trim()!==release.manifest.version)throw Error('正式版应用版本不匹配。');
+      }
       const candidateChannel=JSON.parse(await fs.readFile(path.join(app,'Contents/Resources/macos/updater/channel.json'),'utf8'));
       const candidateKey=await fs.readFile(path.join(app,'Contents/Resources/macos/updater/public-key.pem'),'utf8');
-      if(candidateChannel.enabled===false||candidateChannel.repository!==channel.repository||candidateChannel.version!==release.manifest.version||candidateChannel.channel!==channel.channel||candidateChannel.bundleIdentifier!==channel.bundleIdentifier||candidateKey.trim()!==publicKey.trim())throw Error('安装包更新源不匹配。');
+      if(candidateChannel.enabled===false||candidateChannel.repository!==channel.repository||candidateChannel.version!==release.manifest.version||candidateChannel.channel!==channel.channel||(candidateChannel.tagPrefix??'gui-v')!==tagPrefix||candidateChannel.bundleIdentifier!==channel.bundleIdentifier||candidateKey.trim()!==publicKey.trim())throw Error('安装包更新源不匹配。');
       console.log(JSON.stringify({...result,stagedApp:app,stage}));
     }catch(error){await fs.rm(stage,{recursive:true,force:true});throw error;}
   }else throw Error('Unknown update action.');

@@ -56,9 +56,11 @@ done
 "$NODE" "$ROOT/tools/stage-shared-resources.mjs" --stage macos "$RESOURCES"
 VERSION="$(/usr/bin/tr -d '[:space:]' < "$ROOT/macos/VERSION")"
 /usr/bin/sed "s/__VERSION__/$VERSION/g" "$ROOT/hosts/macos/Info.plist" > "$CONTENTS/Info.plist"
-GUI_VERSION="$(/usr/bin/tr -d '[:space:]' < "$ROOT/macos/GUI_VERSION")"
+GUI_VERSION_PATH="$ROOT/macos/GUI_VERSION"
+if [ "${DREAMSKIN_UPDATE_TAG_PREFIX:-gui-v}" = v ]; then GUI_VERSION_PATH="$ROOT/macos/VERSION"; fi
+GUI_VERSION="$(/usr/bin/tr -d '[:space:]' < "$GUI_VERSION_PATH")"
 /usr/libexec/PlistBuddy -c "Add :DreamSkinGUIVersion string $GUI_VERSION" "$CONTENTS/Info.plist"
-"$NODE" "$ROOT/macos/scripts/configure-gui-updater.mjs" "$ENGINE" "$ROOT/macos/GUI_VERSION"
+"$NODE" "$ROOT/macos/scripts/configure-gui-updater.mjs" "$ENGINE" "$GUI_VERSION_PATH"
 /bin/bash "$ROOT/macos/scripts/generate-app-icon.sh" "$RESOURCES/DreamSkin.icns"
 /bin/chmod 755 "$CONTENTS/MacOS/DreamSkinSharedHost" "$RESOURCES/runtime/node/node"
 /usr/bin/codesign --force --deep --sign - --timestamp=none "$OUTPUT"

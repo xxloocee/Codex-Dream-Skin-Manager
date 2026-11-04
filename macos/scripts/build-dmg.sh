@@ -9,6 +9,9 @@ trap 'status=$?; /bin/rm -rf "$TMP"; exit "$status"' EXIT
 TMP="$(cd "$TMP" && pwd -P)"
 /bin/mkdir -p "$ROOT/release" "$TMP/stage"
 /bin/bash "$ROOT/scripts/build-app.sh" --output "$TMP/stage/Codex Dream Skin.app"
+if [ -n "${DREAMSKIN_UPDATE_ARCHIVE:-}" ]; then
+  /usr/bin/ditto -c -k --keepParent "$TMP/stage/Codex Dream Skin.app" "$DREAMSKIN_UPDATE_ARCHIVE"
+fi
 /bin/ln -s /Applications "$TMP/stage/Applications"
 /usr/bin/hdiutil create -quiet -ov -format UDZO -volname "Codex Dream Skin" -srcfolder "$TMP/stage" "$DMG"
 /usr/bin/shasum -a 256 "$DMG" > "$DMG.sha256"

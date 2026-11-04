@@ -8,8 +8,9 @@ import type { ManagerClient } from "./client";
 import { BridgeError } from "./client";
 
 const labels: Record<UpdateOperation["state"], string> = { queued: "正在准备更新…", running: "正在下载更新…", handoff: "请完成安装", installed: "更新已安装", failed: "更新未完成", indeterminate: "结果待核对" };
+const stages: Record<string, string> = { downloading: "正在下载更新…", verifying: "正在校验更新…", preparing: "正在准备安装…", waitingForManagerExit: "更新已准备好，重启后完成安装。" };
 const installing = (operation?: UpdateOperation) => operation?.state === "queued" || operation?.state === "running" || (operation?.state === "handoff" && operation.managerMustQuit);
-const channels = { "windows-release": "Windows 正式版", "macos-release": "macOS 普通发布", "macos-gui": "macOS 签名 GUI" };
+const channels = { "windows-release": "Windows 正式版", "macos-release": "macOS 正式版", "macos-gui": "macOS 签名 GUI" };
 const message = (error: unknown) => errorMessage(error, "更新处理未完成。");
 const recordsKey = "dreamskin.manager.updates", notificationKey = "dreamskin.manager.update-notified";
 
@@ -21,6 +22,7 @@ export function UpdatePanel({ client, session, disabled, checkRequest = 0, onBus
   const [running, setRunning] = useState(false), [notice, setNotice] = useState<UiMessage>(""), [ids, setIds] = useState<string[]>([]);
   const [operations, setOperations] = useState<Record<string, UpdateOperation>>({}), [attempted, setAttempted] = useState(false);
   const [showOperation, setShowOperation] = useState(true), [queryError, setQueryError] = useState<UiMessage>("");
+  const [actionError, setActionError] = useState<UiMessage>("");
   const alive = useRef(true), working = useRef(false), foregroundCheck = useRef(false), busy = useRef(disabled), proposalRef = useRef<UpdateCheck | null>(null), attemptedRef = useRef(false);
   const operationsRef = useRef(operations), records = useRef<string[]>([]), lastCheck = useRef(0), announced = useRef<Record<string, string>>({});
   busy.current = disabled; operationsRef.current = operations;
@@ -54,7 +56,7 @@ export function UpdatePanel({ client, session, disabled, checkRequest = 0, onBus
   useEffect(() => {
     alive.current = true; lastCheck.current = 0;
     try {
-      const saved: unknown = JSON.parse(sessionStorage.getItem(recordsKey) ?? "[]");
+      const saved: unknown = JSON.parse(localStorage.getItem(recordsKey) ?? "[]");
       records.current = Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string").slice(-16) : [];
       setIds(records.current);
       const notified: unknown = JSON.parse(localStorage.getItem(notificationKey) ?? "{}");
@@ -89,15 +91,15 @@ export function UpdatePanel({ client, session, disabled, checkRequest = 0, onBus
   }, [client, ids]);
   async function act(work: () => Promise<void>) {
     if (working.current || busy.current) return;
-    working.current = true; setRunning(true);
-    try { await work(); } catch (error) { if (alive.current) { setNotice(message(error)); onBusy(installing(operationsRef.current[unresolvedId() ?? ""])); } }
+    working.current = true; setRunning(true); setActionError("");
+    try { await work(); } catch (error) { if (alive.current) { setNotice(message(error)); setActionError(message(error)); onBusy(installing(operationsRef.current[unresolvedId() ?? ""])); } }
     finally { working.current = false; if (alive.current) setRunning(false); }
   }
   async function install() {
     const value = proposalRef.current;
     if (!value || !value.updateAvailable || attemptedRef.current || unresolvedId()) return;
     const id = `${session}:${crypto.randomUUID()}`, next = [...records.current, id].slice(-16);
-    sessionStorage.setItem(recordsKey, JSON.stringify(next)); records.current = next;
+    localStorage.setItem(recordsKey, JSON.stringify(next)); records.current = next;
     attemptedRef.current = true; setAttempted(true); setShowOperation(true); onBusy(true);
     // Intent is persisted before sending. A timeout leaves the same id queryable.
     try {
@@ -107,19 +109,24 @@ export function UpdatePanel({ client, session, disabled, checkRequest = 0, onBus
       if (error instanceof BridgeError && ["BUSY", "RESOURCE_EXPIRED", "INVALID_REQUEST", "METHOD_UNSUPPORTED", "OPERATION_UNKNOWN"].includes(error.detail.code)) {
         // A definite refusal created no installer. Keep accepted/unknown ids.
         records.current = records.current.filter(value => value !== id);
-        sessionStorage.setItem(recordsKey, JSON.stringify(records.current));
+        localStorage.setItem(recordsKey, JSON.stringify(records.current));
         attemptedRef.current = false; setAttempted(false); setShowOperation(false);
       }
       throw error;
     } finally { if (alive.current) setIds(records.current); }
   }
   const unresolved = unresolvedId(), latestId = unresolved ?? ids[ids.length - 1], latest = latestId ? operations[latestId] : undefined;
+  const progress = latest?.state === "running" && latest.stage === "downloading" ? latest.progress : undefined;
   return <section id="software-updates" className="update-dialog" aria-label={tr("软件更新")}><h2>{tr("软件更新")}</h2>
     {proposal && <p>{tr("当前 {current} · 最新稳定发布 {latest}", { current: proposal.currentVersion, latest: proposal.latestVersion })}</p>}
-    {showOperation && latest ? <><p role="status">{queryError ? msg(queryError) : tr(labels[latest.state])}</p>{latest.error && <p className="error">{latest.error.message}</p>}
+    {showOperation && latest ? <><p role="status">{queryError ? msg(queryError) : tr((installing(latest) ? stages[latest.stage] : undefined) ?? labels[latest.state])}</p>{latest.error && <p className="error">{latest.error.message}</p>}
+      {actionError && <p role="alert" className="error">{msg(actionError)}</p>}
+      {progress && <><progress aria-label={tr("更新下载进度")} value={progress.downloadedBytes} max={progress.totalBytes} /><p>{tr("已下载 {downloaded} / {total} MB（{percent}%）", {
+        downloaded: (progress.downloadedBytes / 1048576).toFixed(1), total: (progress.totalBytes / 1048576).toFixed(1), percent: Math.floor(progress.downloadedBytes / progress.totalBytes * 100),
+      })}</p></>}
       {latest.state === "indeterminate" && <p>{tr("请核对已安装版本，不会重复安装。")}</p>}
-      {latest.state === "handoff" && <p>{tr("安装器已启动，请按提示完成更新。")}</p>}
-      {latest.state === "handoff" && latest.managerMustQuit && <button disabled={running} onClick={() => void act(async () => { await client.call("updates.quit", { operationId: latestId! }); })}>{tr("退出并完成更新")}</button>}
+      {latest.state === "handoff" && !latest.managerMustQuit && <p>{tr("安装器已启动，请按提示完成更新。")}</p>}
+      {latest.state === "handoff" && latest.managerMustQuit && <button disabled={disabled || running} onClick={() => void act(async () => { await client.call("updates.quit", { operationId: latestId! }); })}>{tr("重启并更新")}</button>}
     </> : <p role="status">{msg(queryError || notice)}</p>}
     {unresolved && !showOperation && <p>{tr("上次更新结果待核对，可继续检查版本；不会重复安装。")}</p>}
     {unresolved && <button disabled={running} onClick={() => void act(async () => { setShowOperation(true); await read(unresolved); })}>{tr("核对结果")}</button>}
@@ -128,6 +135,6 @@ export function UpdatePanel({ client, session, disabled, checkRequest = 0, onBus
         const result = await client.call("updates.openRelease", { handle: proposal.handle }); if (alive.current) setNotice(uiMessage(result.opened ? "已打开发布页。" : "无法打开发布页。"));
       })}>{tr("打开下载页面")}</button> : <><p>{tr("下载并安装新版本？安装时需要退出管理器。")}</p><button disabled={disabled || running || Date.parse(proposal.expiresAt) <= Date.now()} onClick={() => void act(install)}>{tr("下载并安装")}</button></>}
     </div>}
-    {!running && (attempted || unresolved || !proposal || Date.parse(proposal.expiresAt) <= Date.now()) && <button disabled={disabled || installing(latest)} onClick={() => void check(false)}>{tr("重新检查")}</button>}
+    {!running && (attempted || unresolved || !proposal || Date.parse(proposal.expiresAt) <= Date.now()) && <button disabled={disabled || installing(latest)} onClick={() => void check(false)}>{tr(latest?.state === "failed" ? "重新检查并重试" : "重新检查")}</button>}
   </section>;
 }
