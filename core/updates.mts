@@ -86,7 +86,11 @@ export class Updates {
         const current = await this.port.check();
         if (JSON.stringify(current) !== JSON.stringify(proposal.candidate)) throw new ContractError("RUNTIME_CHANGED", "版本、更新源、包摘要或安装身份已改变，请重新检查和批准。");
         await this.update(value, { state: "running", stage: "downloadingAndVerifying" }); executing = true;
-        const outcome = await this.port.install(current, params.operationId);
+        const outcome = await this.port.install(current, params.operationId, progress => {
+          if (value.operation.state !== "running") return;
+          value.operation = { ...value.operation, stage: progress.stage, updatedAt: new Date().toISOString(),
+            ...(progress.stage === "downloading" ? { progress: { downloadedBytes: progress.downloadedBytes, totalBytes: progress.totalBytes } } : {}) };
+        });
         await this.update(value, { state: "handoff", stage: outcome.managerMustQuit ? "waitingForManagerExit" : "installerStarted", managerMustQuit: outcome.managerMustQuit });
       } catch (error) {
         const response = failure(null, error);

@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { ContractError } from "../contracts/manager.mjs";
 import { jsonObject } from "../core/local-files.mjs";
 
-export function transactionProcess(executable: string, args: readonly string[], timeout: number, mutating: boolean, environment?: Record<string, string>): Promise<Record<string, unknown>> {
+export function transactionProcess(executable: string, args: readonly string[], timeout: number, mutating: boolean, environment?: Record<string, string>, onProgress?: (value: Record<string, unknown>) => void): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const child = spawn(executable, [...args], { shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...environment } });
     const chunks: Buffer[] = []; let size = 0, settled = false, invalid = false;
@@ -18,7 +18,18 @@ export function transactionProcess(executable: string, args: readonly string[], 
       if (size > 1024 * 1024) { invalid = true; chunks.length = 0; if (!mutating) child.kill(); }
       else if (!invalid && !settled) chunks.push(bytes);
     });
-    child.stderr.on("data", () => { /* drain without relaying arbitrary paths/diagnostics */ });
+    let progressBuffer = "";
+    child.stderr.on("data", (bytes: Buffer) => {
+      if (!onProgress || settled) return; // Drain without relaying arbitrary paths/diagnostics.
+      progressBuffer += bytes.toString("utf8");
+      let newline: number;
+      while ((newline = progressBuffer.indexOf("\n")) >= 0) {
+        const line = progressBuffer.slice(0, newline); progressBuffer = progressBuffer.slice(newline + 1);
+        if (line.length > 8192) continue;
+        try { onProgress(jsonObject(Buffer.from(line))); } catch { /* Non-protocol stderr is private. */ }
+      }
+      if (progressBuffer.length > 8192) progressBuffer = "";
+    });
     child.on("error", () => fail(new ContractError("BACKEND_UNAVAILABLE", "The platform transaction could not start.")));
     child.on("close", code => {
       if (settled) return;

@@ -1,33 +1,39 @@
-# Native GUI update channel
+# macOS application updates
 
-The signed native GUI channel has a separate release version (`macos/GUI_VERSION`) from the skin engine (`macos/VERSION`). Automatic installation only consumes signed `gui-v*` releases. Ordinary DMGs without a configured GUI signing channel use the existing static `update.json` check against `macos/VERSION` and offer to open the ordinary release page for manual download; they never use that fallback for automatic installation.
+The official `v*` release workflow packages signed updates alongside the DMGs. It uses `macos/VERSION` for both the application version and updater version. The existing independent `gui-v*` channel continues to use `macos/GUI_VERSION`. Each installed app follows the repository, tag prefix, channel and public key embedded at build time.
+
+Builds without a configured signing channel use the static `update.json` check against `macos/VERSION` and offer manual download. An old app with automatic updates disabled must be manually replaced once with a signed-channel build before it can update in the app.
 
 ## Publisher setup (fork or upstream)
 
 1. Generate a long-lived Ed25519 signing key locally and keep a secure backup. Do not commit the private key.
 2. Add its PEM contents to the repository Actions secret `DREAMSKIN_GUI_SIGNING_KEY`.
-3. Set `macos/GUI_VERSION`, then push `gui-v<version>` or manually dispatch `Native macOS GUI release` with the matching version.
-4. The workflow builds the universal app, derives the pinned public key from the publisher secret, signs the manifest, and publishes the complete GitHub Release. The user download is `CodexDreamSkin-<version>-universal.zip` containing `Codex Dream Skin.app`. All architecture-labelled archives contain the same universal `Codex Dream Skin.app` root. Updating preserves the installed application's filename.
+3. For official releases, update the usual release metadata, including `macos/VERSION`, then publish a matching `v<version>` tag through the normal release process. `Release` requires the secret; a missing key fails the build rather than silently publishing a manual-only app. Its manual dispatch builds the packages without publishing.
+4. The workflow builds separate arm64 and x64 apps and embeds the derived public key. In addition to the DMGs, it publishes `CodexDreamSkin-<version>-arm64.zip`, `CodexDreamSkin-<version>-x64.zip`, `gui-manifest.json` and `gui-manifest.sig`. Both ZIPs contain a `Codex Dream Skin.app` root. The signed manifest binds each archive's architecture, byte count and SHA-256. `SHA256SUMS.txt` and `update.json` also include the update ZIPs.
+
+The independent `Native macOS GUI release` workflow remains available: set `macos/GUI_VERSION`, then publish `gui-v<version>` or manually dispatch that workflow with the matching version. It builds a universal app and publishes `CodexDreamSkin-<version>-universal.zip`; its architecture-labelled update ZIPs contain the same universal app. It does not replace the official channel or become GitHub's latest release.
 
 The workflow uses `GITHUB_REPOSITORY`, so a fork and the upstream project do not share a hard-coded publisher. Each maintainer owns their release repository and private signing key. Keep the same signing key between versions; rotating it requires a separately distributed trust update.
 
-Local build:
+Local build for the official channel:
 
 ```bash
 DREAMSKIN_UPDATE_REPOSITORY=OWNER/REPO \
+DREAMSKIN_UPDATE_TAG_PREFIX=v \
 DREAMSKIN_GUI_SIGNING_KEY_FILE=/absolute/private/publisher-key.pem \
 bash macos/scripts/build-app.sh
 ```
 
-Alternatively supply `DREAMSKIN_GUI_PUBLIC_KEY` for a build machine that does not publish. Builds without publisher configuration still work and use the ordinary release check described above. No private key is copied into the app.
+Alternatively supply `DREAMSKIN_GUI_PUBLIC_KEY` for a build machine that does not publish. Omit `DREAMSKIN_UPDATE_TAG_PREFIX` (or set it to `gui-v`) for the independent GUI channel. No private key is copied into the app.
 
 ## Runtime
 
 - Checks shortly after launch and every 24 hours. Unchanged/error background checks remain quiet; each new version generates one notification.
-- Ordinary-release notifications offer manual download; signed GUI notifications offer verified installation. Each channel remembers its notified version separately. A failure in the configured signed channel does not fall back to an unsigned channel.
-- Automatic installation only considers stable `gui-v*` releases from the configured repository. The signature and installation checks below apply to that channel.
-- Ed25519 validates the exact manifest bytes. Download URLs derive from the pinned repository, version and architecture. SHA-256, size, bundle identifier, GUI version, code signature and next-version channel/key must match before installation.
-- The user confirms download/install. An external helper waits for the manager to quit normally, swaps only its app bundle, retains the previous bundle, and relaunches it. Codex, engine deployment and theme data are not touched.
+- Manual builds offer a release-page download; configured signed channels offer verified installation when the app can be replaced. Each channel remembers its notified version separately. A failure in a configured signed channel does not fall back to an unsigned channel.
+- The official channel discovers the stable version through `releases/latest/download/update.json`, then fetches the signed manifest and archive from that exact `v<version>` release. It does not use the GitHub API. The independent GUI channel uses the GitHub releases API to find a stable `gui-v*` release.
+- Ed25519 validates the exact manifest bytes. Download URLs derive from the pinned repository, version and architecture. SHA-256, size, bundle identifier, updater version, code signature and next-version channel/key must match before installation. Official updates also check the application version.
+- After the user chooses download/install, the UI shows downloaded bytes and percentage, followed by verification and preparation status. Once ready, choose **Restart and update**. An external helper waits for the manager to quit normally, swaps only its app bundle, retains the previous bundle, and relaunches it. The installed application's filename is preserved. Codex, engine deployment and theme data are not touched.
+- A download or verification failure before the installer starts allows **Check again and retry**. If installer startup or completion is uncertain, the UI queries the same operation instead of launching another installer. Operation identities are saved before submission; after restart, the UI queries the original installation receipt.
 - A failed replacement or LaunchServices launch restores the previous bundle. A successful `open` is not proof that every later UI action is crash-free; the retained bundle enables manual rollback.
 - Logs and result metadata are under `~/Library/Application Support/CodexDreamSkinStudio/updates/`.
 - A writable local app parent directory is required. Apps on a mounted DMG cannot update in place.

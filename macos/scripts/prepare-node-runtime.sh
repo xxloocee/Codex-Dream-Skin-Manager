@@ -36,7 +36,8 @@ done
   "$TMP/node-v$NODE_VERSION-darwin-arm64/bin/node" \
   "$TMP/node-v$NODE_VERSION-darwin-x64/bin/node" \
   -output "$TMP/runtime/bin/node"
-/usr/bin/lipo "$TMP/runtime/bin/node" -verify_arch arm64 x86_64
+/usr/bin/lipo "$TMP/runtime/bin/node" -verify_arch arm64
+/usr/bin/lipo "$TMP/runtime/bin/node" -verify_arch x86_64
 case "${DREAMSKIN_ARCHS:-arm64 x86_64}" in
   arm64|x86_64)
     /usr/bin/lipo "$TMP/runtime/bin/node" -thin "$DREAMSKIN_ARCHS" -output "$TMP/runtime/bin/node-thin"
