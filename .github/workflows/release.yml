@@ -149,6 +149,8 @@ jobs:
 
   macos:
     needs: validate
+    outputs:
+      signed_updates: ${{ steps.signing.outputs.enabled }}
     strategy:
       fail-fast: false
       matrix:
@@ -180,14 +182,20 @@ jobs:
         run: npm ci
 
       - name: Configure signed macOS updates
+        id: signing
         env:
           SIGNING_KEY: ${{ secrets.DREAMSKIN_GUI_SIGNING_KEY }}
         run: |
           set -euo pipefail
-          test -n "$SIGNING_KEY" || { echo 'Configure DREAMSKIN_GUI_SIGNING_KEY before building a release.' >&2; exit 1; }
+          if [ -z "$SIGNING_KEY" ]; then
+            echo 'macOS signing is not configured; preserving manual-download releases.'
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           umask 077
           printf '%s\n' "$SIGNING_KEY" > "$RUNNER_TEMP/gui-signing-key.pem"
           echo "DREAMSKIN_GUI_SIGNING_KEY_FILE=$RUNNER_TEMP/gui-signing-key.pem" >> "$GITHUB_ENV"
+          echo 'enabled=true' >> "$GITHUB_OUTPUT"
 
       - name: Build macOS DMG
         env:
@@ -197,8 +205,10 @@ jobs:
           DREAMSKIN_UPDATE_REPOSITORY: ${{ github.repository }}
           DREAMSKIN_UPDATE_TAG_PREFIX: v
         run: |
-          DREAMSKIN_UPDATE_ARCHIVE="$PWD/macos/release/CodexDreamSkin-${RELEASE_VERSION}-${RELEASE_ARCH}.zip" \
-            NODE="$(command -v node)" bash macos/scripts/build-dmg.sh
+          if [ -n "${DREAMSKIN_GUI_SIGNING_KEY_FILE:-}" ]; then
+            export DREAMSKIN_UPDATE_ARCHIVE="$PWD/macos/release/CodexDreamSkin-${RELEASE_VERSION}-${RELEASE_ARCH}.zip"
+          fi
+          NODE="$(command -v node)" bash macos/scripts/build-dmg.sh
           mv "macos/release/CodexDreamSkin-v${RELEASE_VERSION}.dmg" \
             "macos/release/CodexDreamSkinManager-v${RELEASE_VERSION}-macos-${RELEASE_ARCH}.dmg"
 
@@ -244,15 +254,20 @@ jobs:
         working-directory: dist
         env:
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+          SIGNED_MACOS_UPDATES: ${{ needs.macos.outputs.signed_updates }}
         run: |
           expected=(
             "CodexDreamSkinManager-v${RELEASE_VERSION}-windows-x64-setup.exe"
             "CodexDreamSkinManager-v${RELEASE_VERSION}-windows-x64-portable.zip"
             "CodexDreamSkinManager-v${RELEASE_VERSION}-macos-x64.dmg"
             "CodexDreamSkinManager-v${RELEASE_VERSION}-macos-arm64.dmg"
-            "CodexDreamSkin-${RELEASE_VERSION}-arm64.zip"
-            "CodexDreamSkin-${RELEASE_VERSION}-x64.zip"
           )
+          if [ "$SIGNED_MACOS_UPDATES" = true ]; then
+            expected+=(
+              "CodexDreamSkin-${RELEASE_VERSION}-arm64.zip"
+              "CodexDreamSkin-${RELEASE_VERSION}-x64.zip"
+            )
+          fi
           diff -u <(printf '%s\n' "${expected[@]}" | LC_ALL=C sort) \
             <(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
           sha256sum "${expected[@]}" | LC_ALL=C sort -k2 > SHA256SUMS.txt
@@ -263,6 +278,7 @@ jobs:
         run: python3 tools/create-update-manifest.py --tag "$RELEASE_TAG" --directory dist
 
       - name: Sign macOS update manifest
+        if: needs.macos.outputs.signed_updates == 'true'
         env:
           SIGNING_KEY: ${{ secrets.DREAMSKIN_GUI_SIGNING_KEY }}
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}

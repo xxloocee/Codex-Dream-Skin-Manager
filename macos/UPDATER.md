@@ -1,6 +1,6 @@
 # macOS application updates
 
-The official `v*` release workflow packages signed updates alongside the DMGs. It uses `macos/VERSION` for both the application version and updater version. The existing independent `gui-v*` channel continues to use `macos/GUI_VERSION`. Each installed app follows the repository, tag prefix, channel and public key embedded at build time.
+When `DREAMSKIN_GUI_SIGNING_KEY` is configured, the official `v*` release workflow packages signed updates alongside the DMGs. It uses `macos/VERSION` for both the application version and updater version. The existing independent `gui-v*` channel continues to use `macos/GUI_VERSION`. Each installed app follows the repository, tag prefix, channel and public key embedded at build time.
 
 Builds without a configured signing channel use the static `update.json` check against `macos/VERSION` and offer manual download. An old app with automatic updates disabled must be manually replaced once with a signed-channel build before it can update in the app.
 
@@ -8,8 +8,8 @@ Builds without a configured signing channel use the static `update.json` check a
 
 1. Generate a long-lived Ed25519 signing key locally and keep a secure backup. Do not commit the private key.
 2. Add its PEM contents to the repository Actions secret `DREAMSKIN_GUI_SIGNING_KEY`.
-3. For official releases, update the usual release metadata, including `macos/VERSION`, then publish a matching `v<version>` tag through the normal release process. `Release` requires the secret; a missing key fails the build rather than silently publishing a manual-only app. Its manual dispatch builds the packages without publishing.
-4. The workflow builds separate arm64 and x64 apps and embeds the derived public key. In addition to the DMGs, it publishes `CodexDreamSkin-<version>-arm64.zip`, `CodexDreamSkin-<version>-x64.zip`, `gui-manifest.json` and `gui-manifest.sig`. Both ZIPs contain a `Codex Dream Skin.app` root. The signed manifest binds each archive's architecture, byte count and SHA-256. `SHA256SUMS.txt` and `update.json` also include the update ZIPs.
+3. For official releases, update the usual release metadata, including `macos/VERSION`, then publish a matching `v<version>` tag through the normal release process. Without the secret, `Release` preserves the existing Windows packages and macOS manual-download DMGs. Once signing is enabled, an invalid key or missing signed archive fails the release. Its manual dispatch builds the packages without publishing.
+4. With the secret configured, the workflow builds separate arm64 and x64 apps and embeds the derived public key. In addition to the DMGs, it publishes `CodexDreamSkin-<version>-arm64.zip`, `CodexDreamSkin-<version>-x64.zip`, `gui-manifest.json` and `gui-manifest.sig`. Both ZIPs contain a `Codex Dream Skin.app` root. The signed manifest binds each archive's architecture, byte count and SHA-256. `SHA256SUMS.txt` and `update.json` also include the update ZIPs. Windows continues selecting its exact installer and checksum entries from those manifests.
 
 The independent `Native macOS GUI release` workflow remains available: set `macos/GUI_VERSION`, then publish `gui-v<version>` or manually dispatch that workflow with the matching version. It builds a universal app and publishes `CodexDreamSkin-<version>-universal.zip`; its architecture-labelled update ZIPs contain the same universal app. It does not replace the official channel or become GitHub's latest release.
 
@@ -43,4 +43,4 @@ The release workflow uses ad-hoc code signing and publisher-signed update manife
 
 ## Validation boundary
 
-The local baseline was built and installed after the user requested an installation and update trial. `npm run build:core`, `npm run build:ui` and both Swift architecture builds completed. `codesign --verify --deep --strict` passed for the baseline; its repository, version and public key were checked, and no private signing key was found in the packaged resources. End-to-end replacement and rollback still require an update trial; these build checks do not establish that result.
+The local baseline was built and installed for an authorized update trial. `npm run build:core`, `npm run build:ui` and both Swift architecture builds completed. `codesign --verify --deep --strict` passed; its repository, version and public key were checked, and no private signing key was found in the packaged resources. The user reported a successful in-app update from GUI 0.1.12 to 0.1.14. Forced rollback and Windows installation have not been exercised in this macOS environment.
