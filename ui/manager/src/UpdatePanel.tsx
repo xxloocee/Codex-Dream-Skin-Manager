@@ -1,5 +1,5 @@
 import { useMessage } from "./desktop";
-import { errorMessage, uiMessage } from "./ui-message";
+import { diagnosticMessage, errorMessage, uiMessage } from "./ui-message";
 import type { UiMessage } from "./ui-message";
 import { useText } from "./desktop";
 import { useEffect, useRef, useState } from "react";
@@ -119,7 +119,7 @@ export function UpdatePanel({ client, session, disabled, checkRequest = 0, onBus
   const progress = latest?.state === "running" && latest.stage === "downloading" ? latest.progress : undefined;
   return <section id="software-updates" className="update-dialog" aria-label={tr("软件更新")}><h2>{tr("软件更新")}</h2>
     {proposal && <p>{tr("当前 {current} · 最新稳定发布 {latest}", { current: proposal.currentVersion, latest: proposal.latestVersion })}</p>}
-    {showOperation && latest ? <><p role="status">{queryError ? msg(queryError) : tr((installing(latest) ? stages[latest.stage] : undefined) ?? labels[latest.state])}</p>{latest.error && <p className="error">{latest.error.message}</p>}
+    {showOperation && latest ? <><p role="status">{queryError ? msg(queryError) : tr((installing(latest) ? stages[latest.stage] : undefined) ?? labels[latest.state])}</p>{latest.error && <p className="error">{msg(diagnosticMessage(latest.error))}</p>}
       {actionError && <p role="alert" className="error">{msg(actionError)}</p>}
       {progress && <><progress aria-label={tr("更新下载进度")} value={progress.downloadedBytes} max={progress.totalBytes} /><p>{tr("已下载 {downloaded} / {total} MB（{percent}%）", {
         downloaded: (progress.downloadedBytes / 1048576).toFixed(1), total: (progress.totalBytes / 1048576).toFixed(1), percent: Math.floor(progress.downloadedBytes / progress.totalBytes * 100),

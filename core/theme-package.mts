@@ -5,6 +5,7 @@ import { jsonObject, sha256 } from "./local-files.mjs";
 import { canonicalJson, editTheme } from "./theme-edit.mjs";
 import { parameters } from "./theme-model.mjs";
 import { readThemeZip, writeThemeZip } from "./package-zip.mjs";
+import { communityCompatibility } from "./community-origin.mjs";
 
 export interface PackagePayload {
   config: Record<string, unknown>; media: Uint8Array; extension: string; css: Uint8Array | null; license: Uint8Array | null;
@@ -14,12 +15,12 @@ export interface PackageValidation {
   platform: "windows" | "macos";
   inspect(bytes: Uint8Array, extension: string): Promise<void>;
   css(bytes: Uint8Array): Promise<void>;
-  legacyZip(files: Map<string, Buffer>): Promise<{ format: "official" | "simple"; image: string; signatureIgnored: boolean }>;
+  legacyZip(files: Map<string, Buffer>, community?: boolean): Promise<{ format: "official" | "simple"; image: string; signatureIgnored: boolean }>;
   payload(directory: string): Promise<void>;
 }
 export function packageFingerprint(config: Record<string, unknown>, media: Uint8Array, css: Uint8Array | null, license: Uint8Array | null): string {
   const semantic = structuredClone(config), { stored, preview } = parameters(config);
-  for (const key of ["id", "image", "originalImage", "managerFingerprint", "managerFingerprintVersion", "packageOrigin"]) delete semantic[key];
+  for (const key of ["id", "image", "originalImage", "managerFingerprint", "managerFingerprintVersion", "managerCommunity", "packageOrigin"]) delete semantic[key];
   semantic.category ??= "custom"; semantic.tags ??= [];
   delete semantic.appearance;
   const art = record(semantic.art) ? semantic.art : {};
@@ -54,7 +55,7 @@ export async function decodeThemePackage(bytes: Uint8Array, extension: string, v
     const files = readThemeZip(bytes, macZip);
     let config: Record<string, unknown>, image: string, format: PackageDetails["format"], signatureIgnored = false;
     if (macZip) {
-      const checked = await validation.legacyZip(files); image = checked.image; format = checked.format; signatureIgnored = checked.signatureIgnored;
+      const checked = await validation.legacyZip(files, communityOfficial); image = checked.image; format = checked.format; signatureIgnored = checked.signatureIgnored;
       if (communityOfficial && format !== "official") throw new ContractError("THEME_INVALID", "社区下载只允许官方 manifest ZIP。");
       config = jsonObject(files.get("theme.json")!);
       if (format === "official") config.packageOrigin = { format: "official", manifest: jsonObject(files.get("manifest.json")!), signatureVerified: false };
@@ -73,7 +74,7 @@ export async function decodeThemePackage(bytes: Uint8Array, extension: string, v
     config.category ??= "custom"; config.tags ??= [];
     // The portable format has no originalImage entry. Never retain a dangling
     // reference supplied by an imported manifest or simplified ZIP.
-    delete config.originalImage;
+    delete config.originalImage; delete config.managerCommunity;
     if (record(config.packageOrigin)) config.packageOrigin.signatureVerified = false;
     const accent = parameters(config).stored.accent;
     config = editTheme(config, { parameters: { accent } }, validation.platform);
@@ -94,7 +95,8 @@ export function describePackage(payload: PackagePayload): PackageDetails {
   return { format: payload.format, name: payload.config.name as string, storageCategory: payload.config.category as string,
     tags: payload.config.tags as string[], hasCss: payload.css !== null, license: payload.license === null ? null : new TextDecoder().decode(payload.license),
     signatureIgnored: payload.signatureIgnored, fingerprint: packageFingerprint(payload.config, payload.media, payload.css, payload.license),
-    storedParameters: parameters(payload.config).stored, previewParameters: parameters(payload.config).preview };
+    storedParameters: parameters(payload.config).stored, previewParameters: parameters(payload.config).preview,
+    ...(record(payload.config.packageOrigin) ? { compatibility: communityCompatibility(payload.config.packageOrigin.manifest) } : {}) };
 }
 export async function encodeThemePackage(config: Record<string, unknown>, media: Uint8Array, extension: string,
   css: Uint8Array | null, license: Uint8Array | null, validation: PackageValidation): Promise<Uint8Array> {
@@ -103,7 +105,7 @@ export async function encodeThemePackage(config: Record<string, unknown>, media:
   portableMetadata({ ...config, category: config.category ?? "custom", tags: config.tags ?? [] });
   const portable = editTheme(config, { parameters: { accent: parameters(config).stored.accent } }, "windows");
   portable.category ??= "custom"; portable.tags ??= [];
-  delete portable.schemaVersion; delete portable.originalImage;
+  delete portable.schemaVersion; delete portable.originalImage; delete portable.managerCommunity;
   if (record(portable.art)) {
     for (const key of ["focusX", "focusY"]) if (portable.art[key] === null) delete portable.art[key];
   }

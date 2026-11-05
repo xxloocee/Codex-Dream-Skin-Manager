@@ -1,5 +1,5 @@
 import { useMessage } from "./desktop";
-import { errorMessage } from "./ui-message";
+import { diagnosticMessage, errorMessage } from "./ui-message";
 import type { UiMessage } from "./ui-message";
 import { useText } from "./desktop";
 import { useState } from "react";
@@ -24,12 +24,12 @@ export function OperationHistory({ client, disabled, onView }: { client: Manager
     <p className="muted">{tr("历史仅供查询。结果待核对的操作不会自动重放，旧窗口的确认不能继续使用。")}</p>
     <button disabled={busy || disabled} onClick={() => void load()}>{tr("刷新操作记录")}</button>
     {values.map(value => <div className="import-result" key={value.id}>
-      <strong>{value.method} · {value.state === "indeterminate" ? tr("结果待核对") : value.state === "cancelled" ? tr("已取消") : value.state === "succeeded" ? tr("已完成") : value.state === "failed" ? tr("未完成") : tr("处理中 / 等待确认")}</strong>
+      <strong>{msg(diagnosticMessage(value.method))} · {value.state === "indeterminate" ? tr("结果待核对") : value.state === "cancelled" ? tr("已取消") : value.state === "succeeded" ? tr("已完成") : value.state === "failed" ? tr("未完成") : tr("处理中 / 等待确认")}</strong>
       <small>{new Date(value.startedAt).toLocaleString()} · {value.theme.id}</small>
       <button disabled={disabled} onClick={() => onView(value)}>{tr("查看结果")}</button>
     </div>)}
     {cursor && <button disabled={busy || disabled} onClick={() => void load(true)}>{tr("更多记录")}</button>}
-    {warnings.map((value, index) => <p className="notice" key={index}>{value}</p>)}
+    {warnings.map((value, index) => <p className="notice" key={index}>{msg(diagnosticMessage(value))}</p>)}
     {error && <p className="error" role="alert">{msg(error)}</p>}
   </section>;
 }

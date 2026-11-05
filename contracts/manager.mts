@@ -10,7 +10,7 @@ export const LIBRARY_METHODS = ["themes.update", "themes.copy"] as const;
 export type ThemeEditMethod = typeof LIBRARY_METHODS[number];
 export const SOURCE_METHODS = ["files.select", "sources.preview", "sources.release", "themes.create", "files.saveOriginal", "files.playOriginal"] as const;
 export const PACKAGE_METHODS = ["files.selectPackages", "packages.inspect", "packages.preview", "packages.release", "themes.importPackage", "files.exportPackage"] as const;
-export const COMMUNITY_METHODS = ["community.inspect", "community.download", "community.import", "community.apply"] as const;
+export const COMMUNITY_METHODS = ["community.list", "community.local", "community.preview", "community.inspect", "community.download", "community.import", "community.apply"] as const;
 export const UPDATE_METHODS = ["updates.check", "updates.install", "updates.get", "updates.openRelease", "updates.quit"] as const;
 export const DESKTOP_METHODS = ["desktop.get", "desktop.open", "desktop.language", "desktop.login", "desktop.intents", "desktop.notifyUpdate"] as const;
 export const MAINTENANCE_METHODS = ["maintenance.inspect", "maintenance.prepare", "maintenance.execute", "maintenance.get"] as const;
@@ -118,12 +118,27 @@ export interface MaintenanceProposal { handle: string; expiresAt: string; action
 export interface MaintenanceOperation { id: string; action: MaintenanceAction; state: "queued" | "running" | "succeeded" | "failed" | "indeterminate";
   stage: string; startedAt: string; updatedAt: string; error: ManagerError | null; }
 export interface SourceGrant { handle: string; name: string; extension: string; byteLength: number; expiresAt: string }
+export interface CommunityCompatibility {
+  applyCompatible?: boolean; platforms?: string[]; minClientVersion?: string;
+  skinApiVersion?: number; capabilities?: string[];
+}
 export interface CommunityMetadata {
   id: string; themeId: string; name: string; version: string; authorDisplayName: string; license: string;
-  packageSha256: string; packageBytes: number; applyCompatible: true;
+  packageSha256: string; packageBytes: number; applyCompatible: boolean; compatibility?: CommunityCompatibility;
 }
+export interface CommunityQuery {
+  limit: number; offset: number; sort: "recent" | "popular" | "favorites"; query: string;
+  appearance: "all" | "light" | "dark";
+}
+export interface CommunityOrigin { version: string; packageSha256: string }
+export interface CommunityLocalTheme extends CommunityOrigin { theme: ThemeRef; revision: string; compatibility?: CommunityCompatibility }
+export interface CommunityTheme extends Omit<CommunityMetadata, "applyCompatible"> {
+  applyCompatible: boolean; platforms: ("windows" | "macos")[]; appearance: "auto" | "light" | "dark" | null;
+  downloadCount: number; favoriteCount: number; downloaded: CommunityLocalTheme | null;
+}
+export interface CommunityPage { items: CommunityTheme[]; total: number; limit: number; offset: number }
 export interface CommunityProposal { handle: string; expiresAt: string; source: "https://api.dreamskin.cc"; metadata: CommunityMetadata }
-export interface CommunityDownload { source: SourceGrant; details: PackageDetails }
+export interface CommunityDownload { source: SourceGrant; details: PackageDetails; origin?: CommunityOrigin }
 export interface UpdateCheck {
   handle: string; expiresAt: string; channel: "windows-release" | "macos-release" | "macos-gui";
   currentVersion: string; latestVersion: string; updateAvailable: boolean; releaseUrl: string;
@@ -152,7 +167,7 @@ export interface RecoveryPage { entries: RecoveryEntry[]; warnings: Diagnostic[]
 export interface PackageDetails {
   format: "cdskin" | "official" | "simple"; name: string; storageCategory: string; tags: string[];
   hasCss: boolean; license: string | null; signatureIgnored: boolean; fingerprint: string;
-  storedParameters: ThemeParameters; previewParameters: ThemeParameters;
+  storedParameters: ThemeParameters; previewParameters: ThemeParameters; compatibility?: CommunityCompatibility;
 }
 export const CONFIRMATION_KINDS = ["applyRestart", "resumeRestart", "resetRestart", "repairRestart", "restoreAppearance", "upgradeRuntime",
   "deletePreset", "deleteSaved", "recoverReconcile", "recoverImport", "recoverDiscard", "recoverPreset", "recoverSaved"] as const;
@@ -205,6 +220,9 @@ export interface MethodMap {
   "updates.get": { params: { operationId: string }; result: UpdateOperation };
   "updates.openRelease": { params: { handle: string }; result: { opened: boolean } };
   "updates.quit": { params: { operationId: string }; result: { quitting: true } };
+  "community.list": { params: CommunityQuery; result: CommunityPage };
+  "community.local": { params: { version: string }; result: CommunityLocalTheme | null };
+  "community.preview": { params: { version: string; variant: "thumbnail" | "preview" }; result: MediaResource };
   "community.inspect": { params: { link: string }; result: CommunityProposal };
   "community.download": { params: { handle: string; accepted: true }; result: CommunityDownload };
   "community.import": { params: { operationId: string; handle: string }; result: OperationSnapshot };
@@ -301,6 +319,18 @@ export function parseThemePatch(value: unknown): ThemePatch {
   }
   return value as ThemePatch;
 }
+export function parseCommunityQuery(value: unknown): CommunityQuery {
+  if (!record(value)) throw new ContractError("INVALID_REQUEST", "Invalid community query.");
+  fields(value, ["limit", "offset", "sort", "query", "appearance"]);
+  if (!Number.isSafeInteger(value.limit) || (value.limit as number) < 1 || (value.limit as number) > 24 ||
+      !Number.isSafeInteger(value.offset) || (value.offset as number) < 0 || (value.offset as number) > 1000000 ||
+      typeof value.sort !== "string" || !["recent", "popular", "favorites"].includes(value.sort) ||
+      typeof value.appearance !== "string" || !["all", "light", "dark"].includes(value.appearance) ||
+      typeof value.query !== "string" || value.query !== value.query.trim() || [...value.query].length > 80 || /[\u0000-\u001f\u007f-\u009f]/u.test(value.query)) {
+    throw new ContractError("INVALID_REQUEST", "Invalid community query.");
+  }
+  return value as unknown as CommunityQuery;
+}
 export function parseApplyRefresh(value: unknown): ApplyRefresh {
   if (!record(value)) throw new ContractError("INVALID_REQUEST", "Invalid hot refresh constraint.");
   fields(value, ["activeRevision", "runtimeSessionId", "opacityOnly"]);
@@ -368,6 +398,18 @@ export function parseRequest(value: unknown): ManagerRequest {
     case "updates.quit": case "updates.get":
       fields(params, ["operationId"]);
       if (!validOperationId(params.operationId)) throw new ContractError("INVALID_REQUEST", "Invalid update identity.");
+      break;
+    case "community.list":
+      parseCommunityQuery(params);
+      break;
+    case "community.local":
+      fields(params, ["version"]);
+      if (typeof params.version !== "string" || /^ver_[a-z0-9]{8,64}$/.exec(params.version)?.[0] !== params.version) throw new ContractError("INVALID_REQUEST", "Invalid community version.");
+      break;
+    case "community.preview":
+      fields(params, ["version", "variant"]);
+      if (typeof params.version !== "string" || /^ver_[a-z0-9]{8,64}$/.exec(params.version)?.[0] !== params.version ||
+          typeof params.variant !== "string" || !["thumbnail", "preview"].includes(params.variant)) throw new ContractError("INVALID_REQUEST", "Invalid community preview.");
       break;
     case "community.inspect":
       fields(params, ["link"]);

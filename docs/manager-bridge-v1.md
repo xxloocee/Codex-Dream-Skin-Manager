@@ -258,20 +258,29 @@ UI空闲且窗口可见时，启动后及每24小时检查；后台失败安静�
 
 ### P4-C 社区方法
 
-仅 manager 模式且配置包快照、库/操作与社区网络/应用适配时声明以下方法。网页不能指定 HTTP 地址、headers、下载目录、解压路径或平台脚本；两宿主允许列表显式加入这四项。系统 URL 注册与唤起路由由 P4-E 完成。
+仅 manager 模式且配置包快照、库/操作与社区网络/应用适配时声明以下方法。网页不能指定 HTTP 地址、headers、下载目录、解压路径或平台脚本；两宿主允许列表显式加入社区方法。系统 URL 注册与唤起路由由 P4-E 完成。
 
 | 方法 | 参数 | 结果 / 边界 |
 | --- | --- | --- |
 | `community.inspect` | `{link}` | CommunityProposal：随机 48 位 hex handle、五分钟 expiresAt、固定 source、严格 CommunityMetadata；只读取元数据 |
+| `community.list` | `{limit, offset, sort, query, appearance}` | CommunityPage：items、total、limit、offset；每项 downloaded 为同版本的有效本地 CommunityLocalTheme 或 null；limit 1–24、offset 0–1000000、sort 为 recent/popular/favorites、query 为已去除首尾空白的最多 80 字符文本、appearance 为 all/light/dark |
+| `community.local` | `{version}` | CommunityLocalTheme 或 null；仅查本地有效社区副本，返回 version/packageSha256/theme/revision，不访问网络 |
+| `community.preview` | `{version, variant}` | version 为社区 ver_ 标识，variant 为 thumbnail/preview；返回现有 MediaResource，由 media.release 释放，不向页面暴露远程 URL |
 | `community.download` | `{handle, accepted: true}` | CommunityDownload：已校验私有 SourceGrant 与 PackageDetails；批准才下载，不写库/活动主题 |
 | `community.import` | `{operationId, handle}` | 验证社区包句柄后复用 themes.importPackage 的持久操作与唯一 writer；结果 method 为 themes.importPackage |
 | `community.apply` | `{operationId, importOperationId}` | 绑定成功包导入的 resultTheme/resultRevision，独立 skin.apply 操作；单独确认及平台 exact 原主题回滚 |
 
-链接严格为 `dreamskin://apply?version=ver_[a-z0-9]{8,64}`。元数据固定 `/v1/themes/{version}`，下载固定其 `/download`，来源仅 HTTPS api.dreamskin.cc，不跟随重定向、不带 Cookie/凭据、不接受压缩；请求 20 秒、整体 60 秒。JSON 64 KiB/严格 UTF-8，ZIP ≤160 MiB。社区名/作者/许可安全显示字段、id、三段 version、applyCompatible、长度/hash 必须合法；下载实际 bytes 与批准元数据完全匹配，官方 manifest 的 themeId/version/name/publisher.displayName/license 再绑定元数据，平台/minClientVersion/ZIP 内容/Safe CSS/素材验证沿用原校验器。签名仍未验证，不能展示认证发布者。每会话单网络请求、最多八个票据；已完成票据按期限或容量回收，失败批准不自动重试。关闭检测到的会话取消未完成网络请求，已持久化写事务继续排空。
+链接严格为 `dreamskin://apply?version=ver_[a-z0-9]{8,64}`。元数据固定 `/v1/themes/{version}`，下载固定其 `/download`，来源仅 HTTPS api.dreamskin.cc，不跟随重定向、不带 Cookie/凭据；连接 20 秒无数据即报错，不设整体时限。只有 id 决定主题是否可用：名称、作者、许可、版本、大小、hash 缺失或异常时用占位显示，不阻止下载与应用。下载只受 160 MiB 上限约束，不与列表声明的大小或 SHA-256 比对，本地来源记录取实际字节的 SHA-256，下载响应 origin 返回此实际来源；包内文件、媒体和安全样式按实际内容处理，不与社区元数据交叉绑定。社区 authorDisplayName 独立于包内 publisher.displayName。签名仍未验证，不能展示认证发布者。票据只把 inspect 与 download 关联，不设数量、期限或并发限制；失败的下载可用同一票据重试。关闭会话取消未完成网络请求，已持久化写事务继续排空。
 
-内部 `.community.zip` 快照仅由批准后的下载创建，两端允许官方 ZIP，Windows 原生选包仍只允许 .cdskin。单包/会话 512 MiB/保留 1 GiB 预算沿用。导入新建独立 custom 条目或按内容与许可去重，原社区同 ID 覆盖行为不进入此 writer。已知 import ID 在句柄过期后仍查询原结果，不再次下载/导入。
+原生社区页通过固定 `/v1/themes` 列表接口发送 limit/offset/sort/q/appearance（all 不发送 appearance），列表 JSON 上限 512 KiB；单个异常条目被跳过，不影响整页。列表中 applyCompatible=false 或未声明当前平台的主题也可下载应用，是否真能生效由应用阶段的错误给出。背景图片固定取 `/v1/themes/{version}/preview/thumbnail` 或 `/preview/background`，分别限制 2/12 MiB，扩展名取自 content-type，缺失时按文件头判断，再经现有媒体校验、原生解码和私有资源租约交给页面。页面 CSP 不扩大，不执行社区预览中的 CSS/JavaScript。已准备的社区图片沿用会话媒体缓存。原生页点击“应用主题”先查询 community.local，已有副本直接通过标准 skin.apply 应用；没有副本则串联读取元数据、下载、导入和应用，不要求先处理主题草稿。已下载的社区主题在详情中提供“删除已下载主题”，走 themes.delete 的确认流程。社区下载不展示在 themes.list 或“我的”；已下载标记根据本地有效文件恢复，操作结果即时更新。复用普通换肤的按需启动/重启确认，不要求预先存在活动主题；旧 community.apply 契约保留。社区列表/元数据/下载/图片请求互相独立、不设并发上限，NDJSON 读取不阻塞本地操作；仅 status.get 与 updates.check 对重复读取返回可重试 BUSY。社区账号、收藏写入、评论与投稿不在此版契约内。
 
-应用始终独立确认，平台 fingerprint/active 完整 revision/目标 revision 在事务锁内重查。无已核验活动基线、暂停或异常时拒绝，先通过已有控制建立基线。Windows 复用社区启动/重启及谨慎回滚，Mac 的共享候选和回滚均禁止自动重启；原 Mac 入口行为保持。effects 新增可选 rollbackVerified：true 表示应用失败而 exact active-before 已恢复并核验，state=failed/stage=rolledBack；不等于应用成功。未知/接管/回滚失败保持 indeterminate，可选 recoveryTransaction 为 `.community-apply-{UUID}` 安全标识，私有事务材料保留。恢复历史最多 128 目录/1 GiB，超限拒绝而不自动清理。
+社区官方包使用共享背景、颜色和 Safe CSS 渲染能力。API 的 applyCompatible 与 displayMeta.platforms，以及 manifest 的 platforms、minClientVersion、skinApiVersion、capabilities 都只作为提示，不决定下载或应用资格；缺失、未知能力、较高版本或平台声明不匹配不拦截应用。社区包不要求先读出本地引擎版本，也不因缺少可选 theme.css 或其能力声明不一致而拒绝；存在 CSS 时仍按实际安全样式规则解析。社区取景参数接受共享渲染器已支持的 focusX/focusY=null、safeArea=auto/center 和 taskMode=auto/banner，避免因旧包规范的较窄枚举而拒绝可用主题。包格式、必要文件结构、路径、文件摘要、素材内容和写入一致性保持原有处理；不支持的实际内容才返回具体失败原因。本地 ZIP 导入和校验器 CLI 的原有规则不变。
+
+CommunityMetadata、PackageDetails 和 CommunityLocalTheme 的可选 compatibility 对象包含实际提供的 applyCompatible、platforms、minClientVersion、skinApiVersion、capabilities。API 声明先用于详情提示，下载后实际 manifest 字段优先；已下载副本从保存的 packageOrigin.manifest 恢复声明，直接应用时不依赖远程读取。包内引擎版本取 hello.versions.application（两端资源目录中的 VERSION），不把它称为正在运行的部署版本或 Codex 客户端版本。提示不新增确认框，不影响应用按钮或调用；失败结束提示优先保留操作中的具体错误。
+
+内部 `.community.zip` 快照仅由批准后的下载创建，两端允许官方 ZIP，Windows 原生选包仍只允许 .cdskin。单包/会话 512 MiB/保留 1 GiB 预算沿用。导入沿用既有 custom 条目和事务目录，以 theme.json 中 managerCommunity（version/packageSha256）记录持久社区来源；不是独立物理缓存目录。来源仅从后端已校验的快照描述传入，并绑定 .community.zip 与包 hash；外部包中的同名字段在解包时移除，导出及另存个人副本也移除。去重先按个人/社区来源分区，社区还匹配版本和包 hash，再比较内容与许可，避免复用或隐藏个人主题；原社区同 ID 覆盖行为不进入此 writer。已知 import ID 在句柄过期后仍查询原结果，不再次下载/导入。
+
+旧 community.apply 方法仍独立确认，平台 fingerprint/active 完整 revision/目标 revision 在事务锁内重查。无已核验活动基线、暂停或异常时拒绝，先通过已有控制建立基线。Windows 复用社区启动/重启及谨慎回滚，Mac 的共享候选和回滚均禁止自动重启；原 Mac 入口行为保持。effects 新增可选 rollbackVerified：true 表示应用失败而 exact active-before 已恢复并核验，state=failed/stage=rolledBack；不等于应用成功。未知/接管/回滚失败保持 indeterminate，可选 recoveryTransaction 为 `.community-apply-{UUID}` 安全标识，私有事务材料保留。恢复历史最多 128 目录/1 GiB，超限拒绝而不自动清理。
 
 成功/已核验回滚收据继续使用 apply-results 和主账本；查询只读取，缺最终收据时私有请求中的 operationId 可恢复事务标识，不能推断成功/恢复。子进程、收据和主账本之间仍有中断窗口；未知不重放，恢复材料仍由现有管理器处理，本块不新增任意路径或自动恢复入口。已知失败/取消后用户可明确准备新的应用，生成新 ID/新确认；未知不可使用该入口。下载前端预算 240 秒容纳校验/素材检查，超时仍不自动重试。
 
@@ -313,6 +322,6 @@ retryable 只表示条件可能恢复，不授权客户端重试副作用。旧�
 
 `desktop.*` 由宿主拦截，经内部 `desktop.authorize` 将原方法/原参数交给核心校验，再执行受限原生能力；内部授权响应不交给页面。主题、运行时、更新和维护写入互斥。Mac 维护在跨进程主题锁内重新检查批准绑定，安装继承原锁；卸载专用恢复参数要求内部模式及继承锁，先恢复/归档备份，再保留部署引擎；不自动处理旧桌面入口或 SwiftBar。
 
-两端正式入口接受 `dreamskin://apply?version=ver_[a-z0-9]{8,64}` 后进入有界队列。页面领取仅导航及填入输入框；已有社区草稿时必须明确处理，不自动读元数据、下载或应用。Mac 菜单只导航，共享窗口关闭隐藏、Dock 重开，正常退出关闭后端输入以排空已接受工作。Windows 通过独立 mutex 和当前用户管道激活既有窗口。
+两端正式入口接受 `dreamskin://apply?version=ver_[a-z0-9]{8,64}` 后进入有界队列。页面领取后展示社区主题确认面板并读取元数据；已有社区面板或未完成操作时保留队列，只有用户点击下载或应用才执行对应写操作。Mac 菜单只导航，共享窗口关闭隐藏、Dock 重开，正常退出关闭后端输入以排空已接受工作。Windows 通过独立 mutex 和当前用户管道激活既有窗口。
 
 本节描述已写源码和预定边界；单实例、协议注册、登录项/通知权限、维护锁/批准漂移、恢复及两端打包均待统一验证，不能据此声明平台验收通过。

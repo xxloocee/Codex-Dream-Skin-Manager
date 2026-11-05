@@ -300,7 +300,7 @@ function validateTimestamp(value) {
   }
 }
 
-function validateOfficialTheme(value) {
+function validateOfficialTheme(value, allowCompatibilityMismatch = false) {
   const theme = assertObject(value, "theme.json");
   assertExactKeys(
     theme,
@@ -329,7 +329,7 @@ function validateOfficialTheme(value) {
       "theme.json.art",
     );
     for (const key of ["focusX", "focusY"]) {
-      if (art[key] !== undefined && (typeof art[key] !== "number" || !Number.isFinite(art[key]) || art[key] < 0 || art[key] > 1)) {
+      if (art[key] !== undefined && !(allowCompatibilityMismatch && art[key] === null) && (typeof art[key] !== "number" || !Number.isFinite(art[key]) || art[key] < 0 || art[key] > 1)) {
         fail(`theme.json.art.${key} must be between 0 and 1`);
       }
     }
@@ -359,10 +359,10 @@ function validateOfficialTheme(value) {
     if (art.framingEnabled !== undefined && typeof art.framingEnabled !== "boolean") {
       fail("theme.json.art.framingEnabled must be boolean");
     }
-    if (art.safeArea !== undefined && !new Set(["left", "right", "none"]).has(art.safeArea)) {
+    if (art.safeArea !== undefined && !new Set(allowCompatibilityMismatch ? ["auto", "left", "right", "center", "none"] : ["left", "right", "none"]).has(art.safeArea)) {
       fail("theme.json.art.safeArea is unsupported");
     }
-    if (art.taskMode !== undefined && !new Set(["ambient", "full", "off"]).has(art.taskMode)) {
+    if (art.taskMode !== undefined && !new Set(allowCompatibilityMismatch ? ["auto", "ambient", "banner", "full", "off"] : ["ambient", "full", "off"]).has(art.taskMode)) {
       fail("theme.json.art.taskMode is unsupported");
     }
   }
@@ -381,11 +381,13 @@ function validateOfficialTheme(value) {
   return theme;
 }
 
-function validateManifest(value, platform, clientVersion) {
+function validateManifest(value, platform, clientVersion, allowCrossPlatform = false, allowCompatibilityMismatch = false) {
   const manifest = assertObject(value, "manifest.json");
-  assertExactKeys(manifest, MANIFEST_REQUIRED, ["keyId"], "manifest.json");
+  const declarations = ["skinApiVersion", "minClientVersion", "platforms", "capabilities"];
+  assertExactKeys(manifest, allowCompatibilityMismatch ? MANIFEST_REQUIRED.filter(key => !declarations.includes(key)) : MANIFEST_REQUIRED,
+    allowCompatibilityMismatch ? ["keyId", ...declarations] : ["keyId"], "manifest.json");
   if (manifest.packageVersion !== 1) fail("manifest.json must use packageVersion 1");
-  if (manifest.skinApiVersion !== 1) fail("manifest.json requires an unsupported Skin API version");
+  if (!allowCompatibilityMismatch && manifest.skinApiVersion !== 1) fail("manifest.json requires an unsupported Skin API version");
   assertString(manifest.themeId, "manifest.themeId", {
     min: 3,
     max: 64,
@@ -393,18 +395,22 @@ function validateManifest(value, platform, clientVersion) {
     controls: null,
   });
   parseSemver(manifest.version, "manifest.version");
-  const requiredClient = parseSemver(manifest.minClientVersion, "manifest.minClientVersion");
-  const installedClient = parseSemver(clientVersion, "client version");
-  if (compareSemver(requiredClient, installedClient) > 0) {
-    fail(`Theme requires Dream Skin ${manifest.minClientVersion} or newer; installed version is ${clientVersion}`);
+  if (!allowCompatibilityMismatch) {
+    const requiredClient = parseSemver(manifest.minClientVersion, "manifest.minClientVersion");
+    const installedClient = parseSemver(clientVersion, "client version");
+    if (compareSemver(requiredClient, installedClient) > 0) {
+      fail(`Theme requires Dream Skin ${manifest.minClientVersion} or newer; installed version is ${clientVersion}`);
+    }
   }
-  const platforms = assertStringSet(manifest.platforms, "manifest.platforms", {
+  // Community declarations describe the publisher's environment. The actual
+  // files decide whether this renderer can use the theme.
+  const platforms = allowCompatibilityMismatch ? new Set() : assertStringSet(manifest.platforms, "manifest.platforms", {
     min: 1,
     max: 2,
     allowed: new Set(["macos", "windows"]),
   });
-  if (!platforms.has(platform)) fail(`Theme package does not support ${platform}`);
-  const capabilities = assertStringSet(manifest.capabilities, "manifest.capabilities", {
+  if (!allowCompatibilityMismatch && !allowCrossPlatform && !platforms.has(platform)) fail(`Theme package does not support ${platform}`);
+  const capabilities = allowCompatibilityMismatch ? new Set() : assertStringSet(manifest.capabilities, "manifest.capabilities", {
     min: 1,
     max: 3,
     allowed: new Set(["background", "tokens", "safe-css"]),
@@ -470,10 +476,10 @@ function validateManifest(value, platform, clientVersion) {
   if (!files.has("theme.json") || backgrounds.length !== 1) {
     fail("manifest.files must contain theme.json and exactly one background file");
   }
-  if (files.has("theme.css") !== capabilities.has("safe-css")) {
+  if (!allowCompatibilityMismatch && files.has("theme.css") !== capabilities.has("safe-css")) {
     fail("theme.css presence must match the safe-css capability");
   }
-  if (!files.has("theme.css")) {
+  if (!allowCompatibilityMismatch && !files.has("theme.css")) {
     fail("New official theme imports require theme.css and the safe-css capability");
   }
   return { manifest, files, background: backgrounds[0] };
@@ -516,7 +522,7 @@ function validateMediaPayload(name, bytes, expectedMedia) {
   }
 }
 
-async function validateOfficial(root, names, platform, clientVersion) {
+async function validateOfficial(root, names, platform, clientVersion, allowCrossPlatform = false, allowCompatibilityMismatch = false) {
   for (const name of names) {
     if (!PACKAGE_FILES.has(name)) fail(`Official theme package contains unregistered file ${name}`);
   }
@@ -527,6 +533,8 @@ async function validateOfficial(root, names, platform, clientVersion) {
     decodeJson(bytes.get("manifest.json"), "manifest.json"),
     platform,
     clientVersion,
+    allowCrossPlatform,
+    allowCompatibilityMismatch,
   );
   const actualPayload = new Set(names.filter((name) => name !== "manifest.json" && name !== "manifest.sig"));
   if (!setsEqual(actualPayload, new Set(files.keys()))) {
@@ -538,15 +546,15 @@ async function validateOfficial(root, names, platform, clientVersion) {
     if (data.length !== entry.bytes) fail(`${name} byte length does not match manifest.json`);
     if (sha256(data) !== entry.sha256) fail(`${name} SHA-256 does not match manifest.json`);
   }
-  const theme = validateOfficialTheme(decodeJson(bytes.get("theme.json"), "theme.json"));
+  const theme = validateOfficialTheme(decodeJson(bytes.get("theme.json"), "theme.json"), allowCompatibilityMismatch);
   if (manifest.themeId !== theme.id) fail("manifest.themeId does not match theme.json id");
   if (theme.image !== background) fail("theme.json image does not match the manifest background file");
   validateMediaPayload(background, bytes.get(background), BACKGROUND_MEDIA.get(background));
-  decodeAndValidateSafeCss(bytes.get("theme.css"));
+  if (bytes.has("theme.css")) decodeAndValidateSafeCss(bytes.get("theme.css"));
   return {
     format: "official",
     image: background,
-    safeCssStatus: "validated",
+    safeCssStatus: bytes.has("theme.css") ? "validated" : "none",
     signatureIgnored: bytes.has("manifest.sig"),
     bytes,
   };
@@ -591,14 +599,16 @@ async function validateSimple(root, names) {
   };
 }
 
-export async function validateThemePackageBytes(files, platform, clientVersion) {
+export async function validateThemePackageBytes(files, platform, clientVersion, { allowCrossPlatform = false, allowCompatibilityMismatch = false } = {}) {
   if (!(files instanceof Map) || files.size < 1 || files.size > 32) fail("Invalid package file collection");
   const names = [...files.keys()].sort();
   for (const name of names) {
     if (typeof name !== "string" || path.basename(name) !== name || /[\\/]/.test(name) || CONTROL_PATTERN.test(name)) fail("Unsafe package file name");
   }
   return names.includes("manifest.json")
-    ? validateOfficial(files, names, platform, clientVersion)
+    // Community compatibility declarations are advisory. Local imports and the
+    // CLI retain their existing declaration requirements.
+    ? validateOfficial(files, names, platform, clientVersion, allowCrossPlatform === true, allowCompatibilityMismatch === true)
     : validateSimple(files, names);
 }
 

@@ -19,6 +19,8 @@ export class MediaResources {
   private readonly files = new Map<string, { file: string; expires: number; key: string; session: string; stamp: string | undefined; result: Omit<MediaResource, "leaseId">; leases: Set<string> }>();
   private readonly leases = new Map<string, string>();
   private totalBytes = 0;
+  private preparingCount = 0;
+  private preparingBytes = 0;
   private readonly sizes = new Map<string, number>();
   private readonly cleanup = setInterval(() => {
     for (const [id, file] of this.files) if (file.expires <= Date.now()) void this.remove(id).catch(() => {});
@@ -66,7 +68,7 @@ export class MediaResources {
     this.requireCapacity(bytes.byteLength);
     // Keep returned URLs pinned until their consumers finish, including before the native GET.
     // Return BUSY rather than waiting: the serial transport must remain free to accept releases.
-    while (this.files.size >= 64 || this.totalBytes + bytes.byteLength > 256 * 1024 * 1024) {
+    while (this.files.size + this.preparingCount >= 64 || this.totalBytes + this.preparingBytes + bytes.byteLength > 256 * 1024 * 1024) {
       const available = [...this.files].find(([, entry]) => !entry.leases.size);
       if (!available) throw new ContractError("BUSY", "Preview resources are still loading; try again shortly.", true);
       await this.remove(available[0]);
@@ -75,19 +77,28 @@ export class MediaResources {
     const fileName = resourceId + extension;
     const file = path.join(this.directory, fileName), expires = Date.now() + 5 * 60 * 1000;
     const result: Omit<MediaResource, "leaseId"> = { resourceId, url: `${this.origin}/${resourceId}`, mimeType: "image/png", expiresAt: new Date(expires).toISOString() };
-    await writeFile(file, bytes, { flag: "wx", mode: 0o600 });
-    this.files.set(resourceId, { file, expires, key, session, stamp, result, leases: new Set() });
-    this.sizes.set(resourceId, bytes.byteLength); this.totalBytes += bytes.byteLength;
+    // Concurrent community reads reserve capacity before the first disk await.
+    this.preparingCount++; this.preparingBytes += bytes.byteLength;
     try {
+      await writeFile(file, bytes, { flag: "wx", mode: 0o600 });
+      this.files.set(resourceId, { file, expires, key, session, stamp, result, leases: new Set() });
+      this.sizes.set(resourceId, bytes.byteLength); this.totalBytes += bytes.byteLength;
+    } finally { this.preparingCount--; this.preparingBytes -= bytes.byteLength; }
+    try {
+      // Pin while the host registers it so another read cannot evict it first.
+      const leased = this.lease(resourceId);
       await this.register({ protocol: PROTOCOL, kind: "resource.register", backendSessionId: session,
         resourceId, fileName, sha256: createHash("sha256").update(bytes).digest("hex"), variant, expiresAt: result.expiresAt });
+      return leased;
     } catch (error) { await this.remove(resourceId); throw error; }
-    return this.lease(resourceId);
+  }
+  cachedCommunity(version: string, variant: "thumbnail" | "preview", session: string): MediaResource | null {
+    return this.cached(`community:${version}:${variant}`, Date.now(), session);
   }
   private requireCapacity(bytes: number): void {
     let count = 0, size = 0;
     for (const [id, entry] of this.files) if (entry.leases.size) { count++; size += this.sizes.get(id) ?? 0; }
-    if (count >= 64 || size + bytes > 256 * 1024 * 1024) {
+    if (count + this.preparingCount >= 64 || size + this.preparingBytes + bytes > 256 * 1024 * 1024) {
       throw new ContractError("BUSY", "Preview resources are still loading; try again shortly.", true);
     }
   }

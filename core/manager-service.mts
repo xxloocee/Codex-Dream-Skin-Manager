@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { ContractError, LIBRARY_METHODS, OPERATION_METHODS, PACKAGE_METHODS, parseRequest, PROTOCOL, READ_METHODS, record, RECOVERY_METHODS, RUNTIME_METHODS, SOURCE_METHODS } from "../contracts/manager.mjs";
-import type { HelloResult, ManagerRequest, ManagerSnapshot, MethodMap, ThemeDetails, ThemePage, ThemeRef, ThemeSummary } from "../contracts/manager.mjs";
+import type { CommunityLocalTheme, HelloResult, ManagerRequest, ManagerSnapshot, MethodMap, ThemeDetails, ThemePage, ThemeRef, ThemeSummary } from "../contracts/manager.mjs";
 import { sha256 } from "./local-files.mjs";
 import type { LocalTheme, PlatformPort } from "./ports/platform.mjs";
 import { themeDetails, themeListStamp } from "./theme-model.mjs";
@@ -33,6 +33,7 @@ import { Maintenance } from "./maintenance.mjs";
 import type { MaintenancePort } from "./maintenance.mjs";
 import { STARTUP_METHODS } from "../contracts/manager.mjs";
 import { startupAnimationSettings, saveStartupAnimationSettings } from "./startup-animation.mjs";
+import { communityCompatibility, communityOrigin } from "./community-origin.mjs";
 
 function summary(theme: ThemeDetails): ThemeSummary {
   const { ref, name, storageCategory, displayCategories, tags, mediaKind, catalogOrder, addedAt, modifiedAt, revision } = theme;
@@ -155,6 +156,24 @@ export class ManagerService {
         return this.operations.proposeLibrary(request.method === "themes.delete" ? { method: request.method, params: request.params } : { method: request.method, params: request.params });
       case "files.select": case "files.saveOriginal": case "files.playOriginal": case "files.selectPackages": case "files.exportPackage":
         throw new ContractError("METHOD_UNSUPPORTED", "This method must be handled by the native host.");
+      case "community.list": {
+        if (!this.community) throw new ContractError("METHOD_UNSUPPORTED", "Community themes are unavailable.");
+        const page = await this.community.list(request.params);
+        const local = await this.communityDownloads(new Set(page.items.map(theme => theme.id)));
+        return { ...page, items: page.items.map(theme => ({ ...theme, downloaded: local.find(value => value.version === theme.id) ?? null })) };
+      }
+      case "community.local":
+        if (!this.community) throw new ContractError("METHOD_UNSUPPORTED", "Community themes are unavailable.");
+        return (await this.communityDownloads(new Set([request.params.version])))[0] ?? null;
+      case "community.preview": {
+        if (!this.community || !this.resources) throw new ContractError("METHOD_UNSUPPORTED", "Community previews are unavailable.");
+        const { version, variant } = request.params;
+        const cached = this.resources.cachedCommunity(version, variant, this.sessionId);
+        if (cached) return cached;
+        const image = await this.community.image(version, variant);
+        if (this.closing) throw new ContractError("BACKEND_UNAVAILABLE", "社区会话已关闭。");
+        return this.resources.resolveBytes(image.bytes, image.extension, `community:${version}:${variant}`, variant, this.sessionId);
+      }
       case "community.inspect":
         if (!this.community) throw new ContractError("METHOD_UNSUPPORTED", "Community themes are unavailable.");
         return this.community.inspect(request.params.link);
@@ -368,6 +387,7 @@ export class ManagerService {
     const summaries = new Map<string, { stamp: string; summary: ThemeSummary }>();
     const warnings = [...inventory.warnings];
     for (const local of inventory.themes) {
+      if (communityOrigin(local.config.managerCommunity)) continue;
       try {
         const key = `${local.ref.source}:${local.ref.id}`, stamp = await themeListStamp(local);
         const cached = this.listSummaries.get(key);
@@ -416,6 +436,18 @@ export class ManagerService {
       : defaultRecoveryThemeIds(this.platform.name).includes(ref.id.toLowerCase()) ? "THEME_PROTECTED" : null;
     details.availability.delete = { allowed: deleteReason === null, reasonCode: deleteReason };
     return details;
+  }
+  private async communityDownloads(versions: Set<string>): Promise<CommunityLocalTheme[]> {
+    const result: CommunityLocalTheme[] = [];
+    if (!versions.size) return result;
+    for (const local of (await this.platform.inventory()).themes) {
+      const origin = communityOrigin(local.config.managerCommunity);
+      if (local.ref.source !== "saved" || !origin || !versions.has(origin.version)) continue;
+      try { result.push({ ...origin, theme: local.ref, revision: (await themeDetails(local)).revision,
+        compatibility: communityCompatibility(record(local.config.packageOrigin) ? local.config.packageOrigin.manifest : undefined) }); }
+      catch { /* Missing or damaged files must not leave a downloaded badge. */ }
+    }
+    return result;
   }
   private async find(ref: ThemeRef) {
     const inventory = await this.platform.inventory();

@@ -1,6 +1,6 @@
 import { useMessage } from "./desktop";
 import { Select } from "./Select";
-import { errorMessage, uiMessage } from "./ui-message";
+import { diagnosticMessage, errorMessage, uiMessage } from "./ui-message";
 import type { UiMessage } from "./ui-message";
 import { useEffect, useRef, useState } from "react";
 import type { DesktopInfo, HelloResult, MaintenanceAction, MaintenanceInfo, MaintenanceOperation, MaintenanceProposal } from "../../../contracts/manager.mjs";
@@ -105,7 +105,7 @@ export function SystemPanel({ client, hello, disabled, onBusy, info, onInfo, onC
       </div>}
       {!!ids.length && <div><ul className="import-results">{ids.slice(-1).map(id => {
         const operation = operations[id];
-        return <li key={id}><p>{operation ? t(operation.state) : t("restoring")}</p>{operation?.error && <p className="error">{operation.error.message}</p>}
+        return <li key={id}><p>{operation ? t(operation.state) : t("restoring")}</p>{operation?.error && <p className="error">{msg(diagnosticMessage(operation.error))}</p>}
           {operation?.state === "indeterminate" && <p className="notice">{t("unknown")}</p>}
           {operation?.state === "succeeded" && <p className="notice">{t("completed")}</p>}
           <button disabled={running} onClick={() => void run(async () => { await read(id); }, true)}>{t("query")}</button>

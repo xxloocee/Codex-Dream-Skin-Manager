@@ -1,5 +1,5 @@
 import { useMessage } from "./desktop";
-import { errorMessage, uiMessage, UiMessageError } from "./ui-message";
+import { diagnosticMessage, errorMessage, joinMessages, uiMessage, UiMessageError } from "./ui-message";
 import type { UiMessage } from "./ui-message";
 import { useText } from "./desktop";
 import { useEffect, useRef, useState } from "react";
@@ -84,7 +84,7 @@ export function PackagePanel({ client, hello, busy, visible, selectionRequest = 
         const old = sources.map(value => value.handle); setSources(selection.sources); setSelected(selection.sources[0]!.handle); attempted.current.clear();
         if (old.length) void client.call("packages.release", { handles: old }).catch(() => {});
       }
-      setNotice(selection.failures.map(value => `${value.name}：${value.error.message}`).join("；") || uiMessage(selection.sources.length ? "主题包已选择，可查看内容后导入。" : "没有可导入的包。"));
+      setNotice(selection.failures.length ? joinMessages(selection.failures.map(value => uiMessage("{name}：{detail}", { name: value.name, detail: diagnosticMessage(value.error) })), "；") : uiMessage(selection.sources.length ? "主题包已选择，可查看内容后导入。" : "没有可导入的包。"));
       if (quickImport && selection.sources.length) {
         for (const value of selection.sources) {
           if (!alive.current || stop.current) break;
@@ -92,7 +92,7 @@ export function PackagePanel({ client, hello, busy, visible, selectionRequest = 
           if (result.state === "indeterminate") { stop.current = true; setNotice(uiMessage("此项结果未知，已停止后续提交；请核对操作记录与主题库。")); }
         }
         if (alive.current && !stop.current) setNotice(uiMessage("快捷导入处理结束；逐项结果如下。导入仅保存主题库。", undefined,
-          { after: selection.failures.map(value => `${value.name}：${value.error.message}`).join("；") }));
+          { after: joinMessages(selection.failures.map(value => uiMessage("{name}：{detail}", { name: value.name, detail: diagnosticMessage(value.error) })), "；") }));
       }
     } catch (error) { if (alive.current) setNotice(text(error)); }
     finally { activeRun.current = false; if (alive.current) { setRunning(false); onBusy(false); } }
@@ -137,7 +137,7 @@ export function PackagePanel({ client, hello, busy, visible, selectionRequest = 
       onChange={setSelected} options={sources.map(value => ({ value: value.handle, label: value.name }))} /></label>}
     {source && <PackagePreview key={source.handle} client={client} source={source} visible={visible} />}
     {!!results.length && <ul className="import-results" aria-label={tr("主题包逐项结果")}>{results.map(row => <li key={row.id}><strong>{row.name}</strong> · {row.error ? msg(row.error) : (row.operation ? row.operation.disposition === "duplicate" ? tr("内容与许可相同，返回已有主题") : tr(states[row.operation.state]) : tr("正在查询"))}
-      {row.operation?.error && <p className="muted">{row.operation.error.message}</p>}{row.operation?.resultTheme && <small>{row.operation.resultTheme.id}</small>}
+      {row.operation?.error && <p className="muted">{msg(diagnosticMessage(row.operation.error))}</p>}{row.operation?.resultTheme && <small>{row.operation.resultTheme.id}</small>}
       <button disabled={running} onClick={() => { void track(row, undefined, false).catch(error => update({ ...row, error: text(error) })); }}>{tr("查询记录")}</button></li>)}</ul>}
   </section>;
 }

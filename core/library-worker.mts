@@ -150,6 +150,7 @@ try {
       throw new ContractError("THEME_INVALID", "The original media name conflicts with the copy's resources.");
     }
     config.id = id; config.name = edit.params.name.trim(); config.image = name;
+    delete config.managerCommunity;
     if (Buffer.byteLength(JSON.stringify(config) + "\n") > MAX_CONFIG_BYTES) throw new ContractError("THEME_INVALID", "The copied configuration exceeds its size limit.");
     await mkdir(stage, { mode: 0o700 }); await safePath(stage, libraryRoot);
     await durableBytes(path.join(stage, name), stage, media);

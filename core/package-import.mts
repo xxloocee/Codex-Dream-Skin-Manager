@@ -12,6 +12,7 @@ import { fileBytes, MAX_MEDIA_BYTES, optionalBytes, safePath } from "./local-fil
 import { themeDetails } from "./theme-model.mjs";
 import { durableBytes, privateDirectory, syncDirectory } from "./write-files.mjs";
 import type { LibraryTransactions } from "./library-transactions.mjs";
+import { communityOrigin } from "./community-origin.mjs";
 
 export async function importPackage(state: string, command: ThemePackageCommand, raw: unknown, adapter: PlatformPort,
   validation: PackageValidation, validateMedia: (file: string) => Promise<void>, journals: LibraryTransactions): Promise<LibraryOutcome> {
@@ -21,7 +22,8 @@ export async function importPackage(state: string, command: ThemePackageCommand,
     const sources = new PackageSources(state, validation); await sources.read(raw);
     const source = raw as SnapshotFile, payload = await sources.decode(source);
     const id = "custom-" + command.params.operationId.split(":")[1];
-    const config: Record<string, unknown> = { ...payload.config, id };
+    const origin = source.community;
+    const config: Record<string, unknown> = { ...payload.config, id, ...(origin ? { managerCommunity: origin } : {}) };
     const library = path.join(state, "themes"), stage = path.join(library, ".manager-package-" + id.slice(7)), destination = path.join(library, id);
     await privateDirectory(library); await safePath(library, state);
     try { await lstat(destination); throw new ContractError("OPERATION_CONFLICT", "The package import identity already exists; it cannot be overwritten."); }
@@ -35,6 +37,10 @@ export async function importPackage(state: string, command: ThemePackageCommand,
     const fingerprint = packageFingerprint(config, payload.media, payload.css, payload.license);
     for (const local of (await adapter.inventory()).themes) {
       if (local.ref.source !== "saved") continue;
+      const existingOrigin = communityOrigin(local.config.managerCommunity);
+      // Keep community downloads independent from personal themes, even when
+      // their media and display settings happen to be identical.
+      if (origin ? existingOrigin?.version !== origin.version || existingOrigin.packageSha256 !== origin.packageSha256 : existingOrigin !== null) continue;
       let duplicate: { theme: ThemeRef; revision: string } | null = null;
       try {
         const details = await themeDetails(local), media = await fileBytes(local.mediaPath, local.mediaRoot, MAX_MEDIA_BYTES);

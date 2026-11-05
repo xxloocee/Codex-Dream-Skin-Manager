@@ -243,6 +243,7 @@ try {
   $result
 } catch {
   if ($Action -in @('Probe','RuntimeProbe')) { throw }
+  try { Add-Content -LiteralPath (Join-Path $env:LOCALAPPDATA 'CodexDreamSkin\manager-platform-error.log') -Value ("[{0}] {1}: {2}`n{3}" -f (Get-Date).ToString('o'), $Action, $_.Exception.Message, $_.ScriptStackTrace) -Encoding UTF8 } catch {}
   # Unknown effects remain unknown; do not turn a post-commit failure into a
   # claim that no theme was saved or that a restart succeeded.
   [ordered]@{ effects = $effects; committedRevision = $committedRevision; verifiedRendererRevision = $null; runtimeSessionId = $null } | ConvertTo-Json -Compress

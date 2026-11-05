@@ -5,7 +5,7 @@ import { renderMessage } from "./ui-message";
 import type { UiMessage } from "./ui-message";
 export const LanguageContext = createContext<"zh-CN" | "en-US">("zh-CN");
 export const copy = {
-  console: ["控制台", "Console"], import: ["导入图片", "Import media"], settings: ["主题设置", "Theme settings"],
+  console: ["控制台", "Console"], community: ["社区主题库", "Community"], import: ["导入图片", "Import media"], settings: ["主题设置", "Theme settings"],
   system: ["系统与信息", "System and information"], language: ["语言", "Language"], follow: ["跟随系统", "Follow system"],
   updates: ["软件更新", "Software updates"], maintenance: ["平台维护", "Platform maintenance"],
   refresh: ["刷新信息", "Refresh information"], themes: ["打开主题目录", "Open themes folder"], images: ["打开素材目录", "Open images folder"], state: ["打开状态目录", "Open state folder"],

@@ -1,6 +1,7 @@
 import { confirmationCopy } from "../../../contracts/manager.mjs";
 import type { ConfirmationCopy, OperationSnapshot } from "../../../contracts/manager.mjs";
 import { translateText } from "./ui-copy";
+import { diagnosticText } from "./diagnostic-copy";
 
 const restartImpact = "正在进行的 Codex 工作可能中断，是否继续？";
 const entries: Record<ConfirmationCopy["kind"], { method: OperationSnapshot["method"]; reason: string; impact: string }> = {
@@ -23,7 +24,7 @@ export function confirmationText(language: "zh-CN" | "en-US", operation: Operati
   const original = operation.confirmation;
   if (!original) return null;
   const copy = confirmationCopy(original.copy), entry = copy && entries[copy.kind];
-  if (!entry || entry.method !== operation.method) return original;
+  if (!entry || entry.method !== operation.method) return { reason: diagnosticText(language, original.reason), impact: diagnosticText(language, original.impact) };
   // Subject is user data. The fallback label is ours; never translate the actual
   // name or infer a kind by matching the original human-readable description.
   return { reason: translateText(language, entry.reason, { subject: copy?.subject ?? translateText(language, "未完成事务") }),

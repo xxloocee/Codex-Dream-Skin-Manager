@@ -1,5 +1,5 @@
 import { useText } from "./desktop";
-import { errorMessage, uiMessage, UiMessageError } from "./ui-message";
+import { diagnosticMessage, errorMessage, joinMessages, uiMessage, UiMessageError } from "./ui-message";
 import type { UiMessage } from "./ui-message";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { HelloResult, OperationSnapshot, SourceGrant, ThemeDetails, ThemeParameters, ThemePatch } from "../../../contracts/manager.mjs";
@@ -56,7 +56,7 @@ export function ImportPanel({ client, hello, busy, visible, canApply, operation,
         const old = sourceRef.current; submission.current = null; setSource(next); attempted.current = false; setSubmitted(false); setDirty(false);
         if (old) void client.call("sources.release", { handles: [old.handle] }).catch(() => {});
       }
-      if (selection.failures.length) onNotice(selection.failures.map(value => `${value.name}：${value.error.message}`).join("；"));
+      if (selection.failures.length) onNotice(joinMessages(selection.failures.map(value => uiMessage("{name}：{detail}", { name: value.name, detail: diagnosticMessage(value.error) })), "；"));
     } catch (error) { if (alive.current) onNotice(errorMessage(error, "素材操作未完成。")); }
     finally { working.current = false; if (alive.current) { setRunning(false); onBusy(false); } }
   }
@@ -75,7 +75,7 @@ export function ImportPanel({ client, hello, busy, visible, canApply, operation,
       const result = await trackImport(client, initial, () => alive.current, onOperation);
       settle(result);
       if (result.state !== "succeeded") {
-        throw new UiMessageError(result.error?.message ?? uiMessage("导入结果尚未确认。"));
+        throw new UiMessageError(result.error ? diagnosticMessage(result.error) : uiMessage("导入结果尚未确认。"));
       }
       if (applyAfter) {
         try { await onApplySaved(result); }

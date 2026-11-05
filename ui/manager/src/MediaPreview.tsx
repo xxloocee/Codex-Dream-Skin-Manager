@@ -29,7 +29,7 @@ export function MediaPreview({ client, target, name, parameters = null, visible,
     releaseResource.current?.release(); releaseResource.current = null; return true;
   };
   // Visible cards go first; after a short head start, warm the remaining library.
-  const key = previewKey(target), active = thumbnail ? requested : visible;
+  const key = previewKey(target), active = thumbnail ? requested && (target.kind !== "community" || visible) : visible;
   useEffect(() => {
     if (!thumbnail || !visible) return;
     const element = container.current;
@@ -43,10 +43,10 @@ export function MediaPreview({ client, target, name, parameters = null, visible,
     return () => observer.disconnect();
   }, [client, key, thumbnail, visible]);
   useEffect(() => {
-    if (!thumbnail || !visible || requested) return;
+    if (!thumbnail || !visible || requested || target.kind === "community") return;
     const timer = window.setTimeout(() => setRequested(true), 250);
     return () => window.clearTimeout(timer);
-  }, [thumbnail, visible, requested]);
+  }, [thumbnail, visible, requested, key]);
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const appearance = () => setSystemDark(media.matches);

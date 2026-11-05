@@ -4,6 +4,7 @@ import type { ManagerClient } from "./client";
 import { UiMessageError, uiMessage } from "./ui-message";
 
 export type PreviewTarget = { kind: "theme"; theme: ThemeRef; revision: string; variant: "thumbnail" | "preview" } |
+  { kind: "community"; version: string; variant: "thumbnail" | "preview" } |
   { kind: "active"; revision: string } |
   { kind: "source" | "package"; handle: string };
 export const previewKey = (target: PreviewTarget) => JSON.stringify(target);
@@ -36,6 +37,7 @@ async function retryBusy<T>(work: () => Promise<T>, active: () => boolean, until
 function request(client: ManagerClient, target: PreviewTarget): Promise<MediaResource> {
   if (target.kind === "active") return client.call("media.activePreview", { revision: target.revision });
   if (target.kind === "theme") return client.call("media.resolve", { theme: target.theme, revision: target.revision, variant: target.variant });
+  if (target.kind === "community") return client.call("community.preview", { version: target.version, variant: target.variant });
   return target.kind === "source" ? client.call("sources.preview", { handle: target.handle }) : client.call("packages.preview", { handle: target.handle });
 }
 function finish(client: ManagerClient, queue: Queue, job: Job) {
@@ -90,7 +92,7 @@ export function resolvePreview(client: ManagerClient, target: PreviewTarget, sig
   const owner = queue, key = previewKey(target);
   let job = owner.jobs.get(key);
   if (!job) {
-    const foreground = target.kind !== "theme" || target.variant !== "thumbnail";
+    const foreground = (target.kind !== "theme" && target.kind !== "community") || target.variant !== "thumbnail";
     job = { target, key, foreground, priority: foreground ? 0 : nearViewport ? 1 : 2,
       started: false, settled: false, finished: false, resource: null, subscribers: new Set() };
     owner.jobs.set(key, job); owner.waiting.push(job);

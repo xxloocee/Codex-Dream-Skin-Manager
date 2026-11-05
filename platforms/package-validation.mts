@@ -15,11 +15,13 @@ export function packageValidation(root: string, platform: "windows" | "macos", v
       try { (await load("safe-css-validator")).decodeAndValidateSafeCss(Buffer.from(bytes)); }
       catch { throw new ContractError("THEME_INVALID", "The package contains unsupported Safe CSS."); }
     },
-    async legacyZip(files) {
+    async legacyZip(files, community = false) {
+      const clientVersion = community ? "" : await version();
+      if (!community && !clientVersion) throw new ContractError("THEME_INVALID", "无法读取本地主题引擎版本，无法校验主题包。");
+      const validator = await load("theme-package-validator");
       try {
-        const clientVersion = await version(); if (!clientVersion) throw new Error();
-        return await (await load("theme-package-validator")).validateThemePackageBytes(files, platform, clientVersion);
-      } catch { throw new ContractError("THEME_INVALID", "The ZIP failed its manifest, version, platform, hash or Safe CSS rules."); }
+        return await validator.validateThemePackageBytes(files, platform, clientVersion, { allowCrossPlatform: community, allowCompatibilityMismatch: community });
+      } catch (error) { throw new ContractError("THEME_INVALID", `主题包校验失败：${error instanceof Error ? error.message : "无法识别包内容"}`); }
     },
     async payload(directory) {
       if (platform !== "macos") return;

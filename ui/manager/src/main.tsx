@@ -1,14 +1,17 @@
-import { errorMessage, uiMessage, UiMessageError, renderMessage } from "./ui-message";
+import { diagnosticMessage, errorMessage, joinMessages, uiMessage, UiMessageError, renderMessage } from "./ui-message";
 import type { UiMessage } from "./ui-message";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { ApplyRefresh, HelloResult, ManagerSnapshot, OperationSnapshot, RuntimeMethod, ThemeDetails, ThemePatch, ThemeRef, ThemeSummary } from "../../../contracts/manager.mjs";
+import type { ApplyRefresh, CommunityTheme, HelloResult, ManagerSnapshot, OperationSnapshot, RuntimeMethod, ThemeDetails, ThemePatch, ThemeRef, ThemeSummary } from "../../../contracts/manager.mjs";
 import { BridgeError, ManagerClient, reconnectManager } from "./client";
 import { ThemeEditor } from "./ThemeEditor";
 import { ImportPanel } from "./ImportPanel";
 import { QuickImport } from "./QuickImport";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 import { CommunityPanel } from "./CommunityPanel";
+import type { CommunityActionRequest, CommunityDownloadUpdate } from "./CommunityPanel";
+import { CommunityLibrary } from "./CommunityLibrary";
+import { mergeCommunityCompatibility } from "./community-compatibility";
 import { UpdatePanel } from "./UpdatePanel";
 import { SystemPanel } from "./SystemPanel";
 import { LanguageContext, copy } from "./desktop";
@@ -24,7 +27,7 @@ const message = (error: unknown) => errorMessage(error, "操作失败，请稍�
 const identity = (theme: ThemeSummary) => `${theme.ref.source}:${theme.ref.id}`;
 const health = { healthy: "运行中", stopped: "未运行", stale: "需要重新连接", degraded: "需要重新连接", mismatch: "需要重新连接", unknown: "状态暂不可用" };
 const renderer = { applied: "已核验显示", removed: "已核验移除", unknown: "尚未核验", unavailable: "无法核验" };
-const pages = { console: "控制台", import: "导入图片", settings: "主题设置" } as const;
+const pages = { console: "控制台", community: "社区主题库", import: "导入图片", settings: "主题设置" } as const;
 type Page = keyof typeof pages;
 const operationLabels: Record<OperationSnapshot["state"], string> = { queued: "已排队", running: "正在处理", awaitingConfirmation: "等待确认", succeeded: "已完成", failed: "操作未完成", cancelled: "已取消", indeterminate: "结果待核对" };
 const pendingOperation = (value: OperationSnapshot | null) => !!value && ["queued", "running", "awaitingConfirmation"].includes(value.state);
@@ -45,9 +48,9 @@ async function readLibrary(client: ManagerClient) {
 }
 function operationFeedback(operation: OperationSnapshot): UiMessage {
   if (operation.state === "awaitingConfirmation") return "";
-  if (operation.effects.rollbackVerified) return uiMessage("应用未完成，已恢复原主题；导入的主题仍在库中。");
-  if (operation.state === "indeterminate") return uiMessage("结果暂不确定，请刷新状态后核对；不会重复执行。");
-  if (operation.error) return operation.error.message;
+  if (operation.effects.rollbackVerified) return joinMessages([uiMessage("应用未完成，已恢复原主题；导入的主题仍在库中。"), ...(operation.error ? [diagnosticMessage(operation.error)] : [])], " ");
+  if (operation.state === "indeterminate") return joinMessages([uiMessage("结果暂不确定，请刷新状态后核对；不会重复执行。"), ...(operation.error ? [diagnosticMessage(operation.error)] : [])], " ");
+  if (operation.error) return diagnosticMessage(operation.error);
   if (operation.state === "succeeded" && ["skin.apply", "skin.resume", "skin.reset", "runtime.repair", "runtime.upgrade"].includes(operation.method) && operation.effects.rendererApplied !== true)
     return uiMessage("操作已完成，请刷新确认当前外观。");
   return uiMessage("{action}：{result}", { action: { key: operationTitles[operation.method] }, result: { key: operationLabels[operation.state] } });
@@ -56,6 +59,10 @@ function operationFeedback(operation: OperationSnapshot): UiMessage {
 function App() {
   const [desktopInfo, setDesktopInfo] = useState<DesktopInfo | null>(null), [maintenanceBusy, setMaintenanceBusy] = useState(false);
   const [incomingLinks, setIncomingLinks] = useState<DesktopIntent[]>([]);
+  const [communityRequest, setCommunityRequest] = useState<CommunityActionRequest | null>(null);
+  const [communityDownload, setCommunityDownload] = useState<CommunityDownloadUpdate | null>(null);
+  const consumeCommunityRequest = useCallback((id: string) => setCommunityRequest(previous => previous?.id === id ? null : previous), []);
+  const onCommunityDownload = useCallback((version: string, downloaded: CommunityDownloadUpdate["downloaded"]) => setCommunityDownload({ version, downloaded }), []);
   const onMaintenanceBusy = useCallback((value: boolean) => setMaintenanceBusy(value), []);
   const onDesktopInfo = useCallback((value: DesktopInfo) => setDesktopInfo(value), []);
   const consumeLink = useCallback((id: string) => setIncomingLinks(previous => previous.filter(value => value.id !== id)), []);
@@ -138,6 +145,7 @@ function App() {
   const mounted = useRef(true), connected = useRef(true);
   const applicationContext = useRef({ client, hello, snapshot, statusError, draftDirty, operationBusy, fileBusy, updateBusy, maintenanceBusy });
   applicationContext.current = { client, hello, snapshot, statusError, draftDirty, operationBusy, fileBusy, updateBusy, maintenanceBusy };
+  const communityDelete = useRef<{ id: string; version: string } | null>(null);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const loadSequence = useRef(0), selectionSequence = useRef(0), loadingList = useRef(false);
   useEffect(() => {
@@ -256,12 +264,12 @@ function App() {
     } else if (operation.state === "indeterminate") {
       setLibraryNotice(uiMessage("主题已保存。", undefined, {
         after: uiMessage("结果暂不确定，请刷新状态后核对；不会重复执行。", undefined, {
-          before: " ", after: operation.error?.message ? ` ${operation.error.message}` : "",
+          before: " ", after: operation.error ? diagnosticMessage(operation.error) : "",
         }),
       }));
     } else {
       setLibraryNotice(uiMessage("主题已保存，后续应用未完成：", undefined, {
-        after: operation.error?.message ?? operationFeedback(operation),
+        after: operation.error ? diagnosticMessage(operation.error) : operationFeedback(operation),
       }));
     }
   }, [operation, libraryNotice]);
@@ -335,7 +343,7 @@ function App() {
         value = await client.call("operations.get", { operationId: id }); setOperation(value);
       }
       if (!mounted.current) return;
-      if (value.state !== "succeeded" || !value.resultTheme || !value.resultRevision) throw new UiMessageError(value.error?.message ?? uiMessage("保存结果待核对，草稿已保留。"));
+      if (value.state !== "succeeded" || !value.resultTheme || !value.resultRevision) throw new UiMessageError(value.error ? diagnosticMessage(value.error) : uiMessage("保存结果待核对，草稿已保留。"));
       saved = true;
       setLibraryNotice(uiMessage(applyAfter ? "主题已保存，正在准备应用；启动或重启时仍须确认。" : "主题已保存到主题库，当前 Codex 外观未切换。"));
       const current = await client.call("themes.get", { theme: value.resultTheme });
@@ -407,6 +415,14 @@ function App() {
       setOperation(await client.call("themes.delete", { operationId: id, theme: details.ref, expectedRevision: details.revision }));
     } catch (error) { setOperationError(message(error)); } finally { if (mounted.current) { setOperationId(id); setOperationBusy(false); } }
   }
+  async function deleteCommunity(local: NonNullable<CommunityTheme["downloaded"]>) {
+    if (!client || !hello || updateBusy || maintenanceBusy || operationBusy || importBusy || fileBusy || pendingOperation(operation)) return;
+    const id = `${hello.backendSessionId}:${crypto.randomUUID()}`; setOperationBusy(true); setOperationError("");
+    try {
+      sessionStorage.setItem(storageKey, id); setOperationId(null); setOperation(null); communityDelete.current = { id, version: local.version };
+      setOperation(await client.call("themes.delete", { operationId: id, theme: local.theme, expectedRevision: local.revision }));
+    } catch (error) { setOperationError(message(error)); } finally { if (mounted.current) { setOperationId(id); setOperationBusy(false); } }
+  }
   async function original(action: "files.saveOriginal" | "files.playOriginal" | "files.exportPackage") {
     if (!client || !details || updateBusy || maintenanceBusy || fileBusy || importBusy || operationBusy || pendingOperation(operation)) return;
     const selectedTheme = details; setFileBusy(true); setLibraryNotice("");
@@ -447,6 +463,7 @@ function App() {
   useEffect(() => { if (operation) { const value = operationFeedback(operation); if (value) setFeedback(value); } }, [operation?.id, operation?.state, operation?.error?.message]);
   useEffect(() => {
     if (operation?.state === "succeeded" && ["themes.delete", "library.recover"].includes(operation.method)) setLibraryRead(value => value + 1);
+    if (operation?.state === "succeeded" && operation.id === communityDelete.current?.id) { onCommunityDownload(communityDelete.current.version, null); communityDelete.current = null; }
   }, [operation?.id, operation?.state]);
   const openUpdates = () => { setUtility("updates"); if (!busy) setUpdateCheck(value => value + 1); };
   const runtimeLabel = disconnected ? tr("需要重新连接") : !hello ? tr("正在连接本地管理器…") : statusError || !snapshot ? tr("状态暂不可用") : snapshot.desired.paused ? tr("已暂停") : tr(health[snapshot.engine.health]);
@@ -454,7 +471,7 @@ function App() {
   return <LanguageContext.Provider value={language}><div className="app"><main>
     <header className="desktop-header">
       <nav className="page-navigation" aria-label={tr("管理器页面")}>{(Object.keys(pages) as Page[]).map(id => <button key={id} aria-current={page === id ? "page" : undefined} aria-controls={`page-${id}`} onClick={() => goPage(id)}>{t(id)}</button>)}</nav>
-      <div className="header-actions"><span className={`runtime-indicator ${snapshot?.engine.health === "healthy" && !snapshot.desired.paused && !statusError ? "healthy" : ""}`} title={snapshot ? [runtimeLabel, tr(renderer[snapshot.renderer.status]), ...snapshot.diagnostics.map(item => item.message)].join("\n") : runtimeLabel}><span aria-hidden="true" />{runtimeLabel}</span>
+      <div className="header-actions"><span className={`runtime-indicator ${snapshot?.engine.health === "healthy" && !snapshot.desired.paused && !statusError ? "healthy" : ""}`} title={snapshot ? [runtimeLabel, tr(renderer[snapshot.renderer.status]), ...snapshot.diagnostics.map(item => msg(diagnosticMessage(item)))].join("\n") : runtimeLabel}><span aria-hidden="true" />{runtimeLabel}</span>
         <button disabled={!hello} onClick={openUpdates}>{tr("检查更新")}{updateAvailable ? " ·" : ""}</button></div>
     </header>
     {pendingSelection && <ConfirmationDialog title={tr("未保存主题设置")} onCancel={() => setPendingSelection(null)}>
@@ -465,7 +482,7 @@ function App() {
         }}>{tr("丢弃并继续")}</button></div>
     </ConfirmationDialog>}
     {operation?.state === "awaitingConfirmation" && operation.confirmation && <ConfirmationDialog title={tr("确认所选操作")} onCancel={() => void confirm(false)}>
-      <p>{confirmation?.reason ?? operation.confirmation.reason}</p><p>{confirmation?.impact ?? operation.confirmation.impact}</p>
+      <p>{confirmation?.reason ?? operation.confirmation.reason}</p><p>{operation.method === "themes.delete" && operation.id === communityDelete.current?.id ? tr("将删除此社区主题的本地储存，不影响后续二次下载使用。") : confirmation?.impact ?? operation.confirmation.impact}</p>
       {operationError && <p className="field-error" role="alert">{msg(operationError)}</p>}
       <div className="editor-actions"><button disabled={!hello || operationBusy} onClick={() => void confirm(false)}>{tr("取消")}</button><button className="confirm-accept" disabled={!hello || operationBusy} onClick={() => void confirm(true)}>{tr(operation.method === "themes.delete" ? "确认删除" : "继续")}</button></div>
     </ConfirmationDialog>}
@@ -489,6 +506,17 @@ function App() {
           onApply={() => { if (details) void apply(); else if (!selected) void controlRuntime("skin.resume"); }} onControl={method => void controlRuntime(method)} onRefresh={() => { void refreshRuntime(); void load(true); }} />
       </div>
     </section>
+    <section id="page-community" className="manager-page" aria-labelledby="page-community-title" hidden={page !== "community"}>
+      <h2 id="page-community-title" className="visually-hidden" tabIndex={-1}>{tr("社区主题库")}</h2>
+      {client && hello?.capabilities.methods.includes("community.list") && hello.capabilities.methods.includes("community.preview") ?
+        <CommunityLibrary key={hello.backendSessionId} client={client} visible={page === "community"} busy={busy || incomingLinks.length > 0 || !!communityRequest}
+          platform={hello.platform} engineVersion={hello.versions.application}
+          canApply={hello.capabilities.methods.includes("skin.apply")} downloadUpdate={communityDownload}
+          onDelete={local => void deleteCommunity(local)}
+          onAction={(theme, action) => setCommunityRequest({ id: crypto.randomUUID(), version: theme.id, action,
+            compatibility: mergeCommunityCompatibility({ applyCompatible: theme.applyCompatible, platforms: theme.platforms }, theme.compatibility) })} /> :
+        <p className="empty">{tr("社区主题库暂不可用，请连接新版管理器后重试。")}</p>}
+    </section>
     <section id="page-settings" className="manager-page settings-page" aria-labelledby="page-settings-title" hidden={page !== "settings"}>
       <h2 id="page-settings-title" className="visually-hidden" tabIndex={-1}>{tr("主题设置")}</h2>
       <div className="settings-layout"><aside className="theme-selector"><h3>{tr("选择主题")}</h3><p className="muted">{tr("选择内置主题或我的主题，调整显示与取景参数。")}</p>
@@ -511,7 +539,8 @@ function App() {
     </dialog>
     {client && hello?.capabilities.methods.includes("community.inspect") && <CommunityPanel client={client} hello={hello}
       busy={busy} incoming={incomingLinks[0] ?? null} onConsume={consumeLink}
-      canApply={!draftDirty && hello.capabilities.methods.includes("community.apply")}
+      request={communityRequest} onConsumeRequest={consumeCommunityRequest} onDownloadState={onCommunityDownload} onNotice={onNotice}
+      canApply={hello.capabilities.methods.includes("skin.apply")}
       onBusy={onImportBusy} onOperation={onImportOperation} onIntent={onImportIntent} onSaved={onImported} />}
     <footer className="message-bar" aria-live="polite"><span title={msg(feedback)}>{operation?.state === "awaitingConfirmation" ? "" : msg(feedback) || (hello ? "" : runtimeLabel)}</span>
       {client && hello && <QuickImport client={client} hello={hello} request={quickImport} busy={busy} onBusy={onImportBusy} onOperation={onImportOperation} onIntent={onImportIntent} onSaved={onImported} onNotice={onNotice} />}

@@ -53,8 +53,11 @@ export async function serve(input: Readable, output: Writable, service: ManagerS
       if (!greeted && request.method !== "system.hello") throw new ContractError("INVALID_REQUEST", "system.hello must precede other methods.");
       // Independent probes must not hold up theme operations while waiting for
       // the runtime or network. Mutations keep their serial admission order.
-      if (["status.get", "updates.check", "community.inspect"].includes(request.method)) {
-        if (readJobs.has(request.method)) throw new ContractError("BUSY", "This read request is already in progress.", true);
+      if (["status.get", "updates.check", "community.inspect", "community.list", "community.preview"].includes(request.method)) {
+        // Only the runtime probes are single-flight; community reads are independent.
+        const community = request.method.startsWith("community.");
+        const readKey = community ? `${request.method}:${request.requestId}` : request.method;
+        if (readJobs.has(readKey)) throw new ContractError("BUSY", "This read request is already in progress.", true);
         const job = (async () => {
           let response: ManagerResponse;
           try {
@@ -65,8 +68,8 @@ export async function serve(input: Readable, output: Writable, service: ManagerS
         })().catch(error => {
           outputError = error instanceof Error ? error : new Error("The manager output closed.");
           input.destroy();
-        }).finally(() => { readJobs.delete(request.method); });
-        readJobs.set(request.method, job);
+        }).finally(() => { readJobs.delete(readKey); });
+        readJobs.set(readKey, job);
         return true;
       }
       const result = await service.execute(request);

@@ -1,11 +1,14 @@
 import { randomBytes } from "node:crypto";
-import { ContractError, record } from "../contracts/manager.mjs";
-import type { CommunityDownload, CommunityMetadata, CommunityProposal } from "../contracts/manager.mjs";
+import { ContractError, parseCommunityQuery, record } from "../contracts/manager.mjs";
+import type { CommunityDownload, CommunityMetadata, CommunityPage, CommunityProposal, CommunityQuery, CommunityTheme } from "../contracts/manager.mjs";
 import type { PackageSources } from "./package-sources.mjs";
-import type { PackagePayload } from "./theme-package.mjs";
+import { MAX_PACKAGE_BYTES } from "./package-zip.mjs";
+import { communityCompatibility } from "./community-origin.mjs";
 
 export interface CommunityHTTP {
-  read(version: string, download: boolean, maximum: number, expectedBytes?: number): Promise<Uint8Array>;
+  read(version: string, download: boolean, maximum: number): Promise<Uint8Array>;
+  list(query: CommunityQuery): Promise<Uint8Array>;
+  image(version: string, variant: "thumbnail" | "preview"): Promise<{ bytes: Uint8Array; extension: string }>;
   close(): void;
 }
 export function communityVersion(link: string): string {
@@ -13,69 +16,86 @@ export function communityVersion(link: string): string {
   if (!match || match[0] !== link) throw new ContractError("INVALID_REQUEST", "只支持完整的 Dream Skin 社区应用链接。");
   return match[1]!;
 }
-function display(value: unknown, maximum: number): value is string {
-  return typeof value === "string" && value === value.trim() && [...value].length >= 1 && [...value].length <= maximum &&
-    !/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/u.test(value);
+function text(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
-export function communityMetadata(bytes: Uint8Array, version: string): CommunityMetadata {
-  let value: unknown;
-  try { value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { throw new ContractError("THEME_INVALID", "社区元数据不是有效的 UTF-8 JSON。"); }
-  if (!record(value) || value.id !== version || !display(value.themeId, 80) || !display(value.name, 120) ||
-      !display(value.authorDisplayName, 120) || !display(value.license, 80) || !display(value.version, 32) ||
-      !/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(value.version) ||
-      typeof value.packageSha256 !== "string" || value.packageSha256.length !== 64 || !/^[a-f0-9]{64}$/.test(value.packageSha256) ||
-      !Number.isSafeInteger(value.packageBytes) || (value.packageBytes as number) < 1 || (value.packageBytes as number) > 160 * 1024 * 1024 || value.applyCompatible !== true) {
-    throw new ContractError("THEME_INVALID", "社区元数据、大小、校验和或兼容性不符合要求。");
+function count(value: unknown): number { return Number.isSafeInteger(value) && (value as number) >= 0 ? value as number : 0; }
+function json(bytes: Uint8Array): unknown {
+  try { return JSON.parse(new TextDecoder("utf-8").decode(bytes)); } catch { throw new ContractError("THEME_INVALID", "社区返回的内容不是有效的 JSON。"); }
+}
+const versionPattern = /^ver_[a-z0-9]{8,64}$/;
+// Descriptive fields are display-only: a missing or odd value falls back to a
+// placeholder instead of blocking the theme. Only the id decides usability.
+function metadata(value: unknown, version?: string): CommunityMetadata {
+  if (!record(value) || typeof value.id !== "string" || !versionPattern.test(value.id) || version !== undefined && value.id !== version) {
+    throw new ContractError("THEME_INVALID", "社区返回的主题信息缺少有效标识。");
   }
-  return { id: version, themeId: value.themeId, name: value.name, version: value.version, authorDisplayName: value.authorDisplayName,
-    license: value.license, packageSha256: value.packageSha256, packageBytes: value.packageBytes as number, applyCompatible: true };
+  return { id: value.id, themeId: text(value.themeId, value.id), name: text(value.name, value.id), version: text(value.version, "-"),
+    authorDisplayName: text(value.authorDisplayName, "-"), license: text(value.license, "-"),
+    packageSha256: typeof value.packageSha256 === "string" ? value.packageSha256 : "", packageBytes: count(value.packageBytes), applyCompatible: value.applyCompatible !== false,
+    compatibility: communityCompatibility({ ...value, ...(record(value.displayMeta) ? value.displayMeta : {}) }) };
 }
-export function bindCommunityPayload(payload: PackagePayload, metadata: CommunityMetadata): void {
-  const origin = payload.config.packageOrigin, manifest = record(origin) ? origin.manifest : null;
-  if (payload.format !== "official" || !record(manifest) || !record(manifest.publisher) ||
-      manifest.themeId !== metadata.themeId || manifest.version !== metadata.version || manifest.license !== metadata.license ||
-      manifest.publisher.displayName !== metadata.authorDisplayName || payload.config.name !== metadata.name) {
-    throw new ContractError("THEME_INVALID", "下载包的主题、版本、作者、名称或许可与已确认的社区元数据不一致。");
+export function communityMetadata(bytes: Uint8Array, version: string): CommunityMetadata { return metadata(json(bytes), version); }
+export function communityPage(bytes: Uint8Array, query: CommunityQuery): CommunityPage {
+  const value = json(bytes);
+  if (!record(value) || !Array.isArray(value.items)) throw new ContractError("THEME_INVALID", "社区主题列表格式无法识别。");
+  const ids = new Set<string>(), items: CommunityTheme[] = [];
+  // One malformed entry must not hide the rest of the page.
+  for (const item of value.items as unknown[]) {
+    let meta: CommunityMetadata;
+    try { meta = metadata(item); } catch { continue; }
+    if (ids.has(meta.id)) continue;
+    ids.add(meta.id);
+    const raw = item as Record<string, unknown>, displayMeta = record(raw.displayMeta) ? raw.displayMeta : {};
+    const platforms: CommunityTheme["platforms"] = Array.isArray(displayMeta.platforms) ?
+      [...new Set(displayMeta.platforms.filter((platform): platform is "windows" | "macos" => platform === "windows" || platform === "macos"))] : [];
+    const appearance = displayMeta.appearance;
+    items.push({ ...meta, platforms, appearance: appearance === "auto" || appearance === "light" || appearance === "dark" ? appearance : null,
+      downloadCount: count(raw.downloadCount), favoriteCount: count(raw.favoriteCount), downloaded: null });
   }
+  return { items, total: Math.max(count(value.total), query.offset + items.length), limit: query.limit, offset: query.offset };
 }
-interface Ticket { proposal: CommunityProposal; job?: Promise<CommunityDownload>; completed?: boolean }
+interface Ticket { proposal: CommunityProposal; job?: Promise<CommunityDownload> }
+// Tickets only bind "inspect" to "download" for the bridge contract; they carry no
+// expiry or concurrency limits. A failed download may simply be retried.
 export class Community {
   private readonly tickets = new Map<string, Ticket>();
-  private inFlight = false;
   private closed = false;
   constructor(private readonly http: CommunityHTTP, private readonly packages: PackageSources) {}
+  private open(): void { if (this.closed) throw new ContractError("BACKEND_UNAVAILABLE", "社区会话已关闭。"); }
+  async list(query: CommunityQuery): Promise<CommunityPage> {
+    this.open();
+    parseCommunityQuery(query);
+    return communityPage(await this.http.list(query), query);
+  }
+  async image(version: string, variant: "thumbnail" | "preview"): Promise<{ bytes: Uint8Array; extension: string }> {
+    this.open();
+    return this.http.image(version, variant);
+  }
   async inspect(link: string): Promise<CommunityProposal> {
-    if (this.closed) throw new ContractError("BACKEND_UNAVAILABLE", "社区会话已关闭。");
-    for (const [handle, ticket] of this.tickets) if ((!ticket.job || ticket.completed) && Date.parse(ticket.proposal.expiresAt) <= Date.now()) this.tickets.delete(handle);
-    if (this.tickets.size >= 8) for (const [handle, ticket] of this.tickets) {
-      if (ticket.completed) { this.tickets.delete(handle); break; }
-    }
-    if (this.tickets.size >= 8 || this.inFlight) throw new ContractError("BUSY", "请完成当前社区流程后再读取其他链接。");
-    const version = communityVersion(link); this.inFlight = true;
-    try {
-      const metadata = communityMetadata(await this.http.read(version, false, 65536), version);
-      if (this.closed) throw new ContractError("BACKEND_UNAVAILABLE", "社区会话已关闭。");
-      const proposal: CommunityProposal = { handle: randomBytes(24).toString("hex"), expiresAt: new Date(Date.now() + 300000).toISOString(), source: "https://api.dreamskin.cc", metadata };
-      this.tickets.set(proposal.handle, { proposal }); return structuredClone(proposal);
-    } finally { this.inFlight = false; }
+    this.open();
+    const version = communityVersion(link);
+    const metadata = communityMetadata(await this.http.read(version, false, 65536), version);
+    this.open();
+    const proposal: CommunityProposal = { handle: randomBytes(24).toString("hex"), expiresAt: new Date(Date.now() + 300000).toISOString(), source: "https://api.dreamskin.cc", metadata };
+    this.tickets.set(proposal.handle, { proposal });
+    return structuredClone(proposal);
   }
   async download(handle: string): Promise<CommunityDownload> {
+    this.open();
     const ticket = this.tickets.get(handle);
-    if (this.closed || !ticket) throw new ContractError("RESOURCE_EXPIRED", "请重新读取社区链接并确认下载。");
+    if (!ticket) throw new ContractError("RESOURCE_EXPIRED", "请重新读取社区链接并确认下载。");
     if (ticket.job) return ticket.job;
-    if (Date.parse(ticket.proposal.expiresAt) <= Date.now()) throw new ContractError("RESOURCE_EXPIRED", "下载确认已过期，请重新读取链接。");
-    if (this.inFlight) throw new ContractError("BUSY", "另一社区请求正在运行。");
-    this.inFlight = true;
-    ticket.job = (async () => {
-      try {
-        const meta = ticket.proposal.metadata;
-        const bytes = await this.http.read(meta.id, true, meta.packageBytes, meta.packageBytes);
-        if (this.closed) throw new ContractError("BACKEND_UNAVAILABLE", "社区会话已关闭。");
-        return await this.packages.registerCommunity(bytes, meta);
-      } finally { this.inFlight = false; ticket.completed = true; }
+    const meta = ticket.proposal.metadata;
+    const job = (async () => {
+      const bytes = await this.http.read(meta.id, true, MAX_PACKAGE_BYTES);
+      this.open();
+      return this.packages.registerCommunity(bytes, meta);
     })();
-    // Failed approval is consumed as well. No implicit retry of network or writes.
-    return ticket.job;
+    ticket.job = job;
+    // Concurrent callers share one run; a failure clears it so the user can retry.
+    job.catch(() => { if (ticket.job === job) delete ticket.job; });
+    return job;
   }
   async close(): Promise<void> {
     this.closed = true; this.http.close();

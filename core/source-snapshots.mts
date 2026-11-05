@@ -2,11 +2,11 @@ import path from "node:path";
 import { randomBytes, createHash } from "node:crypto";
 import { readdir, unlink } from "node:fs/promises";
 import { boundedText, ContractError, failure, record } from "../contracts/manager.mjs";
-import type { SourceGrant, SourceSelection } from "../contracts/manager.mjs";
+import type { CommunityOrigin, SourceGrant, SourceSelection } from "../contracts/manager.mjs";
 import { fileBytes, jsonObject, MAX_MEDIA_BYTES, sha256 } from "./local-files.mjs";
 import { durableBytes, privateDirectory, syncDirectory } from "./write-files.mjs";
 
-export interface SnapshotFile { fileName: string; sha256: string; byteLength: number }
+export interface SnapshotFile { fileName: string; sha256: string; byteLength: number; community?: CommunityOrigin }
 export interface SourceSnapshot { media: SnapshotFile; original: SnapshotFile | null }
 const formats = [".png", ".apng", ".jpg", ".jpeg", ".webp", ".gif", ".mp4"];
 const convertedFormats = [".heic", ".tif", ".tiff"];
@@ -118,7 +118,7 @@ export class SourceSnapshots {
         // A rejected selection never becomes part of a future transaction.
         for (const fileName of created) try { await unlink(path.join(this.directory, fileName)); } catch { }
         const response = failure(null, error);
-        result.failures.push({ name: boundedText(name, 255) ? name : "Selected media", error: response.ok ? { code: "IO_ERROR", message: "Source selection failed.", retryable: false } : response.error });
+        result.failures.push({ name: boundedText(name, 255) ? name : "所选素材", error: response.ok ? { code: "IO_ERROR", message: "Source selection failed.", retryable: false } : response.error });
       }
     }
     if (selectedGrants.size) {
