@@ -284,10 +284,16 @@ export class ManagerService {
   }
   async executeNative(value: unknown): Promise<unknown> {
     if (this.closing) throw new ContractError("BACKEND_UNAVAILABLE", "This manager session is closing.");
-    if (!this.sources || !this.nativeFiles || !record(value) || value.protocol !== PROTOCOL || value.kind !== "native.request" ||
+    if (!record(value) || value.protocol !== PROTOCOL || value.kind !== "native.request" ||
         Object.keys(value).some(key => !["protocol", "kind", "requestId", "method", "params"].includes(key)) || !record(value.params)) {
       throw new ContractError("METHOD_UNSUPPORTED", "Native file handling is unavailable.");
     }
+    if (value.method === "session.observe") {
+      if (Object.keys(value.params).length !== 1 || typeof value.params.active !== "boolean") throw new ContractError("INVALID_REQUEST", "Invalid observation state.");
+      this.events.setObservationActive(value.params.active);
+      return { active: value.params.active };
+    }
+    if (!this.sources || !this.nativeFiles) throw new ContractError("METHOD_UNSUPPORTED", "Native file handling is unavailable.");
     if (value.method === "updates.authorizeOpen" || value.method === "updates.authorizeQuit") {
       if (!this.updates) throw new ContractError("METHOD_UNSUPPORTED", "Native update handling is unavailable.");
       const quit = value.method === "updates.authorizeQuit";
@@ -347,8 +353,11 @@ export class ManagerService {
     const runtime = this.runtimePort ? await this.runtimePort.inspect().catch(() => { diagnostics.push({ code: "RUNTIME_UNAVAILABLE", message: "Runtime state is temporarily unavailable." }); return null; }) : null;
     // One runtime observation supplies the daily status. Renderer verification
     // belongs to the write itself, never to the background status poll.
+    const watcherMissing = this.platform.name === "macos" && runtime?.watcherVerified === false && runtime.processRunning && !runtime.paused;
     const value = runtime ? { activeId: null, paused: runtime.paused, diagnostics: [],
-      health: (runtime.recoveryRequired ? "degraded" : runtime.runtimeSessionId ? "healthy" : runtime.processRunning ? "degraded" : "stopped") as ManagerSnapshot["engine"]["health"] } : await this.platform.status();
+      health: (runtime.recoveryRequired || watcherMissing ? "degraded" : runtime.runtimeSessionId ? "healthy" : runtime.processRunning ? "degraded" : "stopped") as ManagerSnapshot["engine"]["health"] }
+      : this.runtimePort && this.platform.name === "macos" ? { activeId: null, paused: null, diagnostics: [], health: "unknown" as const }
+      : await this.platform.status();
     diagnostics.push(...value.diagnostics);
     let theme: ThemeRef | null = runtime?.activeTheme ?? null;
     if (!runtime && value.activeId) {

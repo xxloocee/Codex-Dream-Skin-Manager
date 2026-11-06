@@ -61,7 +61,9 @@ export function createInjectionEngine({
     return `(() => {
       const generationKey = "__CODEX_DREAM_SKIN_EARLY_GENERATION__";
       const appliedKey = "__CODEX_DREAM_SKIN_EARLY_APPLIED__";
+      const bootstrapKey = "__CODEX_DREAM_SKIN_EARLY_BOOTSTRAP__";
       const generation = ${JSON.stringify(revision)};
+      window[bootstrapKey]?.();
       window[generationKey] = generation;
       let bootstrapTimer = null;
       let timeout = null;
@@ -70,6 +72,8 @@ export function createInjectionEngine({
         bootstrapTimer = null;
         if (timeout) clearTimeout(timeout);
         timeout = null;
+        document.removeEventListener?.("DOMContentLoaded", install);
+        if (window[bootstrapKey] === stop) delete window[bootstrapKey];
       };
       const hasCodexSurface = () => {
         if (location.protocol !== "app:") return false;
@@ -96,6 +100,7 @@ export function createInjectionEngine({
         window[appliedKey] = generation;
         return true;
       };
+      window[bootstrapKey] = stop;
       if (install()) return;
       document.addEventListener?.("DOMContentLoaded", install, { once: true });
       bootstrapTimer = setInterval(install, 250);

@@ -9,6 +9,7 @@
   <key>CFBundleVersion</key><string>__VERSION__</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>DreamSkinPowerObserverVersion</key><integer>1</integer>
   <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>Dream Skin</string><key>CFBundleURLSchemes</key><array><string>dreamskin</string></array></dict></array>
   <key>CFBundleIconFile</key><string>DreamSkin.icns</string>
 </dict></plist>

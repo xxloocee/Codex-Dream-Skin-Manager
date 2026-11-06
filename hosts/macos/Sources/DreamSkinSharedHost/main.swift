@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
     private var eventSequence: Double = 0
     private let desktop = NativeDesktop()
     private var statusItem: NSStatusItem?
+    private var power: PowerState?
+    private var screenAwake = true, observationActive: Bool?
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
             if let identifier = Bundle.main.bundleIdentifier, let existing = NSRunningApplication.runningApplications(withBundleIdentifier: identifier).first(where: { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }) {
@@ -42,6 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
             window.title = "Codex Dream Skin"; window.minSize = NSSize(width: 820, height: 600); window.contentView = web
             window.delegate = self; window.center(); window.makeKeyAndOrderFront(nil)
             try startBackend()
+            power = PowerState { [weak self] awake in
+                self?.screenAwake = awake; self?.syncObservation()
+            }
+            power?.start()
             desktop.navigate = { [weak self] page, section in self?.route(page, section: section) }
             desktop.languageChanged = { [weak self] in self?.buildMenus() }
             buildMenus()
@@ -51,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
     }
     private func startBackend() throws {
         let previous = backend; backend = nil
-        nativeFiles?.close(); previous?.stop(); media.clear(); session = nil; eventSequence = 0
+        nativeFiles?.close(); previous?.stop(); media.clear(); session = nil; eventSequence = 0; observationActive = nil
         let directory = temporary.appendingPathComponent("media", isDirectory: true)
         let value = try NativeBackend(root: root, resources: directory); backend = value
         nativeFiles = NativeFiles(backend: value, directory: directory, desktop: desktop, post: { [weak self, weak value] response in
@@ -107,6 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
             guard message["kind"] as? String == "response" else { throw HostError.invalidMessage }
             if let result = message["result"] as? [String: Any], let current = result["backendSessionId"] as? String {
                 if let session, session != current { media.clear() }; session = current
+                syncObservation()
             }
             post(message)
         } catch { disconnect() }
@@ -116,6 +123,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
         let encoded = data.base64EncodedString()
         web?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('dreamskin-message',{detail:JSON.parse(new TextDecoder().decode(Uint8Array.from(atob('\(encoded)'),c=>c.charCodeAt(0))))}));", completionHandler: nil)
     }
+    private func syncObservation() {
+        guard session != nil, let window, let backend else { return }
+        let active = screenAwake && window.isVisible && !window.isMiniaturized && window.occlusionState.contains(.visible)
+        guard observationActive != active else { return }
+        do {
+            try backend.sendNative(["protocol": managerProtocol, "kind": "native.request", "requestId": "native:" + UUID().uuidString.lowercased(),
+                                    "method": "session.observe", "params": ["active": active]])
+            observationActive = active
+        } catch { disconnect() }
+    }
+    func windowDidChangeOcclusionState(_ notification: Notification) { syncObservation() }
+    func windowDidMiniaturize(_ notification: Notification) { syncObservation() }
+    func windowDidDeminiaturize(_ notification: Notification) { syncObservation() }
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         decisionHandler(navigationAction.targetFrame?.isMainFrame == true && navigationAction.request.url?.standardizedFileURL == page ? .allow : .cancel)
     }
@@ -145,7 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
         if backend == nil, web != nil { do { try startBackend(); web.reload() } catch { disconnect() } }
         window?.makeKeyAndOrderFront(nil); return true
     }
-    func windowShouldClose(_ sender: NSWindow) -> Bool { sender.orderOut(nil); return false }
+    func windowShouldClose(_ sender: NSWindow) -> Bool { sender.orderOut(nil); syncObservation(); return false }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
         nativeFiles?.close(); backend?.stop(); media?.clear(); web?.configuration.userContentController.removeScriptMessageHandler(forName: "manager")
@@ -159,6 +179,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
             try? FileManager.default.removeItem(at: temporary)
         }
     }
+}
+
+if CommandLine.arguments.count == 2, CommandLine.arguments[1] == "--observe-power" {
+    let power = PowerState { awake in
+        guard let bytes = try? JSONSerialization.data(withJSONObject: ["screenAwake": awake]) else { return }
+        do { try FileHandle.standardOutput.write(contentsOf: bytes + Data([10])) } catch { exit(0) }
+    }
+    // Closing the watcher's input pipe also closes this observer after a crash.
+    DispatchQueue.global(qos: .utility).async {
+        while !FileHandle.standardInput.availableData.isEmpty { }
+        exit(0)
+    }
+    power.start()
+    withExtendedLifetime(power) { RunLoop.main.run() }
+    exit(0)
 }
 
 let app = NSApplication.shared

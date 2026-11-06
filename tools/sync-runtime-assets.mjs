@@ -206,7 +206,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     },
   ];
 
-  for (const name of ["cdp-transport.mjs", "injection-engine.mjs", "watcher-engine.mjs", "media-cache.mjs", "theme-payload.mjs", "renderer-session.mjs", "renderer-verification.mjs"]) {
+  for (const name of ["cdp-transport.mjs", "injection-engine.mjs", "watcher-engine.mjs", "power-state.mjs", "media-cache.mjs", "theme-payload.mjs", "renderer-session.mjs", "renderer-verification.mjs"]) {
     outputs.push({
       content: (await readFile(path.join(projectRoot, "runtime", name), "utf8"))
         .replace('from "./theme-package-validator.mjs"', 'from "../assets/theme-package-validator.mjs"')

@@ -8,14 +8,21 @@ import { jsonObject, optionalBytes } from "../core/local-files.mjs";
 import { durableJson, privateDirectory } from "../core/write-files.mjs";
 import { runtimePlatformCall } from "./apply.mjs";
 import { captureRuntime } from "../core/runtime-state.mjs";
+import { MacOSRuntimeObserver } from "./macos/runtime-observer.mjs";
 
 export class PlatformRuntime implements RuntimePort {
-  constructor(private readonly root: string, private readonly state: string) {}
+  private readonly observer: MacOSRuntimeObserver;
+  constructor(private readonly root: string, private readonly state: string) { this.observer = new MacOSRuntimeObserver(state); }
   async inspect(): Promise<RuntimeState> {
-    return captureRuntime(this.root, this.state, process.platform === "win32" ? "windows" : "macos", await runtimePlatformCall(this.root, "Probe"), "observe");
+    const windows = process.platform === "win32";
+    const probe = windows ? await runtimePlatformCall(this.root, "Probe") : await this.observer.inspect();
+    return captureRuntime(this.root, this.state, windows ? "windows" : "macos", probe, "observe");
   }
   async preflight(command: RuntimeCommand): Promise<RuntimePreflight> {
-    const runtime = command.method === "skin.pause" ? await captureRuntime(this.root, this.state, process.platform === "win32" ? "windows" : "macos", await runtimePlatformCall(this.root, "Probe"), "pause") : await this.inspect();
+    // Observed status is never an authorization to mutate the application.
+    const windows = process.platform === "win32";
+    const runtime = await captureRuntime(this.root, this.state, windows ? "windows" : "macos", await runtimePlatformCall(this.root, "Probe"),
+      command.method === "skin.pause" ? "pause" : windows ? "observe" : "control");
     return runtimePreflight(command, runtime);
   }
   private receiptFile(id: string) {

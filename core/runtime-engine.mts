@@ -4,7 +4,7 @@ import { fileBytes, fileStamp, optionalBytes, jsonObject, sha256 } from "./local
 // A revision describes the fixed package engine, never a caller supplied path.
 const revisions = new Map<string, { stamp: string; revision: string }>();
 export async function engineRevision(root: string, platform: "windows" | "macos", observe = false): Promise<string> {
-  const files = ["scripts/injector.mjs", "scripts/cdp-transport.mjs", "scripts/injection-engine.mjs", "scripts/watcher-engine.mjs", "scripts/media-cache.mjs", "scripts/theme-payload.mjs", "scripts/renderer-session.mjs", "scripts/renderer-verification.mjs",
+  const files = ["scripts/injector.mjs", "scripts/cdp-transport.mjs", "scripts/injection-engine.mjs", "scripts/watcher-engine.mjs", "scripts/power-state.mjs", "scripts/media-cache.mjs", "scripts/theme-payload.mjs", "scripts/renderer-session.mjs", "scripts/renderer-verification.mjs",
     "scripts/image-metadata.mjs", "scripts/video-decode-probe.mjs", "scripts/validate-video-file.mjs",
     "assets/renderer-inject.js", "assets/dream-skin.css", "assets/selectors.json", "assets/safe-css-validator.mjs",
     "assets/safe-css-policy.json", "assets/theme-package-validator.mjs"];

@@ -194,6 +194,38 @@ test("transient Runtime.evaluate failures are retried inside the bounded deadlin
   assert.equal(session.evaluateCount, 2);
 });
 
+test("watcher verification defers a hidden renderer after one sample without passing it", async () => {
+  const dom = makeDomFixture({ visibilityState: "hidden" });
+  dom.document.hidden = true;
+  const session = makeSession({ dom });
+  const result = await waitForVerifiedSession(
+    session, 10000, "fixture-theme", "fixture-revision", 1, true,
+  );
+  assert.equal(result.pass, false);
+  assert.equal(result.checks.documentVisible, false);
+  assert.equal(session.evaluateCount, 1, "Hidden watcher setup must wait for an event instead of repeated layout probes.");
+});
+
+test("explicit verification keeps retrying a hidden renderer until it is visible", async () => {
+  const dom = makeDomFixture({ visibilityState: "hidden" });
+  dom.document.hidden = true;
+  const session = makeSession({ dom });
+  const evaluate = session.evaluate;
+  session.evaluate = async (expression) => {
+    if (session.evaluateCount === 1) {
+      dom.document.visibilityState = "visible";
+      dom.document.hidden = false;
+    }
+    return evaluate(expression);
+  };
+  const result = await waitForVerifiedSession(
+    session, 1000, "fixture-theme", "fixture-revision", 1,
+  );
+  assert.equal(result.pass, true);
+  assert.equal(result.checks.documentVisible, true);
+  assert.equal(session.evaluateCount, 2, "Explicit verification must not finish at the hidden sample.");
+});
+
 test("verification rethrows the last transient error when no sample succeeds", async () => {
   const session = makeSession();
   session.evaluate = async () => {

@@ -101,7 +101,7 @@ final class NativeBackend {
     }
     func sendNative(_ message: [String: Any]) throws {
         guard message["protocol"] as? String == managerProtocol, message["kind"] as? String == "native.request",
-              let method = message["method"] as? String, ["sources.register", "media.original", "files.release", "packages.register", "packages.export", "updates.authorizeOpen", "updates.authorizeQuit", "desktop.authorize"].contains(method) else { throw HostError.invalidMessage }
+              let method = message["method"] as? String, ["sources.register", "media.original", "files.release", "packages.register", "packages.export", "updates.authorizeOpen", "updates.authorizeQuit", "desktop.authorize", "session.observe"].contains(method) else { throw HostError.invalidMessage }
         try write(message)
     }
     private func write(_ message: [String: Any]) throws {

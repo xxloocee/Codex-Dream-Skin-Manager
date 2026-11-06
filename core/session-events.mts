@@ -3,6 +3,7 @@ import type { ManagerEvent, ManagerSnapshot, OperationSnapshot } from "../contra
 type EventBody = { event: "status.changed"; snapshot: ManagerSnapshot } | { event: "operation.changed"; operation: OperationSnapshot } | { event: "status.invalidated" } | { event: "session.closing" };
 export class SessionEvents {
   private enabled = false;
+  private observationActive = true;
   private closing = false;
   private generation = 0;
   private sequence = 0;
@@ -16,16 +17,27 @@ export class SessionEvents {
   attach(sink: (event: ManagerEvent) => Promise<void>): void { this.sink = sink; }
   subscribe(): void { if (this.enabled || this.closing) return; this.enabled = true; this.generation++; this.digest = ""; this.schedule(0); }
   unsubscribe(): void { this.enabled = false; this.generation++; clearTimeout(this.timer); this.pending.clear(); }
+  setObservationActive(active: boolean): void {
+    if (this.observationActive === active) return;
+    this.observationActive = active; this.generation++; clearTimeout(this.timer);
+    if (active) { this.digest = ""; this.schedule(0); }
+  }
   operation(operation: OperationSnapshot): void { this.queue("operation:" + operation.id, { event: "operation.changed", operation }); this.schedule(0); }
-  private schedule(delay = 5000): void {
-    if (!this.enabled || this.closing || this.observing) return;
+  private schedule(delay = 15000): void {
+    if (!this.enabled || !this.observationActive || this.closing || this.observing) return;
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => { this.observing = this.observe().finally(() => { this.observing = null; this.schedule(); }); }, delay);
+    this.timer = setTimeout(() => {
+      const generation = this.generation;
+      this.observing = this.observe().finally(() => {
+        this.observing = null;
+        this.schedule(generation === this.generation ? 15000 : 0);
+      });
+    }, delay);
     this.timer.unref();
   }
   private async observe(): Promise<void> {
     const generation = this.generation;
-    if (!this.enabled || this.busy()) return;
+    if (!this.enabled || !this.observationActive || this.busy()) return;
     try {
       const snapshot = await this.capture();
       if (!this.enabled || this.closing || generation !== this.generation) return;

@@ -13,8 +13,12 @@ export async function defaultRuntimeTheme(applicationRoot: string, observe = fal
   const cached = cacheSelection ? defaults.get(applicationRoot) : null;
   if (cached && await themeListStamp(cached.local).catch(() => null) === cached.stamp) return cached.local;
   defaults.delete(applicationRoot);
+  const adapter = readAdapter(applicationRoot);
+  // macOS stores the default at two known legacy aliases. A status read must
+  // not enumerate every user theme just to locate either of those files.
+  if (adapter.defaultTheme) return adapter.defaultTheme();
   const id = process.platform === "win32" ? "preset-paper-light" : "preset-gothic-void-crusade";
-  const themes = (await readAdapter(applicationRoot).inventory()).themes;
+  const themes = (await adapter.inventory()).themes;
   const local = themes.find(theme => theme.ref.source === "preset" && theme.ref.id === id) ??
     (process.platform === "darwin" ? themes.find(theme => theme.ref.id === "gothic-void-crusade") : null) ?? null;
   if (cacheSelection && local) {

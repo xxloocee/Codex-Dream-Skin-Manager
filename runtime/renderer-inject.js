@@ -3,6 +3,7 @@
   const SELECTOR_CONTRACT = __DREAM_SKIN_SELECTORS_JSON__;
   const STATE_KEY = "__CODEX_DREAM_SKIN_STATE__";
   const DISABLED_KEY = "__CODEX_DREAM_SKIN_DISABLED__";
+  const POWER_KEY = "__CODEX_DREAM_SKIN_POWER_SUSPENDED__";
   const STYLE_REGISTRY_KEY = "__CODEX_DREAM_SKIN_STYLE_SHEETS__";
   const STYLE_ID = "codex-dream-skin-style";
   const SHELL_ATTR = "data-dream-shell";
@@ -281,7 +282,7 @@
       videoLayer.pause?.();
       return;
     }
-    if (videoFailure || document.hidden || motionQuery?.matches || hiddenByTaskMode) {
+    if (videoFailure || document.hidden || window[POWER_KEY] || motionQuery?.matches || hiddenByTaskMode) {
       videoLayer.pause?.();
       return;
     }
@@ -1251,6 +1252,7 @@
     }
     if (state?.visibilityHandler && typeof document.removeEventListener === "function") {
       document.removeEventListener("visibilitychange", state.visibilityHandler);
+      window.removeEventListener?.("dreamskin-power-change", state.visibilityHandler);
     }
     if (state?.videoErrorHandler && state?.videoLayer) {
       state.videoLayer.removeEventListener?.("error", state.videoErrorHandler);
@@ -1286,6 +1288,8 @@
     if (scheduler.frame !== null) window.cancelAnimationFrame(scheduler.frame);
     scheduler.timeout = null;
     scheduler.frame = null;
+    // Keep dirty flags while the renderer is hidden or the screen/session sleeps.
+    if (document.hidden || window[POWER_KEY]) return;
     const pending = { root: scheduler.root, scope: scheduler.scope, parts: scheduler.parts };
     scheduler.root = false;
     scheduler.scope = false;
@@ -1296,6 +1300,7 @@
     scheduler.root ||= root;
     scheduler.scope ||= scope;
     scheduler.parts ||= parts;
+    if (document.hidden || window[POWER_KEY]) return;
     // New route surfaces must be bound before paint. A pending root/navigation
     // timeout must not leave native composer backgrounds visible for 64–180 ms.
     // Coalesce mutation batches into one pass per frame during streaming.
@@ -1317,7 +1322,21 @@
     // SPA route changes are observable as DOM mutations even when Chromium's
     // Navigation API emits no event. Keep verification scope and public parts
     // derived from the same post-mutation tree.
-    partObserver = new MutationObserver(() => scheduleEnsure({ scope: true, parts: true }));
+    partObserver = new MutationObserver((records) => {
+      const relevant = records.some((record) => {
+        // Streaming text, syntax highlighting and our own media bookkeeping
+        // do not change shell parts. New messages/composers still bind before paint.
+        // An older user anchor may be marked as message before its actual
+        // bubble mounts. Keep observing that short-lived structural fallback.
+        const pendingBubble = record.target.closest?.('[data-local-conversation-user-anchor][data-ds-part="message"]');
+        if (record.target.closest?.(PROTECTED_SURFACE_CONTENT) && !pendingBubble) return false;
+        if (record.type === "childList") {
+          return [...record.addedNodes, ...record.removedNodes].some((node) => node.nodeType === 1);
+        }
+        return true;
+      });
+      if (relevant) scheduleEnsure({ scope: true, parts: true });
+    });
   }
 
   let mediaQuery = null;
@@ -1331,8 +1350,11 @@
       motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
       motionHandler = syncVideoPlayback;
     } catch {}
-    visibilityHandler = syncVideoPlayback;
   }
+  visibilityHandler = () => {
+    syncVideoPlayback();
+    if (!document.hidden && !window[POWER_KEY]) scheduleEnsure({ root: true, scope: true, parts: true });
+  };
 
   const navigationApi = window.navigation && typeof window.navigation.addEventListener === "function"
     ? window.navigation : null;
@@ -1421,8 +1443,9 @@
     document.addEventListener("DOMContentLoaded", bodyReadyHandler, { once: true });
   }
   const timer = setInterval(() => {
+    if (document.hidden || window[POWER_KEY]) return;
     metrics.safetyPasses += 1;
-    ensure({ root: true });
+    scheduleEnsure({ root: true });
   }, 30000);
   window[STATE_KEY].timer = timer;
   if (mediaHandler && mediaQuery && typeof mediaQuery.addEventListener === "function") {
@@ -1433,6 +1456,7 @@
   }
   if (visibilityHandler && typeof document.addEventListener === "function") {
     document.addEventListener("visibilitychange", visibilityHandler);
+    window.addEventListener?.("dreamskin-power-change", visibilityHandler);
   }
   syncVideoPlayback();
   if (navigationHandler && navigationApi) {
