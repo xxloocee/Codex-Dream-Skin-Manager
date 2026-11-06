@@ -5,6 +5,7 @@ export interface RuntimeState {
   revision: string; activeTheme: ThemeRef | null; activeRevision: string | null; paused: boolean;
   fingerprint: string; startRequired: boolean; recoveryRequired: boolean; processRunning: boolean;
   runtimeSessionId: string | null; rendererRemoved: boolean | null; rendererUnavailable: boolean;
+  watcherVerified?: boolean;
   defaultTheme: ThemeRef | null; defaultRevision: string | null; appearanceRevision: string; restoreAvailable: boolean;
   engineRevision: string | null; runningEngineRevision: string | null; upgradeRequired: boolean;
   watcherIdentity: string | null;

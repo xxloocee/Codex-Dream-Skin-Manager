@@ -347,8 +347,11 @@ export class ManagerService {
     const runtime = this.runtimePort ? await this.runtimePort.inspect().catch(() => { diagnostics.push({ code: "RUNTIME_UNAVAILABLE", message: "Runtime state is temporarily unavailable." }); return null; }) : null;
     // One runtime observation supplies the daily status. Renderer verification
     // belongs to the write itself, never to the background status poll.
+    const watcherMissing = this.platform.name === "macos" && runtime?.watcherVerified === false && runtime.processRunning && !runtime.paused;
     const value = runtime ? { activeId: null, paused: runtime.paused, diagnostics: [],
-      health: (runtime.recoveryRequired ? "degraded" : runtime.runtimeSessionId ? "healthy" : runtime.processRunning ? "degraded" : "stopped") as ManagerSnapshot["engine"]["health"] } : await this.platform.status();
+      health: (runtime.recoveryRequired || watcherMissing ? "degraded" : runtime.runtimeSessionId ? "healthy" : runtime.processRunning ? "degraded" : "stopped") as ManagerSnapshot["engine"]["health"] }
+      : this.runtimePort && this.platform.name === "macos" ? { activeId: null, paused: null, diagnostics: [], health: "unknown" as const }
+      : await this.platform.status();
     diagnostics.push(...value.diagnostics);
     let theme: ThemeRef | null = runtime?.activeTheme ?? null;
     if (!runtime && value.activeId) {
