@@ -18,6 +18,60 @@ const repo = path.resolve(import.meta.dirname, "..");
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const metadata = stat => ({ size: stat.size, mode: stat.mode, ino: stat.ino, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs });
 
+test("macOS deferred setup keeps its connection and applies the latest payload on return", async () => {
+  const source = await readFile(path.join(repo, "macos/scripts/injector.mjs"), "utf8");
+  const start = source.indexOf("          record.resumeSetup = async (deferred = true) => {");
+  const end = source.indexOf("          if (!pausing && lifecycle.canMutate(connectionEpoch)) await watchVisibility", start);
+  assert.ok(start >= 0 && end > start);
+  for (const gate of ["hidden", "power", "visibility-race", "power-during-verification"]) {
+    let hidden = gate === "hidden" || gate === "visibility-race", resumes = 0;
+    const calls = [], record = { ready: false, earlyRevision: "A" };
+    record.resumeVisible = () => { resumes++; };
+    const session = { closed: false, evaluate: async expression => {
+      if (expression !== "document.hidden") return false;
+      const sampled = hidden;
+      if (gate === "visibility-race") hidden = false;
+      return sampled;
+    } };
+    const lifecycle = new WatcherLifecycle({ sessionFor: value => value.session });
+    record.session = session;
+    lifecycle.sessions.set("fixture", record);
+    const context = {
+      record, session, lifecycle, target: { id: "fixture" }, powerSuspended: gate === "power",
+      desiredPayload: { revision: "A", payload: "A", theme: { id: "fixture", name: "A" } },
+      activeOperation: null, recoveryOperation: null, pauseRecovery: null, options: { timeoutMs: 1 },
+      nextOperationToken: () => "fixture-token", presentOperationUi: async () => {},
+      registerEarlyForRecord: async (_record, _payload, revision) => { calls.push(["early", revision]); return "early-B"; },
+      removeEarlyIdentifier: async () => {}, invalidateEarly: async () => assert.fail("Connection must remain usable"),
+      applyLoadedToSession: async (connected, payload) => { assert.equal(connected, session); calls.push(["apply", payload.revision]); },
+      bindMediaFileToSession: async () => assert.fail("New payload must be applied"),
+      waitForVerifiedSession: async (connected, _timeout, _theme, revision) => {
+        assert.equal(connected, session); calls.push(["verify", revision]);
+        if (gate === "power-during-verification" && revision === "A") {
+          context.powerSuspended = true; return { pass: false, checks: { documentVisible: true } };
+        }
+        return { pass: true };
+      }, console: { log() {} },
+    };
+    vm.runInNewContext(source.slice(start, end), context);
+    await record.resumeSetup(false);
+    assert.equal(record.waitingForVisibility, true);
+    assert.equal(record.ready, false);
+    assert.deepEqual(calls, gate === "power-during-verification" ? [["apply", "A"], ["verify", "A"]] : [],
+      "A deferred page must not repeatedly inject or verify.");
+    assert.equal(resumes, gate === "visibility-race" ? 1 : 0, "A visibility change during sampling must not be lost.");
+    calls.length = 0;
+    context.desiredPayload = { revision: "B", payload: "B", theme: { id: "fixture", name: "B" } };
+    context.powerSuspended = false; hidden = false;
+    await record.resumeSetup();
+    assert.deepEqual(calls, [["early", "B"], ["apply", "B"], ["verify", "B"]]);
+    assert.equal(record.ready, true);
+    assert.equal(record.waitingForVisibility, false);
+    assert.equal(lifecycle.sessions.get("fixture"), record);
+    assert.equal(session.closed, false);
+  }
+});
+
 test("macOS navigation keeps the latest desired payload after refresh verification fails", async () => {
   const source = await readFile(path.join(repo, "macos/scripts/injector.mjs"), "utf8");
   const start = source.indexOf("  const refreshPayload = async () => {");

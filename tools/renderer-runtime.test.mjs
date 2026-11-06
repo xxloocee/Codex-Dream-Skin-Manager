@@ -307,7 +307,12 @@ function makeFixture({
     removeEventListener(type) { listeners.delete(`navigation:${type}`); },
   };
   class MockMutationObserver {
-    constructor(callback) { this.callback = callback; this.options = null; this.observations = []; observers.push(this); }
+    constructor(callback) {
+      this.callback = (records) => callback(records.map((record) => ({
+        target: body, addedNodes: [{ nodeType: 1 }], removedNodes: [], ...record,
+      })));
+      this.options = null; this.observations = []; observers.push(this);
+    }
     observe(target, options) { this.target = target; this.options = options; this.observations.push({ target, options }); }
     disconnect() { this.disconnected = true; }
   }
@@ -324,8 +329,8 @@ function makeFixture({
         removeEventListener(type) { listeners.delete(`${key}:${type}`); },
       };
     },
-    addEventListener() {},
-    removeEventListener() {},
+    addEventListener(type, callback) { listeners.set(`window:${type}`, callback); },
+    removeEventListener(type) { listeners.delete(`window:${type}`); },
   };
   const context = {
     window,
@@ -643,6 +648,32 @@ export async function runRendererRuntimeTest(assetRoot) {
   const rootObserver = home.observers.find((observer) => observer.options?.attributes);
   assert.ok(partObserver?.options?.subtree, "Dynamic parts require one subtree child-list observer");
   assert.ok(rootObserver && !rootObserver.options?.childList && !rootObserver.options?.subtree);
+  const energy = makeFixture();
+  vm.runInNewContext(energy.payloadFor(), energy.context);
+  const energyState = energy.window.__CODEX_DREAM_SKIN_STATE__;
+  const energyObserver = energy.observers.find((observer) => observer.options?.childList);
+  const beforeText = energyState.metrics.partPasses;
+  energyObserver.callback([{ type: "childList", addedNodes: [{ nodeType: 3 }], removedNodes: [] }]);
+  energyObserver.callback([{ type: "childList", target: { closest: selector => selector.includes("data-local-conversation-user-anchor") ? null : ({}) } }]);
+  energy.flushTimers();
+  assert.equal(energyState.metrics.partPasses, beforeText, "Streaming text and protected message content must not rescan the shell");
+  energy.document.hidden = true;
+  energyObserver.callback([{ type: "childList" }]); energy.flushTimers();
+  for (const interval of energy.intervals.values()) interval.callback();
+  assert.equal(energyState.metrics.partPasses, beforeText, "Hidden static skins must leave DOM changes dirty without layout work");
+  energy.document.hidden = false;
+  energy.listeners.get("document:visibilitychange")(); energy.flushTimers();
+  assert.equal(energyState.metrics.partPasses, beforeText + 1, "Returning to a visible page must repair deferred parts once");
+  energy.window.__CODEX_DREAM_SKIN_POWER_SUSPENDED__ = true;
+  energyObserver.callback([{ type: "childList" }]); energy.flushTimers();
+  assert.equal(energyState.metrics.partPasses, beforeText + 1, "Idle/sleep suspension must also cover static skins");
+  energy.window.__CODEX_DREAM_SKIN_POWER_SUSPENDED__ = false;
+  energy.listeners.get("window:dreamskin-power-change")(); energy.flushTimers();
+  assert.equal(energyState.metrics.partPasses, beforeText + 2, "Native wake events must flush deferred parts");
+  energyObserver.callback([{ type: "childList", target: { closest: () => ({}) } }]);
+  energy.flushTimers();
+  assert.equal(energyState.metrics.partPasses, beforeText + 3, "A fallback user anchor must rebind when its real bubble mounts");
+  energyState.cleanup();
   const expectedParts = {
     sidebar: "sidebar",
     main: "main",
@@ -806,9 +837,21 @@ export async function runRendererRuntimeTest(assetRoot) {
   video.document.hidden = true;
   video.listeners.get("document:visibilitychange")();
   assert.equal(videoLayer.paused, true, "Hidden pages must pause the video background");
+  video.document.hidden = false;
+  video.window.__CODEX_DREAM_SKIN_POWER_SUSPENDED__ = true;
+  video.listeners.get("document:visibilitychange")();
+  assert.equal(videoLayer.paused, true, "A visible document must not override native idle/lock suspension");
+  videoLayer.currentTime = 7.25;
+  const idleCalls = video.videoCalls;
+  video.window.__CODEX_DREAM_SKIN_POWER_SUSPENDED__ = false;
+  video.listeners.get("window:dreamskin-power-change")();
+  assert.equal(videoLayer.paused, false, "User input/wake must resume the same video");
+  assert.equal(videoLayer.currentTime, 7.25);
+  assert.equal(video.videoCalls.source, idleCalls.source, "Power resume must not reload the media source");
   assert.equal(videoState.cleanup(), true);
   assert.equal(video.nodes.has("codex-dream-skin-video"), false);
   assert.equal(video.listeners.has("document:visibilitychange"), false);
+  assert.equal(video.listeners.has("window:dreamskin-power-change"), false);
 
   const fileImage = makeFixture({ nativeAppearance: "dark" });
   const decodedImages = [];

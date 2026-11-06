@@ -294,6 +294,10 @@ P3-D 已编码当前连接事件及两端宿主转发，仍保留每 15 秒/窗�
 
 事件携带 protocol、kind=event、backendSessionId、sequence、event；status.changed 另带 snapshot，operation.changed 另带 operation，status.invalidated/session.closing 无负载。sequence 在单个后端会话递增，与状态 sequence 分离；页面/宿主丢弃旧会话和旧序号。订阅返回当前会话/subscribed，初次状态异步送达；状态/操作通知按键合并最多 32 项并等待输出背压，不保证每个中间状态都送达，不提供消息日志或断线恢复。status.invalidated 清空可操作快照，session.closing 禁用会话动作；读请求可重复，副作用不自动重放。
 
+自动状态观察在上一轮完成后间隔 15 秒执行。macOS 宿主通过私有 `session.observe {active: boolean}` 在窗口不可见、最小化、锁屏、熄屏或睡眠时停查，恢复显示后使用原会话读取当前状态；此开关不取消订阅、不丢弃操作完成事件，也不取消已接受的写入。默认主题从固定别名读取，不为状态观察扫描整个 macOS 主题库。显式控制仍使用新的原生验签探针。
+
+macOS watcher 使用宿主声明支持的 `--observe-power` 只读模式监听屏幕、系统睡眠及会话通知，不采样输入空闲时间；该子进程随 watcher 的输入管道关闭而退出。共享渲染器在页面隐藏、锁屏、熄屏或系统睡眠时暂停装饰视频与自动 DOM 修复，并保留未处理变更；恢复后复用素材和连接补齐。亮屏前台不因长期无输入而暂停。这里不修改系统电源设置或其他应用的睡眠锁。隐藏页面保留早期脚本及连接，等可见事件再做完整显示核验，不能将不可见当成已经通过显示核验。
+
 首批错误码：PROTOCOL_UNSUPPORTED、INVALID_REQUEST、METHOD_UNSUPPORTED、BACKEND_UNAVAILABLE、THEME_NOT_FOUND、THEME_INVALID、THEME_CHANGED、CATALOG_CHANGED、MEDIA_UNSUPPORTED、RESOURCE_EXPIRED、BUSY、CONFIRMATION_EXPIRED、OPERATION_CONFLICT、OPERATION_UNKNOWN、RUNTIME_CHANGED、RUNTIME_UNAVAILABLE、RENDERER_UNVERIFIED、IO_ERROR、TIMEOUT。
 
 retryable 只表示条件可能恢复，不授权客户端重试副作用。旧脚本的自由文本错误在适配器分类，不能猜测错误内容并自动重启；无法可靠分类时返回诊断及保守结果。

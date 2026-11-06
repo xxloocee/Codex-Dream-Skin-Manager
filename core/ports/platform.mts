@@ -26,6 +26,7 @@ export interface PlatformPort {
   readonly name: "windows" | "macos";
   applicationVersion(): Promise<string | null>;
   inventory(): Promise<ThemeInventory>;
+  defaultTheme?(): Promise<LocalTheme | null>;
   status(): Promise<PlatformStatus>;
   resolveActive(id: string): Promise<ThemeRef | null>;
 }

@@ -1,7 +1,7 @@
 import path from "node:path";
 import { ContractError } from "../../contracts/manager.mjs";
 import type { ThemeRef } from "../../contracts/manager.mjs";
-import { safePath } from "../../core/local-files.mjs";
+import { readLocalTheme, safePath } from "../../core/local-files.mjs";
 import type { PlatformPort, PlatformStatus, ThemeInventory } from "../../core/ports/platform.mjs";
 import { activeId, catalogEntries, existingTheme, readVersion, scanLibrary } from "../local-library.mjs";
 import { readProcess } from "../read-process.mjs";
@@ -13,6 +13,16 @@ export class MacOSReadAdapter implements PlatformPort {
     this.skillRoot = path.join(applicationRoot, "macos");
   }
   applicationVersion(): Promise<string | null> { return readVersion(path.join(this.skillRoot, "VERSION"), this.skillRoot); }
+  async defaultTheme() {
+    const preferred = "preset-gothic-void-crusade", legacy = "gothic-void-crusade";
+    const current = await activeId(path.join(this.stateRoot, "theme", "theme.json"), this.stateRoot).catch(() => null);
+    const ids = current?.toLowerCase() === legacy ? [legacy, preferred] : [preferred, legacy];
+    for (const id of ids) {
+      try { return await readLocalTheme(path.join(this.stateRoot, "themes", id), id.startsWith("preset-") ? "preset" : "saved", 0); }
+      catch { /* Missing or invalid aliases never select an unrelated theme. */ }
+    }
+    return null;
+  }
   async inventory(): Promise<ThemeInventory> {
     let catalog = await catalogEntries(path.join(this.applicationRoot, "manager-catalog.json"), this.applicationRoot);
     if (!catalog) catalog = await catalogEntries(path.join(this.applicationRoot, "windows", "presets", "catalog.json"), this.applicationRoot);

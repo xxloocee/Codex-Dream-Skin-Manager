@@ -12,6 +12,7 @@ import {
 } from "./watcher-engine.mjs";
 export { DISCOVERY_BACKOFF, nextDiscoveryDelayMs, discoveryLogIntervalMs };
 import { probeVideoDecode } from "./video-decode-probe.mjs";
+import { observePowerState, powerStateExpression } from "./power-state.mjs";
 import fs from "node:fs/promises";
 import { watch as watchFs } from "node:fs";
 import { execFile } from "node:child_process";
@@ -304,6 +305,7 @@ export async function waitForVerifiedSession(
   expectedThemeId = null,
   expectedRevision = null,
   retryDelayMs = 500,
+  deferWhenHidden = false,
 ) {
   const deadline = Date.now() + timeoutMs;
   const retryDelay = Number.isFinite(retryDelayMs) && retryDelayMs >= 0 ? retryDelayMs : 500;
@@ -313,7 +315,7 @@ export async function waitForVerifiedSession(
     try {
       lastResult = await verifySession(session, expectedThemeId, expectedRevision);
       lastError = null;
-      if (lastResult.pass) return lastResult;
+      if (lastResult.pass || deferWhenHidden && lastResult.checks?.documentVisible === false) return lastResult;
     } catch (error) {
       // Renderer navigations can invalidate Runtime.evaluate while Codex is
       // swapping documents. Treat that as a transient sample until the same
@@ -638,6 +640,9 @@ async function runWatch(options) {
   let activeOperation = null;
   let pauseRecovery = null;
   let wakeControlWait = null;
+  let powerSuspended = false;
+  let powerChain = Promise.resolve();
+  let closePowerObserver = () => {};
   const wakeControlLoop = () => {
     const wake = wakeControlWait;
     wakeControlWait = null;
@@ -693,7 +698,18 @@ async function runWatch(options) {
     }
   };
 
+  const visibilityBinding = `__dreamSkinVisibility${process.pid}`;
+  const visibilityKey = `${visibilityBinding}Listener`;
   const removeEarly = async (record, { strict = false } = {}) => {
+    if (record.visibilityInstalled && !record.session.closed) {
+      record.visibilityInstalled = false;
+      await record.session.evaluate(`(() => {
+        const key = ${JSON.stringify(visibilityKey)};
+        if (window[key]) document.removeEventListener("visibilitychange", window[key]);
+        delete window[key];
+      })()`).catch(() => {});
+      await record.session.send("Runtime.removeBinding", { name: visibilityBinding }).catch(() => {});
+    }
     const identifiers = new Set(record.earlyScriptIds);
     if (record.earlyScriptId) identifiers.add(record.earlyScriptId);
     const results = await Promise.all([...identifiers].map((identifier) =>
@@ -705,6 +721,20 @@ async function runWatch(options) {
     const identifier = await registerEarly(record.session, payload, revision);
     if (identifier) record.earlyScriptIds.add(identifier);
     return identifier;
+  };
+
+  const queuePowerState = (record) => {
+    powerChain = powerChain.then(async () => {
+      if (lifecycle.stopping || record.session.closed) return;
+      const source = powerStateExpression(powerSuspended);
+      const { identifier } = await record.session.send("Page.addScriptToEvaluateOnNewDocument", { source });
+      if (identifier) record.earlyScriptIds.add(identifier);
+      await removeEarlyIdentifier(record, record.powerScriptId);
+      record.powerScriptId = identifier;
+      await record.session.evaluate(source);
+      if (!powerSuspended) record.resumeVisible?.();
+    }).catch((error) => console.error(`[dream-skin] power state update failed: ${error.message}`));
+    return powerChain;
   };
 
   const invalidateEarly = async (record, { strict = false } = {}) => {
@@ -721,6 +751,53 @@ async function runWatch(options) {
       });
     }
     return removeEarly(record, { strict });
+  };
+
+  const watchVisibility = async (id, record) => {
+    const { session } = record;
+    const source = `(() => {
+      if (window !== window.top) return;
+      const key = ${JSON.stringify(visibilityKey)};
+      if (window[key]) return;
+      const changed = () => {
+        if (!document.hidden && typeof window[${JSON.stringify(visibilityBinding)}] === "function") {
+          window[${JSON.stringify(visibilityBinding)}]("visible");
+        }
+      };
+      window[key] = changed;
+      document.addEventListener("visibilitychange", changed);
+      changed();
+    })()`;
+    const resumeVisible = () => {
+      if (!record.waitingForVisibility || !lifecycle.canMutate() || !lifecycle.owns(id, session)) return;
+      if (record.visibilityQueued) { record.visibilityAgain = true; return; }
+      record.visibilityQueued = true;
+      // Reuse the refresh queue so a visibility event cannot race a theme change.
+      reloadChain = reloadChain.then(async () => {
+        if (!record.waitingForVisibility || !lifecycle.canMutate() || !lifecycle.owns(id, session)) return;
+        beginTargetSetup();
+        try { await record.resumeSetup(); }
+        catch (error) {
+          if (!lifecycle.owns(id, session)) return;
+          await bestEffortOperationUi(session, "update", record.operationToken, "error", "应用失败，未通过显示校验");
+          await removeEarly(record);
+          session.close(); sessions.delete(id);
+          console.error(`[dream-skin] inject failed for ${id}: ${error.message}`);
+        } finally { finishTargetSetup(); }
+      }).finally(() => {
+        record.visibilityQueued = false;
+        if (record.visibilityAgain) { record.visibilityAgain = false; resumeVisible(); }
+      });
+    };
+    record.resumeVisible = resumeVisible;
+    session.on("Runtime.bindingCalled", ({ name, payload }) => {
+      if (name === visibilityBinding && payload === "visible") resumeVisible();
+    });
+    await session.send("Runtime.addBinding", { name: visibilityBinding });
+    record.visibilityInstalled = true;
+    const { identifier } = await session.send("Page.addScriptToEvaluateOnNewDocument", { source });
+    if (identifier) record.earlyScriptIds.add(identifier);
+    await session.evaluate(source);
   };
 
   const releaseControlSessions = () => {
@@ -922,6 +999,18 @@ async function runWatch(options) {
     return operationSignalChain;
   });
 
+  // Old hosts do not support this headless mode. Probe the fixed package's
+  // declared capability once, so an engine-only upgrade cannot open a GUI alert.
+  try {
+    const contents = path.resolve(root, "../..");
+    const { stdout } = await execFileAsync("/usr/bin/plutil", ["-extract", "DreamSkinPowerObserverVersion", "raw", "-o", "-", path.join(contents, "Info.plist")], { timeout: 2000 });
+    if (stdout.trim() === "1") closePowerObserver = observePowerState(path.join(contents, "MacOS/DreamSkinSharedHost"), (suspended) => {
+      powerSuspended = suspended;
+      for (const record of sessions.values()) void queuePowerState(record);
+      wakeControlLoop();
+    });
+  } catch { /* Source launchers and older hosts retain page visibility handling. */ }
+
   try {
     while (!lifecycle.stopping) {
       if (activeOperation && !isFreshBusyOperation(activeOperation)) {
@@ -944,6 +1033,10 @@ async function runWatch(options) {
       }
       if (lifecycle.controlOnly && !activeOperation) {
         releaseControlSessions();
+        await waitForControlOperation();
+        continue;
+      }
+      if (powerSuspended && !activeOperation) {
         await waitForControlOperation();
         continue;
       }
@@ -1007,6 +1100,7 @@ async function runWatch(options) {
           };
           connectionEpoch = lifecycle.epoch;
           sessions.set(target.id, record);
+          await queuePowerState(record);
           session.on("Page.loadEventFired", () => {
             if (!lifecycle.canMutate() || !lifecycle.owns(target.id, session)) return;
             if (!record.needsLoadFallback && !desiredPayload.mediaFilePath) return;
@@ -1032,6 +1126,7 @@ async function runWatch(options) {
               record.earlyScriptId = await registerEarlyForRecord(
                 record, bootstrapPayload.payload, bootstrapPayload.revision,
               );
+              record.earlyRevision = bootstrapPayload.revision;
               if (lifecycle.canMutate(connectionEpoch)) {
                 await session.evaluate(earlyPayloadFor(bootstrapPayload.payload, bootstrapPayload.revision));
               }
@@ -1065,70 +1160,114 @@ async function runWatch(options) {
             console.log(`[dream-skin] connected control-only target ${target.id}`);
             continue;
           }
-          record.operationToken = initialOperation?.token
-            ?? recoveryOperation?.token
-            ?? nextOperationToken();
-          record.operationExternal = Boolean(initialOperation || recoveryOperation);
-          await presentOperationUi(
-            session,
-            record.operationToken,
-            "loading",
-            initialOperation
-              ? operationKindMessage(initialOperation.status === "pausing" ? "pause" : "apply")
-              : recoveryOperation
-                ? "暂停未完成，正在恢复原皮肤…"
-              : `正在应用「${desiredPayload.theme.name}」…`,
-          );
-          if (!lifecycle.canMutate() || pausing) {
+          if (!lifecycle.canMutate(connectionEpoch) || pausing) {
+            record.operationToken = initialOperation?.token ?? nextOperationToken();
+            record.operationExternal = Boolean(initialOperation);
+            await presentOperationUi(session, record.operationToken, "loading",
+              operationKindMessage(initialOperation?.status === "pausing" ? "pause" : "apply"));
             continue;
           }
-          const setupPayload = desiredPayload;
-          const earlyApplied = await session.evaluate(
-            `window.__CODEX_DREAM_SKIN_EARLY_APPLIED__ === ${JSON.stringify(setupPayload.revision)}`,
-          );
-          if (!earlyApplied || setupPayload.theme?.artMetadata?.video) {
-            if (!lifecycle.canMutate(connectionEpoch)) {
-              await invalidateEarly(record);
-              continue;
+          record.resumeSetup = async (deferred = true) => {
+            if (!lifecycle.canMutate() || !lifecycle.owns(target.id, session)) return;
+            if (powerSuspended) { record.waitingForVisibility = true; return; }
+            if (await session.evaluate("document.hidden")) {
+              record.waitingForVisibility = true;
+              // Visibility may change before the hidden sample reaches Node.
+              if (!powerSuspended && !await session.evaluate("document.hidden")) record.resumeVisible?.();
+              return;
             }
-            await session.evaluate(
-              `window.__CODEX_DREAM_SKIN_EARLY_GENERATION__ = ${JSON.stringify(`fallback:${setupPayload.revision}`)}`,
-            );
-            if (!lifecycle.canMutate(connectionEpoch)) {
-              await invalidateEarly(record);
-              continue;
-            }
-            await applyLoadedToSession(session, setupPayload);
-          } else if (lifecycle.canMutate(connectionEpoch)) await bindMediaFileToSession(session, setupPayload);
-          if (!lifecycle.canMutate(connectionEpoch)) {
-            await invalidateEarly(record);
-            continue;
-          }
-          const verification = await waitForVerifiedSession(
-            session,
-            Math.min(options.timeoutMs, 8000),
-            setupPayload.theme.id,
-            setupPayload.revision,
-          );
-          if (!verification?.pass) throw new Error("Initial theme verification failed");
-          if (!lifecycle.canMutate(connectionEpoch) || !lifecycle.owns(target.id, session)) continue;
-          record.ready = true;
-          if (recoveryOperation && !activeOperation
-            && pauseRecovery?.token === recoveryOperation.token) {
+            const setupEpoch = lifecycle.epoch;
+            const setupOperation = activeOperation;
+            const setupRecovery = recoveryOperation && pauseRecovery?.token === recoveryOperation.token ? recoveryOperation : null;
+            record.operationToken = setupOperation?.token
+              ?? setupRecovery?.token
+              ?? nextOperationToken();
+            record.operationExternal = Boolean(setupOperation || setupRecovery);
             await presentOperationUi(
               session,
-              recoveryOperation.token,
-              "error",
-              "暂停失败，原皮肤已恢复",
-              1000,
+              record.operationToken,
+              "loading",
+              setupOperation
+                ? operationKindMessage(setupOperation.status === "pausing" ? "pause" : "apply")
+                : setupRecovery
+                  ? "暂停未完成，正在恢复原皮肤…"
+                : `正在应用「${desiredPayload.theme.name}」…`,
             );
-            recoveredPauseThisCycle = true;
-          } else if (!record.operationExternal) {
-            await presentOperationUi(
-              session, record.operationToken, "success", `已应用「${setupPayload.theme.name}」`,
+            if (!lifecycle.canMutate(setupEpoch) || setupOperation?.status === "pausing") {
+              return;
+            }
+            const setupPayload = desiredPayload;
+            if (record.earlyRevision !== setupPayload.revision) {
+              const previous = record.earlyScriptId;
+              record.earlyScriptId = await registerEarlyForRecord(record, setupPayload.payload, setupPayload.revision);
+              record.earlyRevision = setupPayload.revision;
+              await removeEarlyIdentifier(record, previous);
+            }
+            const earlyApplied = await session.evaluate(
+              `window.__CODEX_DREAM_SKIN_EARLY_APPLIED__ === ${JSON.stringify(setupPayload.revision)}`,
             );
-          }
-          console.log(`[dream-skin] injected verified ChatGPT target ${target.id}`);
+            if (!earlyApplied || setupPayload.theme?.artMetadata?.video) {
+              if (!lifecycle.canMutate(setupEpoch)) {
+                await invalidateEarly(record);
+                return;
+              }
+              await session.evaluate(
+                `window.__CODEX_DREAM_SKIN_EARLY_GENERATION__ = ${JSON.stringify(`fallback:${setupPayload.revision}`)}`,
+              );
+              if (!lifecycle.canMutate(setupEpoch)) {
+                await invalidateEarly(record);
+                return;
+              }
+              await applyLoadedToSession(session, setupPayload);
+            } else if (lifecycle.canMutate(setupEpoch)) await bindMediaFileToSession(session, setupPayload);
+            if (!lifecycle.canMutate(setupEpoch)) {
+              await invalidateEarly(record);
+              return;
+            }
+            const verification = await waitForVerifiedSession(
+              session,
+              Math.min(options.timeoutMs, 8000),
+              setupPayload.theme.id,
+              setupPayload.revision,
+              500,
+              true,
+            );
+            if (!verification?.pass) {
+              if (powerSuspended) { record.waitingForVisibility = true; return; }
+              if (verification?.checks?.documentVisible === false || await session.evaluate("document.hidden")) {
+                record.waitingForVisibility = true;
+                // A visible event can arrive between the sample and deferral.
+                if (!await session.evaluate("document.hidden")) record.resumeVisible?.();
+                return;
+              }
+              throw new Error("Initial theme verification failed");
+            }
+            if (!lifecycle.canMutate(setupEpoch) || !lifecycle.owns(target.id, session)) return;
+            record.ready = true;
+            record.waitingForVisibility = false;
+            if (recoveryOperation && !activeOperation
+              && pauseRecovery?.token === recoveryOperation.token) {
+              await presentOperationUi(
+                session,
+                recoveryOperation.token,
+                "error",
+                "暂停失败，原皮肤已恢复",
+                1000,
+              );
+              recoveredPauseThisCycle = true;
+              if (deferred) {
+                await writeModeAck(options.operationAck, recoveryOperation.token, "full");
+                if (pauseRecovery?.token === recoveryOperation.token) pauseRecovery = null;
+              }
+            } else if (!record.operationExternal) {
+              await presentOperationUi(
+                session, record.operationToken, "success", `已应用「${setupPayload.theme.name}」`,
+              );
+            }
+            console.log(`[dream-skin] injected verified ChatGPT target ${target.id}`);
+          };
+          if (!pausing && lifecycle.canMutate(connectionEpoch)) await watchVisibility(target.id, record);
+          await record.resumeSetup(false);
         } catch (error) {
           const recoveryStillCurrent = recoveryOperation && !activeOperation
             && pauseRecovery?.token === recoveryOperation.token;
@@ -1166,6 +1305,8 @@ async function runWatch(options) {
     }
   } finally {
     stop();
+    closePowerObserver();
+    await powerChain;
     if (reloadTimer) clearTimeout(reloadTimer);
     closePayloadWatchers();
     closeOperationWatcher();

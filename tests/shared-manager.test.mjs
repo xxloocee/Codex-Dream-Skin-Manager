@@ -16,6 +16,76 @@ import { themeFingerprint } from "../build/shared/core/theme-fingerprint.mjs";
 import { decodeThemePackage, encodeThemePackage, packageFingerprint } from "../build/shared/core/theme-package.mjs";
 import { mergedPreset } from "../build/shared/platforms/local-library.mjs";
 import { finishPublication } from "../build/shared/platforms/publication-history.mjs";
+import { SessionEvents } from "../build/shared/core/session-events.mjs";
+import { MacOSReadAdapter } from "../build/shared/platforms/macos/read-adapter.mjs";
+import { observePowerState } from "../runtime/power-state.mjs";
+
+test("native background suspension stops status capture while preserving operation events", async t => {
+  let captures = 0, captureWait = null;
+  const sent = [];
+  const events = new SessionEvents("energy-test", async () => {
+    captures++;
+    if (captureWait) await captureWait;
+    return { sequence: captures, observedAt: "now", renderer: { verifiedAt: null } };
+  }, () => false);
+  t.after(() => events.close());
+  events.attach(async event => { sent.push(event); });
+  const settle = () => new Promise(resolve => setTimeout(resolve, 15));
+  events.setObservationActive(false); events.subscribe(); await settle();
+  assert.equal(captures, 0);
+  events.operation({ id: "accepted-write", state: "succeeded" }); await settle();
+  assert.equal(sent.at(-1).event, "operation.changed");
+  assert.equal(captures, 0, "Finishing a background write must not restart status polling");
+  events.setObservationActive(true); await settle();
+  assert.equal(captures, 1, "Showing the manager captures current state without reconnecting");
+  events.setObservationActive(false); await settle();
+  assert.equal(captures, 1);
+  let release;
+  captureWait = new Promise(resolve => { release = resolve; });
+  events.setObservationActive(true); await settle();
+  assert.equal(captures, 2);
+  events.setObservationActive(false); events.setObservationActive(true);
+  captureWait = null; release(); await settle();
+  assert.equal(captures, 3, "Returning during an in-flight capture must refresh without waiting 15 seconds.");
+  assert.equal(sent.some(event => event.snapshot?.sequence === 2), false, "Pre-suspension captures must remain invalidated.");
+});
+
+test("macOS default lookup preserves legacy identity without enumerating unrelated themes", async t => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "dreamskin-default-energy-")));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const legacy = "gothic-void-crusade", preferred = "preset-gothic-void-crusade";
+  for (const id of [legacy, preferred]) {
+    const directory = path.join(root, "themes", id); await mkdir(directory, { recursive: true });
+    await writeFile(path.join(directory, "theme.json"), JSON.stringify({ schemaVersion: 1, id, image: "background.png" }));
+  }
+  await mkdir(path.join(root, "theme"));
+  const adapter = new MacOSReadAdapter(root, root);
+  adapter.inventory = async () => { throw new Error("A status lookup must not enumerate the library"); };
+  assert.deepEqual((await adapter.defaultTheme()).ref, { source: "preset", id: preferred });
+  await writeFile(path.join(root, "theme/theme.json"), JSON.stringify({ id: legacy }));
+  assert.deepEqual((await adapter.defaultTheme()).ref, { source: "saved", id: legacy });
+});
+
+test("power observation ignores input inactivity and coalesces screen transitions", async t => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "dreamskin-power-observer-")));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const helper = path.join(root, "power-fixture");
+  const samples = [
+    { screenAwake: true }, { screenAwake: true, idleSeconds: 60 },
+    { screenAwake: true, idleSeconds: 3600 }, { screenAwake: false },
+    { screenAwake: false }, { screenAwake: true },
+  ];
+  await writeFile(helper, "#!/bin/sh\nprintf '%s\\n' '" + samples.map(value => JSON.stringify(value)).join("' '") + "'\nexec /bin/cat >/dev/null\n", { mode: 0o700 });
+  const states = [];
+  let complete;
+  const done = new Promise(resolve => { complete = resolve; });
+  const close = observePowerState(helper, suspended => { states.push(suspended); if (states.length === 3) complete(); });
+  t.after(close);
+  let timer;
+  try { await Promise.race([done, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Power samples did not arrive")), 2000); })]); }
+  finally { clearTimeout(timer); close(); }
+  assert.deepEqual(states, [false, true, false]);
+});
 
 // Vite's locked esbuild dependency bundles pure UI helpers for Node; no DOM,
 // native host, actual backend, network or user state is opened by this suite.

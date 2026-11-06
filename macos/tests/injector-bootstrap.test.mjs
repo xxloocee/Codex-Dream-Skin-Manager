@@ -35,6 +35,11 @@ function createFixture() {
     document: {
       get documentElement() { return root; },
       addEventListener(type, callback) { if (type === "DOMContentLoaded") domReady.push(callback); },
+      removeEventListener(type, callback) {
+        if (type !== "DOMContentLoaded") return;
+        const index = domReady.indexOf(callback);
+        if (index >= 0) domReady.splice(index, 1);
+      },
       querySelector(selector) {
         if (selector === shellSelector) return markers.shell ? {} : null;
         if (selector === "aside.app-shell-left-panel") return markers.sidebar ? {} : null;
@@ -76,6 +81,9 @@ function createFixture() {
     makeReady() { root = {}; },
     fireDomReady() { for (const callback of [...domReady]) callback(); },
     tick() { for (const callback of [...intervals.values()]) callback(); },
+    get pendingIntervals() { return intervals.size; },
+    get pendingTimeouts() { return timers.size; },
+    get pendingDomReady() { return domReady.length; },
     observers: [],
   };
 }
@@ -127,6 +135,23 @@ assert.deepEqual(
   "A stale early script must yield to the newest watcher generation.",
 );
 assert.equal(generations.context.window.__CODEX_DREAM_SKIN_EARLY_APPLIED__, "new");
+
+const repeated = createFixture();
+for (let attempt = 0; attempt < 3; attempt += 1) {
+  vm.runInNewContext(earlyPayloadFor('window.installs.push("same")', "same"), repeated.context);
+  assert.equal(repeated.pendingIntervals, 1, "Repeated bootstrap must replace the previous interval even for the same revision.");
+  assert.equal(repeated.pendingTimeouts, 1, "Repeated bootstrap must replace the previous deadline.");
+  assert.equal(repeated.pendingDomReady, 1, "Repeated bootstrap must remove the previous DOM-ready listener.");
+}
+repeated.markers.shell = true;
+repeated.markers.sidebar = true;
+repeated.tick();
+assert.deepEqual(repeated.context.window.installs, ["same"], "The surviving bootstrap must install the payload only once.");
+assert.equal(repeated.pendingIntervals, 0);
+assert.equal(repeated.pendingTimeouts, 0);
+assert.equal(repeated.pendingDomReady, 0);
+assert.equal(repeated.context.window.__CODEX_DREAM_SKIN_EARLY_BOOTSTRAP__, undefined,
+  "Successful bootstrap must release its cancellation callback.");
 
 const earlySource = earlyPayloadFor("", "source-contract");
 assert.doesNotMatch(earlySource, /MutationObserver|childList|subtree/,
