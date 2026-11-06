@@ -2,9 +2,12 @@ import { spawn } from "node:child_process";
 import { ContractError } from "../contracts/manager.mjs";
 import { jsonObject } from "../core/local-files.mjs";
 
-export function transactionProcess(executable: string, args: readonly string[], timeout: number, mutating: boolean, environment?: Record<string, string>, onProgress?: (value: Record<string, unknown>) => void): Promise<Record<string, unknown>> {
+export function transactionProcess(executable: string, args: readonly string[], timeout: number, mutating: boolean, environment?: Record<string, string>, onProgress?: (value: Record<string, unknown>) => void, input?: string): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
-    const child = spawn(executable, [...args], { shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...environment } });
+    const child = spawn(executable, [...args], { shell: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...environment } });
+    // The bounded verified manifest travels as data, outside the command line.
+    child.stdin?.on("error", () => {});
+    child.stdin?.end(input, "utf8");
     const chunks: Buffer[] = []; let size = 0, settled = false, invalid = false;
     const fail = (error: ContractError) => { if (settled) return; settled = true; clearTimeout(timer); reject(error); };
     const timer = setTimeout(() => {

@@ -49,10 +49,11 @@ foreach ($package in @(
 
 New-Item -ItemType Directory -Path $destination | Out-Null
 Get-ChildItem -LiteralPath $compiled | Copy-Item -Destination $destination -Recurse
-foreach ($directory in @('ui', 'runtime\node', 'windows\assets', 'windows\presets', 'windows\runtime\node', 'THIRD_PARTY\Codex-Dream-Skin', 'THIRD_PARTY\Node.js')) {
+foreach ($directory in @('ui', 'updater', 'runtime\node', 'windows\assets', 'windows\presets', 'windows\runtime\node', 'THIRD_PARTY\Codex-Dream-Skin', 'THIRD_PARTY\Node.js')) {
   New-Item -ItemType Directory -Path (Join-Path $destination $directory) -Force | Out-Null
 }
 Copy-Item -LiteralPath (Join-Path $root 'build\shared') -Destination (Join-Path $destination 'shared') -Recurse
+Copy-Item -LiteralPath (Join-Path $root 'packaging\update-public-key.pem') -Destination (Join-Path $destination 'updater\public-key.pem')
 Copy-Item -LiteralPath (Join-Path $root 'build\ui\manager') -Destination (Join-Path $destination 'ui\manager') -Recurse
 Copy-Item -Path (Join-Path $root 'windows\assets\*') -Destination (Join-Path $destination 'windows\assets') -Recurse
 Copy-Item -Path (Join-Path $root 'windows\presets\*') -Destination (Join-Path $destination 'windows\presets') -Recurse

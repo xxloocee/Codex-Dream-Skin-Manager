@@ -18,6 +18,10 @@ if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository))throw Error('Invalid u
 const material=await fs.readFile(keyPath||privatePath,'utf8');
 const key=createPublicKey(material);
 if(key.asymmetricKeyType!=='ed25519')throw Error('The updater requires an Ed25519 key.');
+if(tagPrefix==='v'){
+  const pinned=createPublicKey(await fs.readFile(new URL('../../packaging/update-public-key.pem',import.meta.url)));
+  if(!key.export({type:'spki',format:'der'}).equals(pinned.export({type:'spki',format:'der'})))throw Error('Official update key does not match the pinned public key.');
+}
 const version=(await fs.readFile(versionPath,'utf8')).trim();
 if(!/^\d+\.\d+\.\d+$/.test(version))throw Error('Invalid GUI version.');
 await fs.mkdir(path.join(engine,'updater'),{recursive:true});

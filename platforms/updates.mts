@@ -10,6 +10,7 @@ import { UpdateNotStartedError } from "../core/ports/updates.mjs";
 import { fileBytes, jsonObject, optionalBytes, safePath, sha256 } from "../core/local-files.mjs";
 import { stableVersion } from "../core/updates.mjs";
 import { transactionProcess } from "./transaction-process.mjs";
+import { ManifestNetworkError, verifiedReleaseManifest, type VerifiedManifest } from "./update-manifest.mjs";
 
 const repository = "xxloocee/Codex-Dream-Skin-Manager";
 const maxPackageBytes = 1024 * 1048576;
@@ -35,14 +36,27 @@ export class PlatformUpdates implements UpdatePort {
     const system = process.env.SystemRoot;
     if (!system || !path.isAbsolute(system)) throw new ContractError("BACKEND_UNAVAILABLE", "Windows system directory unavailable.");
     const approved = candidate ? this.candidates.get(candidate.binding) : null;
+    let verified: VerifiedManifest;
+    try {
+      verified = await verifiedReleaseManifest(repository, await fileBytes(path.join(this.root, "updater", "public-key.pem"), this.root, 65536));
+    } catch (error) {
+      const message = error instanceof ManifestNetworkError
+        ? "无法连接 GitHub 获取更新清单，请检查网络后重试，或前往发布页手动下载。"
+        : "更新清单签名或格式校验失败，已停止更新；请前往发布页手动下载。";
+      const reason = error instanceof Error && error.message ? `（${error.message}）` : "";
+      if (action === "Install") throw new UpdateNotStartedError(message + reason);
+      throw new ContractError("IO_ERROR", message + reason, error instanceof ManifestNetworkError);
+    }
+    const { manifest, manifestDigest, publicKeyDigest } = verified;
+    if (action === "Install" && (approved?.raw.manifestDigest !== manifestDigest || approved?.raw.publicKeyDigest !== publicKeyDigest)) throw new UpdateNotStartedError(windowsUpdateErrors.approval!);
     const raw = await transactionProcess(path.join(system, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-      await powerShellArgs(this.root, script, ["-Action", action, ...(candidate ? ["-ExpectedVersion", candidate.latestVersion, "-ApprovedHash", String(approved?.raw.installerSha256)] : [])]), action === "Check" ? 45000 : 360000, action === "Install");
+      await powerShellArgs(this.root, script, ["-Action", action, "-ManifestSource", "stdin", ...(candidate ? ["-ExpectedVersion", candidate.latestVersion, "-ApprovedHash", String(approved?.raw.installerSha256)] : [])]), action === "Check" ? 45000 : 360000, action === "Install", undefined, undefined, manifest.toString("utf8"));
     if (typeof raw.updateError === "string") {
       const message = windowsUpdateErrors[raw.updateError] ?? "更新处理失败，请重新检查更新。";
       if (action === "Install" && raw.installerLaunchAttempted === false) throw new UpdateNotStartedError(message);
       throw new ContractError("IO_ERROR", message);
     }
-    return raw;
+    return { ...raw, manifestDigest, publicKeyDigest };
   }
   private async signed(action: "inspect" | "prepare", candidate?: UpdateCandidate, onProgress?: (progress: UpdateProgress) => void): Promise<Record<string, unknown>> {
     const script = path.join(this.root, "macos", "scripts", "gui-update.mjs"); await safePath(script, this.root);
@@ -88,7 +102,7 @@ export class PlatformUpdates implements UpdatePort {
         const executable = path.join(this.root, "CodexDreamSkinManager.exe"); await safePath(executable, this.root);
         if ((await lstat(executable)).isFile()) { mode = "windows-installer"; reason = "下载校验完成后启动 Windows 安装器；安装时可能关闭当前管理器。"; }
       } catch (error) { if (!record(error) || error.code !== "ENOENT") throw error; }
-      trust = "安装包 SHA-256 必须与 update.json、SHA256SUMS.txt 和实际下载内容一致。";
+      trust = "内置公钥验证更新清单 Ed25519 签名；安装包 SHA-256 必须与已签名清单、SHA256SUMS.txt 和实际下载内容一致。";
     } else {
       config = await optionalBytes(path.join(this.root, "macos", "updater", "channel.json"), this.root, 65536);
       const parsed = config ? jsonObject(config) : null;
@@ -118,7 +132,7 @@ export class PlatformUpdates implements UpdatePort {
     const releaseUrl = `https://github.com/${repo}/releases/tag/${tag}`;
     if ((channel !== "macos-release" || key !== null) && raw.releaseUrl !== releaseUrl) throw new ContractError("IO_ERROR", "更新发布页不属于批准通道。");
     const binding = sha256([Buffer.from(JSON.stringify({ currentVersion, latestVersion, channel, mode, repo, target, bundle,
-      installerHash: raw.installerSha256 ?? null, manifest: raw.manifestDigest ?? null, packageHash: raw.packageSha256 ?? null })), config ?? new Uint8Array(), key ?? new Uint8Array()]);
+      installerHash: raw.installerSha256 ?? null, manifest: raw.manifestDigest ?? null, publicKey: raw.publicKeyDigest ?? null, packageHash: raw.packageSha256 ?? null })), config ?? new Uint8Array(), key ?? new Uint8Array()]);
     if (this.candidates.size >= 16) this.candidates.delete(this.candidates.keys().next().value!);
     this.candidates.set(binding, { raw, repo, target, bundle });
     return { currentVersion, latestVersion, channel, releaseUrl, installMode: mode, reason, trust, binding };

@@ -321,10 +321,11 @@ function Invoke-DreamSkinUpdateMain {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $release = Get-DreamSkinLatestRelease
     $result = ConvertTo-DreamSkinUpdateResult -Release $release -CurrentVersionText $currentText
-    $shouldInstall = $Install
-    if ($Interactive) { $shouldInstall = Confirm-DreamSkinInteractiveUpdate -Result $result }
-    if ($shouldInstall) {
-      $result = Install-DreamSkinUpdate -Result $result -Expected $ExpectedVersion
+    # This standalone entry has no Ed25519 verification, so it never installs.
+    # Verified installs go through the manager (manager-updates.ps1 via Node).
+    if ($Install) { throw "Standalone install is disabled. Use the manager or download from $($result.releaseUrl) ." }
+    if ($Interactive -and (Confirm-DreamSkinInteractiveUpdate -Result $result)) {
+      Start-Process -FilePath $result.releaseUrl
     }
     if ($Json) { $result | ConvertTo-Json -Compress }
     if (-not $Json -and -not $Interactive) {
