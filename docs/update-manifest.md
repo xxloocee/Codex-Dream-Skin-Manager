@@ -12,6 +12,16 @@ macOS 普通 DMG 未配置独立 GUI 签名通道时，原生管理器的手动�
 https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases/latest/download/update.json
 ```
 
+## macOS 签名更新的代理
+
+管理器的签名更新检查与安装包下载统一经 `macos/scripts/gui-update.sh` 启动。入口优先沿用显式的 `https_proxy` / `HTTPS_PROXY` / `http_proxy` / `HTTP_PROXY` 环境配置；没有这些配置时，使用 `scutil --proxy` 读取当前生效的 macOS 安全网页代理（HTTPSProxy / HTTPSPort），并在没有显式 `no_proxy` / `NO_PROXY` 时沿用系统排除主机列表。所有更新目标均为 HTTPS。
+
+空字符串视为未配置：启动 Node 前清除空的 `https_proxy`、`http_proxy` 和 `no_proxy`，避免它们遮蔽有效的大写变量；大小写变量均非空时，小写优先。
+
+入口启用内置 Node.js 22.22.2 的 `--use-env-proxy`，因此清单、签名、安装包以及经白名单核对的重定向请求均使用同一代理配置；没有配置代理时继续直连。此适配支持固定 HTTP CONNECT 代理，不解析 PAC，也不将仅配置的 SOCKS 代理转换为 HTTP 代理；不要求开启 TUN。代理连接失败会中止本次请求，不自动绕过代理直连。已有签名、下载大小、SHA-256 及应用身份校验继续生效。
+
+此修复需随新版应用安装后生效，不能改变旧版中已经启动的下载连接。已使用内置 Node.js 22.22.2 在临时隔离夹具中通过 19 项审计检查，覆盖系统代理解析、大小写及空变量优先级、排除主机、IPv6、真实更新脚本的验签与重定向、下载数据完整性、代理失败停止请求及 `exec` 进程身份；另通过 Bash 语法和差异空白检查。未运行仓库完整测试、构建或真实安装验收，未更改本机代理设置及已安装应用。
+
 ## 数据格式
 
 `schemaVersion` 为 `1`。为复用现有版本比较和附件选择逻辑，保留已有 release 字段名；这些字段来自发布流程生成的静态文件，不来自 GitHub API。

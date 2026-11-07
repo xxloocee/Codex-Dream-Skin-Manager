@@ -59,11 +59,11 @@ export class PlatformUpdates implements UpdatePort {
     return { ...raw, manifestDigest, publicKeyDigest };
   }
   private async signed(action: "inspect" | "prepare", candidate?: UpdateCandidate, onProgress?: (progress: UpdateProgress) => void): Promise<Record<string, unknown>> {
-    const script = path.join(this.root, "macos", "scripts", "gui-update.mjs"); await safePath(script, this.root);
+    const script = path.join(this.root, "macos", "scripts", "gui-update.sh"); await safePath(script, this.root);
     const approved = candidate ? this.candidates.get(candidate.binding) : null;
     // Preparation only writes a private download stage. It never replaces the
     // application, so a timed-out downloader can be stopped before retrying.
-    return transactionProcess(process.execPath, [script, action, ...(candidate ? [candidate.latestVersion, String(approved?.raw.manifestDigest)] : [])], action === "inspect" ? 120000 : 1200000, false, undefined, value => {
+    return transactionProcess("/bin/bash", [script, action, ...(candidate ? [candidate.latestVersion, String(approved?.raw.manifestDigest)] : [])], action === "inspect" ? 120000 : 1200000, false, undefined, value => {
       if (!onProgress || value.kind !== "update.progress") return;
       if (value.stage === "downloading" && Number.isSafeInteger(value.downloadedBytes) && Number.isSafeInteger(value.totalBytes) &&
           (value.downloadedBytes as number) >= 0 && (value.totalBytes as number) > 0 && (value.totalBytes as number) <= maxPackageBytes && (value.downloadedBytes as number) <= (value.totalBytes as number)) {
