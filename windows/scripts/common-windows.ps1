@@ -802,7 +802,7 @@ function Get-DreamSkinCodexInstall {
 
 function Initialize-DreamSkinPackageLauncher {
   if ('CodexDreamSkin.PackageLauncher' -as [type]) { return }
-  Add-Type -TypeDefinition @'
+  $launcherSource = @'
 using System;
 using System.Runtime.InteropServices;
 
@@ -847,6 +847,20 @@ namespace CodexDreamSkin {
   }
 }
 '@
+  # Windows PowerShell compiles through a child csc.exe. An inherited system
+  # TEMP can make its source files unreadable even when the manager can start.
+  $compilerTemp = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Temp'
+  [IO.Directory]::CreateDirectory($compilerTemp) | Out-Null
+  $previousTemp = $env:TEMP
+  $previousTmp = $env:TMP
+  try {
+    $env:TEMP = $compilerTemp
+    $env:TMP = $compilerTemp
+    Add-Type -TypeDefinition $launcherSource -ErrorAction Stop
+  } finally {
+    $env:TEMP = $previousTemp
+    $env:TMP = $previousTmp
+  }
 }
 
 function Start-DreamSkinCodex {

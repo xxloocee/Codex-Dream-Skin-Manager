@@ -790,7 +790,17 @@ try {
   if ($argumentLine -cne '--remote-debugging-address=127.0.0.1 "--user-data-dir=C:\Dream Skin\Profile\\" ""') {
     throw 'Packaged-app argument line quoting failed.'
   }
-  Initialize-DreamSkinPackageLauncher
+  $launcherTemp = $env:TEMP; $launcherTmp = $env:TMP
+  try {
+    $env:TEMP = Join-Path $env:SystemRoot 'TEMP'
+    $env:TMP = $env:TEMP
+    Initialize-DreamSkinPackageLauncher
+    if ($env:TEMP -cne (Join-Path $env:SystemRoot 'TEMP') -or $env:TMP -cne $env:TEMP) {
+      throw 'Packaged-app activation helper changed the caller temporary environment.'
+    }
+  } finally {
+    $env:TEMP = $launcherTemp; $env:TMP = $launcherTmp
+  }
   if (-not ('CodexDreamSkin.PackageLauncher' -as [type])) {
     throw 'Packaged-app activation helper did not compile.'
   }

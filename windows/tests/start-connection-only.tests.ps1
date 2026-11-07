@@ -75,6 +75,10 @@ function Get-DreamSkinVerifiedCdpIdentity { param([int]$Port, [object]$Codex)
 }
 function Get-DreamSkinVerifiedCdpIdentityForAnyRegistered { param([int]$Port); return $null }
 function Test-DreamSkinPortAvailable { param([int]$Port); return $true }
+function Initialize-DreamSkinPackageLauncher {
+  $script:events += 'prepare-launcher'
+  if ($script:failLauncher) { throw 'fixture launcher unavailable' }
+}
 function Start-DreamSkinCodexForDebugging { param([object]$Codex, [string[]]$Arguments, [int]$Port, [int[]]$PreserveProcessIds)
   $script:events += 'connect'
   if ($script:failConnect) { throw 'fixture connection failed' }
@@ -118,6 +122,7 @@ function Write-Host { param([Parameter(ValueFromRemainingArguments = $true)][obj
 function Reset-Fixture {
   $script:events = @(); $script:messages = @(); $script:lockExited = $false
   $script:cdpReady = $false; $script:failConnect = $false; $script:paused = $true
+  $script:failLauncher = $false
 }
 function Assert-NoActiveAnnouncement {
   if (@($script:messages | Where-Object { $_ -like 'Codex Dream Skin is active*' }).Count) {
@@ -151,10 +156,19 @@ try {
     }
   }
 
-  $script:events = @()
+  # Launcher preparation must fail before closing an existing Codex session.
+  $script:events = @(); $script:failLauncher = $true; $failure = $null
+  try { & $startBlock -RestartExisting } catch { $failure = $_ }
+  if ($null -eq $failure -or $failure.Exception.Message -cne 'fixture launcher unavailable' -or
+    ($script:events -join ',') -cne 'prepare-launcher' -or -not $script:cdpReady -or
+    -not $script:lockExited -or -not $script:paused -or
+    -not (Test-DreamSkinBytesEqual $connectionBytes ([System.IO.File]::ReadAllBytes($statePath)))) {
+    throw 'Launcher preparation failure closed Codex or mutated the connection state.'
+  }
+  $script:failLauncher = $false; $script:events = @()
   & $startBlock -RestartExisting
   $running = Read-DreamSkinState -Path $statePath
-  if (($script:events -join ',') -cne 'stop,read-selected-theme,install-dark,connect,injector,verify,commit' -or
+  if (($script:events -join ',') -cne 'prepare-launcher,stop,read-selected-theme,install-dark,connect,injector,verify,commit' -or
     $running.connectionOnly -or $running.injectorPid -ne 4242 -or $script:paused) {
     throw 'Final startup failed to close, configure, reconnect, verify and replace connection-only state.'
   }

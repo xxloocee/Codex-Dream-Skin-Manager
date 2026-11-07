@@ -232,6 +232,9 @@ try {
     if (-not $restartAuthorized) {
       throw 'DREAM_SKIN_RESTART_REQUIRED: Codex is open without a verified Dream Skin CDP endpoint. Close it first or explicitly use -RestartExisting.'
     }
+    # A broken activation helper must not take the user's running Codex away.
+    $startFailureCategory = 'cdp-launch-failed'
+    Initialize-DreamSkinPackageLauncher
     if ($ManagerPrecondition) {
       $currentProbe = & (Join-Path $PSScriptRoot 'manager-platform.ps1') -Action Probe -ApplicationRoot $ManagerApplicationRoot
       $currentProbe = ($currentProbe -join "`n") | ConvertFrom-Json -ErrorAction Stop
