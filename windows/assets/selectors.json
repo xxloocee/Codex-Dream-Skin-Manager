@@ -3,6 +3,14 @@
   "description": "双端统一选择器契约。scope 与 required 来自双端 DOM 快照实测；shell-main 与 header-tint 另由 2026-07-31 Codex 26.727.40816 真实 macOS renderer 复核。doctor / CI 应逐条 querySelector 并按 tier 判级：L1 缺失=皮肤主行为受损，L2 缺失=精修静默降级。",
   "sourceInspections": [
     {
+      "date": "2026-11-07",
+      "version": "26.1103.4239.0",
+      "platform": "windows",
+      "evidence": "只读安装包 JS/CSS 与 renderer DOM/computed style：CSS Modules 改用名称-hash，Home ComposerLayoutBody 仍使用 --composer-layout-surface-* 绘制原生底色；MainContentTopFade 使用新类名前缀。Windows 同时挂载四个 main，首个为缓存页，旧装饰识别仅在 macOS 按 composer 归属解析 main，导致当前页顶部/底部 fade 未清除、footer surface 被误标 panel 并叠加 blur(10px)。改为双端按各 composer 的 main 解析装饰，输入框通过原生背景 token 清除内层重复底色。",
+      "utilityRailEvidence": "安装包 ComposerUtilityBar 的 controls 组件使用稳定属性 data-composer-utility-rail，原生背景类为 bg-background-composer-action-bar；其绝对定位 slot 可嵌在输入框根内但绘制在输入框上方。该工具栏作为独立 panel 跟随 surfaceOpacity，内部中性包装层清除重复背景。隔离 Chromium 在重建的嵌套/并列结构中复现旧包工具栏不透明，修复后四档透明度、浮层、属性变化、隐藏状态、布局及清理恢复检查通过。",
+      "limits": "修复前只读诊断；未向客户端注入修改、未切换真实会话或主题。隔离检查使用安装包部分原生 CSS、重建结构及工具栏背景类规则，上一轮中性 rail fixture 不代表真实 controls 工具栏验收。针对性 renderer/selector 检查和 Windows 构建已执行；未做修复后双端实机视觉验收。"
+    },
+    {
       "date": "2026-10-29",
       "version": "26.1023.6123.0",
       "platform": "windows",
@@ -36,8 +44,13 @@
     }
   ],
   "verifiedAgainst": {
-    "date": "2026-08-27",
+    "date": "2026-11-07",
     "codexVersions": [
+      {
+        "version": "26.1103.4239.0",
+        "platform": "windows",
+        "evidence": "maintainer: 本机安装包 JS/CSS 与修复前只读 renderer DOM/computed style，确认新模块类名前缀、Windows 缓存 main 及独立上下 fade。修复在隔离 Chromium 使用原生 CSS 和重建结构核对；未注入真实客户端，未做修复后双端实机视觉验收。"
+      },
       {
         "version": "26.818",
         "platform": "windows",
@@ -79,9 +92,9 @@
         "evidence": "fixture: runtime/dom-fixtures/codex-dom-fixture-win32-watch.json（7 状态）；bundle hash 与 mac 不同（ModelPickerTrigger mac=1fm6a win=1w4ob），确认双端存在版本错位"
       }
     ],
-    "verdict": "双端运行时继续共用一份 selector/CSS 合同。26.727.40816 起主表面与顶栏的旧语义类改为 CSS Modules，26.803~26.818 又把输入框壳迁到 _ComposerLayoutRoot_；合同的做法始终是保留旧锚点、追加稳定属性或模块名前缀，绝不匹配完整 hash。注意 26.803 之后每一条证据都来自报告者，维护者没有对应平台的本机 renderer 复核——不要把它们当成与 26.727 同等强度的验收。",
+    "verdict": "双端运行时继续共用一份 selector/CSS 合同。26.727.40816 起主表面与顶栏的旧语义类改为 CSS Modules，26.803~26.818 又把输入框壳迁到 _ComposerLayoutRoot_，26.1103 改用名称-hash；保留旧锚点、追加稳定属性或模块名前缀，绝不匹配完整 hash。26.803~26.818 的证据来自报告者；26.1103 已做 Windows 修复前本机只读诊断和隔离 Chromium 核对，尚未做修复后真实客户端及 macOS 视觉验收。",
     "gaps": [
-      "Windows 26.727 之后至今没有维护者本机 renderer 复核",
+      "Windows 26.1103 已有修复前本机只读 renderer 诊断，修复后真实客户端视觉验收尚未完成",
       "#376：26.814.5517.0 上 Codex 设置→外观切换深浅色后主题混色，settings/appearance 路径的锚点行为未验证",
       "#371：Windows 顶部与底部区域配色与主区不一致，尚未确认是 header-tint 未命中还是原生层未被覆盖"
     ]
@@ -103,7 +116,7 @@
     { "key": "shell-main", "selector": "main:is(.main-surface, [data-app-shell-main-surface], [class*=\"_MainContentSurface_\"])", "tier": "L1", "scope": "all", "required": true, "notes": "全局主表面。26.727.40816 提供 data-app-shell-main-surface，并使用 _MainContentSurface_ CSS Module；保留旧类兼容历史版本，前缀只限定在 main 元素。mac 设置页缺失（win 存在），缺失时整页仅 L0" },
     { "key": "left-panel", "selector": "aside.app-shell-left-panel", "tier": "L1", "scope": "all", "required": true, "notes": "左侧栏；收起/重建时会移除节点，勿在其消失时清皮" },
     { "key": "header-tint", "selector": "header:is(.app-header-tint, [data-app-shell-header-edge-scroll], [class*=\"_Header_\"])", "tier": "L1", "scope": "all", "required": true, "notes": "顶栏。26.727.40816 输出 data-app-shell-header-edge-scroll 并使用 _Header_ CSS Module；保留旧类兼容历史版本，前缀只限定在 header 元素。皮肤不得覆盖其 position/z-index（既有回归约束）" },
-    { "key": "main-content-top-fade", "selector": ":is(.app-shell-main-content-top-fade, [class*=\"_MainContentTopFade_\"], [data-app-shell-main-content-top-fade]:empty)", "tier": "L2", "scope": "all", "required": false, "notes": "仅清除主区顶部渐变的背景，不隐藏节点。26.924 的 data-app-shell-main-content-top-fade 是聊天与输入框的祖先容器状态，不能单独匹配；保留旧语义类、模块名前缀和仅限空节点的旧属性回退。未知结构保留原生显示。" },
+    { "key": "main-content-top-fade", "selector": ":is(.app-shell-main-content-top-fade, [class*=\"_MainContentTopFade_\"], [class^=\"MainContentTopFade-\"], [class*=\" MainContentTopFade-\"], [data-app-shell-main-content-top-fade]:empty)", "tier": "L2", "scope": "all", "required": false, "notes": "仅清除主区顶部渐变的背景，不隐藏节点。26.924 的 data-app-shell-main-content-top-fade 是聊天与输入框的祖先容器状态，不能单独匹配；保留旧语义类、模块名前缀和仅限空节点的旧属性回退，兼容 26.1103 的名称-hash 模块格式。未知结构保留原生显示。" },
     { "key": "home-icon", "selector": "[data-testid=\"home-icon\"]", "tier": "L1", "scope": "home", "required": true, "notes": "首页判定信号，双端一致" },
     { "key": "home-route", "selector": "[role=\"main\"]:has([data-testid=\"home-icon\"])", "tier": "L1", "scope": "home", "required": true, "notes": "首页容器。实测 [role=main] 仅存在于首页——它不是通用路由锚点，thread 页没有" },
     { "key": "home-route-css", "selector": "[role=\"main\"]", "tier": "L1", "scope": "home", "required": true, "notes": "home-route 的 CSS 可组合别名：不含 :has()。CSS 禁止 :has() 嵌套，home-route 原选择器一旦写进 :has()/:not(:has()) 整条规则会被解析器丢弃（v1.3.1 全窗口首页与任务页氛围背景因此失效）。依据与 home-route 相同的实测：[role=main] 仅存在于首页；该锚点缺失时 CSS 路由门控整体失效，故必须按 L1 必需项监控" },

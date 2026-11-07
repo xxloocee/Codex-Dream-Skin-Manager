@@ -25,6 +25,7 @@
     'aside', '[role="dialog"]', '[role="menu"]', '[role="tooltip"]',
     '[data-summary-panel-variant]', '[data-radix-popper-content-wrapper] > div',
     '[data-composer-home-utility-bar-position="above"]',
+    '[data-composer-utility-rail]',
     '[class*="_ComposerLayoutBody_"]',
     '[class~="group/diff-header"]',
     '[data-ds-part="sidebar"] .sidebar-navigation',
@@ -1029,11 +1030,9 @@
     const floatingSurface = '[role="dialog"], [role="menu"], [role="tooltip"], ' +
       '[aria-modal="true"], [data-radix-popper-content-wrapper]';
     for (const composer of composerNodes) {
-      // macOS keeps multiple chat pages mounted. Resolve each composer's own
+      // Both platforms keep chat pages mounted. Resolve each composer's own
       // main, including cached pages, instead of only clearing the first tab.
-      const main = /Mac/i.test(navigator.platform)
-        ? composer.closest?.('main, [role="main"]') ?? fallbackMain
-        : fallbackMain;
+      const main = composer.closest?.('main, [role="main"]') ?? fallbackMain;
       if (!main || !main.contains?.(composer) || composer.closest?.(floatingSurface)) continue;
       // Follow the input's outside branch. A sibling may hold both transcript
       // content and a separate hidden fade: inspect hidden descendants without
@@ -1090,13 +1089,18 @@
       if (!candidates.has(node)) restoreSurface(node);
     }
     for (const node of candidates) {
+      // The utility rail can sit inside the composer DOM while its absolute
+      // slot is above the input's painted bounds. It owns a separate panel;
+      // neutral wrappers inside either panel must still remain clear.
+      const composerSurface = parts.get(node) === "composer" ||
+        node.hasAttribute?.("data-composer-utility-rail");
       // Portaled and inline floating surfaces both need their own paint even
       // when their logical parent belongs to an existing panel.
       const floating = node.matches?.('[role="dialog"], [role="menu"], [role="tooltip"]') ||
         node.parentElement?.hasAttribute?.('data-radix-popper-content-wrapper') ||
         node.classList?.contains('sticky') || node.classList?.contains('fixed');
       let nested = false;
-      if (!floating && !decorativeNodes.has(node) && parts.get(node) !== "composer") {
+      if (!floating && !decorativeNodes.has(node) && !composerSurface) {
         for (let parent = node.parentElement; parent; parent = parent.parentElement) {
           if (candidates.has(parent) && !sceneWrappers.has(parent) &&
             !decorativeNodes.has(parent)) { nested = true; break; }
@@ -1106,7 +1110,7 @@
       // The sidebar is structural chrome, not an adjustable floating panel.
       // Keep it in the candidate tree so neutral navigation descendants clear
       // their native paint; actual menus/dialogs inside it remain independent.
-      const value = parts.get(node) === "composer" ? "panel"
+      const value = composerSurface ? "panel"
         : decorativeNodes.has(node) ? "clear"
           : parts.get(node) === "sidebar" ? "shell"
             : nested || sceneWrappers.has(node) ? "clear" : "panel";
@@ -1422,6 +1426,7 @@
       childList: true, subtree: true, attributes: true,
       // Ignore our own part/surface attributes and inline palette writes.
       attributeFilter: ["class", "role", "data-composer-surface-variant",
+        "data-composer-utility-rail",
         "data-composer-home-utility-bar-position", "data-summary-panel-variant",
         "data-radix-popper-content-wrapper", "data-testid", "contenteditable",
         "aria-hidden", "tabindex"],

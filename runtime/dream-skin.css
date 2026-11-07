@@ -1034,6 +1034,11 @@ html[data-dream-skin="active"] __DREAM_SELECTOR_HOME_ROUTE__ __DREAM_SELECTOR_HO
 html[data-dream-skin="active"] __DREAM_SELECTOR_HOME_ROUTE__ __DREAM_SELECTOR_HOME_SUGGESTIONS__ button > span:last-child { align-items: center !important; text-align: center !important; }
 
 html[data-dream-skin="active"] __DREAM_SELECTOR_COMPOSER_CHROME__ {
+  /* Native Home paint lives on an inner body. Use the composer's own tokens
+     so CSS Module renames cannot leave an opaque layer over our panel. */
+  --composer-layout-surface-background: transparent !important;
+  --composer-layout-surface-backdrop-filter: none !important;
+  --composer-layout-surface-shadow: none !important;
   overflow: visible !important;
   border: 1px solid rgb(var(--ds-muted-rgb) / .18) !important;
   border-radius: 22px !important;

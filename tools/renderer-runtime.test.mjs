@@ -485,7 +485,7 @@ export async function runRendererRuntimeTest(assetRoot) {
   assert.match(css, /main:is\(\.main-surface, \[data-app-shell-main-surface\], \[class\*=\"_MainContentSurface_\"\]\):has\(\[role="main"\]\)/);
   assert.match(css, /main:is\(\.main-surface, \[data-app-shell-main-surface\], \[class\*=\"_MainContentSurface_\"\]\):not\(:has\(\[role="main"\]\)\)/);
   assert.match(css, /header:is\(\.app-header-tint, \[data-app-shell-header-edge-scroll\], \[class\*=\"_Header_\"\]\)/);
-  assert.match(css, /:is\(\.app-shell-main-content-top-fade, \[class\*=\"_MainContentTopFade_\"\], \[data-app-shell-main-content-top-fade\]:empty\)/);
+  assert.match(css, /:is\(\.app-shell-main-content-top-fade, \[class\*=\"_MainContentTopFade_\"\], \[class\^=\"MainContentTopFade-\"\], \[class\*=\" MainContentTopFade-\"\], \[data-app-shell-main-content-top-fade\]:empty\)/);
   assert.doesNotMatch(
     css,
     /[^{}]*main-content-top-fade[^{}]*\{[^}]*display:\s*none/,

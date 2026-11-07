@@ -1034,6 +1034,11 @@ html[data-dream-skin="active"] [role="main"]:has([data-testid="home-icon"]) .gro
 html[data-dream-skin="active"] [role="main"]:has([data-testid="home-icon"]) .group\/home-suggestions button > span:last-child { align-items: center !important; text-align: center !important; }
 
 html[data-dream-skin="active"] :is(.composer-surface-chrome, [class*="_ComposerLayoutRoot_"], [data-composer-surface-variant][data-composer-radius-variant]) {
+  /* Native Home paint lives on an inner body. Use the composer's own tokens
+     so CSS Module renames cannot leave an opaque layer over our panel. */
+  --composer-layout-surface-background: transparent !important;
+  --composer-layout-surface-backdrop-filter: none !important;
+  --composer-layout-surface-shadow: none !important;
   overflow: visible !important;
   border: 1px solid rgb(var(--ds-muted-rgb) / .18) !important;
   border-radius: 22px !important;
@@ -1582,7 +1587,7 @@ html[data-dream-skin="active"][data-dream-art-wide="true"] main:is(.main-surface
    just the decorative fade. Clear paint only: even a future selector drift
    must never hide the chat/composer subtree or alter its native layout. */
 html[data-dream-skin="active"][data-dream-art-wide="true"] main:is(.main-surface, [data-app-shell-main-surface], [class*="_MainContentSurface_"])
-  :is(.app-shell-main-content-top-fade, [class*="_MainContentTopFade_"], [data-app-shell-main-content-top-fade]:empty) {
+  :is(.app-shell-main-content-top-fade, [class*="_MainContentTopFade_"], [class^="MainContentTopFade-"], [class*=" MainContentTopFade-"], [data-app-shell-main-content-top-fade]:empty) {
   background: transparent !important;
 }
 
