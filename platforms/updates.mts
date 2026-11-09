@@ -28,6 +28,7 @@ const windowsUpdateErrors: Record<string, string> = {
 };
 interface PrivateCandidate { raw: Record<string, unknown>; repo: string; target: string | null; bundle: string | null }
 export class PlatformUpdates implements UpdatePort {
+  private readonly prepared = new Map<string, { stage: string; app: string; helper: string; target: string; bundle: string; currentVersion: string; version: string }>();
   private readonly candidates = new Map<string, PrivateCandidate>();
   private readonly platform = process.platform === "win32" ? "windows" : "macos";
   constructor(private readonly root: string, private readonly state: string) {}
@@ -149,7 +150,6 @@ export class PlatformUpdates implements UpdatePort {
       if (raw.installerStarted !== true || typeof raw.installerProcessId !== "number" || raw.installerProcessId <= 0) throw new ContractError("IO_ERROR", "安装器未确认启动。");
       return { managerMustQuit: false };
     }
-    let helperStarted = false;
     try {
       if (candidate.installMode !== "macos-signed" || !privateCandidate.bundle || !privateCandidate.target || await this.target(privateCandidate.bundle, candidate.currentVersion) !== privateCandidate.target) throw new ContractError("METHOD_UNSUPPORTED", "当前包不能自动替换。");
       const raw = await this.signed("prepare", candidate, onProgress), updates = path.join(this.state, "updates");
@@ -158,17 +158,31 @@ export class PlatformUpdates implements UpdatePort {
       await safePath(raw.stage, this.state); await safePath(raw.stagedApp, raw.stage);
       const source = path.join(this.root, "macos", "scripts", "gui-install-update.sh"); await safePath(source, this.root);
       const helper = path.join(raw.stage, "manager-install.sh"); await copyFile(source, helper, constants.COPYFILE_EXCL); await safePath(helper, raw.stage);
-      const log = await open(path.join(raw.stage, "manager-install.log"), "wx", 0o600);
+      this.prepared.set(id, { stage: raw.stage, app: raw.stagedApp, helper, target: privateCandidate.target,
+        bundle: privateCandidate.bundle, currentVersion: candidate.currentVersion, version: candidate.latestVersion });
+      return { managerMustQuit: true };
+    } catch {
+      throw new UpdateNotStartedError("更新下载或校验未完成，尚未替换应用，请重新检查后重试。");
+    }
+  }
+  async restart(id: string): Promise<void> {
+    const prepared = this.prepared.get(id);
+    let helperStarted = false;
+    try {
+      if (!prepared || await this.target(prepared.bundle, prepared.currentVersion) !== prepared.target) throw new Error("Prepared update unavailable.");
+      await safePath(prepared.stage, this.state); await safePath(prepared.app, prepared.stage); await safePath(prepared.helper, prepared.stage);
+      const logPath = path.join(prepared.stage, "manager-install.log");
+      const log = await open(logPath, constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND | constants.O_NOFOLLOW, 0o600);
       try {
         await new Promise<void>((resolve, reject) => {
-          const child = spawn("/bin/bash", [helper, raw.stagedApp as string, privateCandidate.target!, String(process.ppid), candidate.latestVersion, this.resultFile(id), privateCandidate.bundle!],
-            { shell: false, detached: true, cwd: raw.stage as string, stdio: ["ignore", log.fd, log.fd] });
+          const child = spawn("/bin/bash", [prepared.helper, prepared.app, prepared.target, String(process.ppid), prepared.version, this.resultFile(id), prepared.bundle],
+            { shell: false, detached: true, cwd: prepared.stage, stdio: ["ignore", log.fd, log.fd] });
           child.once("error", reject); child.once("spawn", () => { helperStarted = true; child.unref(); resolve(); });
         });
       } finally { await log.close(); }
-      return { managerMustQuit: true };
+      this.prepared.delete(id);
     } catch (error) {
-      if (!helperStarted) throw new UpdateNotStartedError("更新下载或校验未完成，尚未替换应用，请重新检查后重试。");
+      if (!helperStarted) throw new UpdateNotStartedError("安装器未启动，下载包已保留，请再次点击重启并更新。");
       throw error;
     }
   }

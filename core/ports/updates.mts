@@ -13,5 +13,7 @@ export interface UpdateCandidate extends Omit<UpdateCheck, "handle" | "expiresAt
 export interface UpdatePort {
   check(): Promise<UpdateCandidate>;
   install(candidate: UpdateCandidate, operationId: string, onProgress?: (progress: UpdateProgress) => void): Promise<{ managerMustQuit: boolean }>;
+  // Starts the prepared macOS installer only after the user requests restart.
+  restart(id: string): Promise<void>;
   receipt(id: string): Promise<"installed" | "failed" | null>;
 }
