@@ -5,7 +5,7 @@ import { serve } from "./ndjson.mjs";
 import { MediaResources } from "./media-resources.mjs";
 import { dataRoot, readAdapter, initialize } from "../platforms/factory.mjs";
 import { PlatformApply } from "../platforms/apply.mjs";
-import { mediaInspector } from "../platforms/media-metadata.mjs";
+import { mediaInspector, mediaMetadataInspector } from "../platforms/media-metadata.mjs";
 import { PlatformLibrary } from "../platforms/library.mjs";
 import { SourceSnapshots } from "./source-snapshots.mjs";
 import { NativeFiles } from "./native-files.mjs";
@@ -17,6 +17,8 @@ import { FixedCommunityHTTP } from "../platforms/community-http.mjs";
 import { CommunityApply } from "../platforms/community-apply.mjs";
 import { PlatformUpdates } from "../platforms/updates.mjs";
 import { PlatformMaintenance } from "../platforms/maintenance.mjs";
+import { WindowsClaudeRuntime } from "../platforms/windows/claude-runtime.mjs";
+import { defaultRuntimeTheme } from "./runtime-targets.mjs";
 
 try {
   const args = process.argv.slice(2);
@@ -46,7 +48,9 @@ try {
     manager && directory ? new PackageSources(state, packages) : undefined, manager && directory ? packages : undefined, manager ? new PlatformRuntime(root, state) : undefined,
     manager && directory ? new FixedCommunityHTTP() : undefined, manager && directory ? new CommunityApply(root, state) : undefined,
     manager && directory ? new PlatformUpdates(root, state) : undefined,
-    manager && directory && platform.name === "macos" ? new PlatformMaintenance(root, state) : undefined);
+    manager && directory && platform.name === "macos" ? new PlatformMaintenance(root, state) : undefined,
+    manager && platform.name === "windows" ? new WindowsClaudeRuntime(root) : undefined,
+    () => defaultRuntimeTheme(root), mediaMetadataInspector(root, platform.name));
   // Stop input first; serve finishes its current request before close drains jobs.
   const shutdown = () => { service.stopAccepting(); process.stdin.destroy(); };
   process.stdout.on("error", shutdown);

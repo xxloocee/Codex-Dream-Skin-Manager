@@ -11,9 +11,9 @@ import type { PreviewSize } from "./preview-model";
 import { previewKey, prioritizePreview, resolvePreview } from "./preview-resources";
 import type { PreviewTarget } from "./preview-resources";
 
-export function MediaPreview({ client, target, name, parameters = null, visible, thumbnail = false, refresh = 0 }: {
+export function MediaPreview({ client, target, name, parameters = null, visible, thumbnail = false, refresh = 0, application = "codex" }: {
   client: ManagerClient; target: PreviewTarget; name: string; parameters?: ThemeParameters | null; mediaKind?: ThemeSummary["mediaKind"] | "unknown";
-  visible: boolean; thumbnail?: boolean; refresh?: number;
+  visible: boolean; thumbnail?: boolean; refresh?: number; application?: "codex" | "claude";
 }) {
   const tr = useText(), msg = useMessage();
   const container = useRef<HTMLDivElement>(null);
@@ -93,14 +93,15 @@ export function MediaPreview({ client, target, name, parameters = null, visible,
   }, [resource, active, error, thumbnail, image.width, image.height]);
   const params = previewParameters(parameters ?? emptyParameters, {}, systemDark), layout = previewLayout(image, viewport, params);
   const dark = params.appearance === "dark" || params.appearance === "auto" && systemDark;
-  const rgb = dark ? "24, 28, 34" : "248, 249, 251";
-  const style = { "--preview-surface": `rgba(${rgb},${params.surfaceOpacity})`, "--preview-bubble": `rgba(${rgb},${params.bubbleOpacity})`,
+  const rgb = application === "claude" ? dark ? "24,24,28" : "248,247,244" : dark ? "24, 28, 34" : "248, 249, 251";
+  const style = { "--preview-surface": `rgba(${rgb},${params.surfaceOpacity})`, "--preview-bubble": `rgba(${rgb},${application === "claude" ? 0 : params.bubbleOpacity})`,
     "--preview-shell": `rgba(${rgb},${params.shellOpacity})`,
+    "--preview-claude-sidebar": `rgba(${rgb},${params.surfaceOpacity! * .5})`,
     "--preview-accent": params.accent ?? (dark ? "#E9CB7B" : "#80602C") } as CSSProperties;
-  const mode = params.taskMode === "auto" ? "ambient" : params.taskMode ?? "ambient";
-  return <div className={`media-preview ${thumbnail ? "thumbnail-preview" : "full-preview"}`}>
+  const mode = application === "claude" ? "full" : params.taskMode === "auto" ? "ambient" : params.taskMode ?? "ambient";
+  return <div className={`media-preview preview-application-${application} ${thumbnail ? "thumbnail-preview" : "full-preview"}`}>
     <div ref={container} className={`preview media-canvas ${!thumbnail ? "with-illustration" : ""} ${dark ? "preview-dark" : "preview-light"}`}
-      data-safe-area={params.safeArea} data-task-mode={!thumbnail ? mode : "full"} style={style}>
+      data-safe-area={application === "claude" ? "none" : params.safeArea} data-task-mode={!thumbnail ? mode : "full"} style={style}>
       {resource && !error ? <img key={resource.resourceId} className="preview-media" src={resource.url} alt={name} draggable={false}
         onLoad={event => { if (!complete(resource.leaseId)) return; const element = event.currentTarget; if (element.naturalWidth > 0 && element.naturalHeight > 0) setImage({ width: element.naturalWidth, height: element.naturalHeight }); else setError(uiMessage("当前素材无法获得预览尺寸。")); }}
         onError={() => { if (complete(resource.leaseId)) setError(uiMessage("此素材暂时无法显示预览，请重试或继续查看主题信息。")); }}
@@ -108,8 +109,8 @@ export function MediaPreview({ client, target, name, parameters = null, visible,
         <div className="placeholder" title={error ? msg(error) : undefined}><span>{error ? thumbnail ? tr("预览不可用") : msg(error) : active ? tr("正在准备预览…") : tr("等待预览")}</span>
           {error && !thumbnail && <button type="button" onClick={() => retry(value => value + 1)}>{tr("重试预览")}</button>}</div>}
       {resource && !error && !thumbnail && <><div className="preview-shell" aria-hidden="true" /><div className="preview-workspace" aria-hidden="true">
-        <div className="preview-sidebar"><span /><span /><span /></div>
-        <div className="preview-conversation"><div className="preview-bubble" /><div className="preview-composer" /></div>
+        <div className="preview-sidebar">{application === "claude" && <b>Claude</b>}<span /><span /><span /></div>
+        <div className="preview-conversation">{application === "claude" && <span className="preview-code-label">Code</span>}<div className="preview-bubble" /><div className="preview-composer" /></div>
       </div></>}
     </div>
   </div>;

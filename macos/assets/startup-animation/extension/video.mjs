@@ -1,6 +1,6 @@
 // A temporary, silent, one-shot video overlay. The host supplies a checked
 // local file through CDP, using the same file-input bridge as theme videos.
-export function installStartupVideo() {
+export function installStartupVideo(source = null) {
   if (window.top !== window || !document.body) return { installed: false };
   window.__aemeathExtension?.dispose();
   let frame = document.createElement("iframe"), objectURL = null, video = null;
@@ -56,9 +56,12 @@ export function installStartupVideo() {
     bind();
   }, { once: true });
   function bind() {
-    if (!video || objectURL || disposed || completed || !input.files?.[0]) return false;
-    objectURL = URL.createObjectURL(input.files[0]);
-    video.src = objectURL;
+    if (!video || objectURL || video.hasAttribute('src') || disposed || completed || (!source && !input.files?.[0])) return false;
+    if (source) video.src = `data:${source.mimeType};base64,${source.mediaBase64}`;
+    else {
+      objectURL = URL.createObjectURL(input.files[0]);
+      video.src = objectURL;
+    }
     void video.play().catch(() => { if (!disposed && phase === "loading") finish("failed"); });
     return true;
   }

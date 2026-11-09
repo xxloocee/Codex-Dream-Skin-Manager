@@ -146,6 +146,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   );
   const outputs = [
     {
+      content: await readFile(path.join(projectRoot, "runtime", "claude-renderer.mjs"), "utf8"),
+      paths: ["windows/scripts/claude-renderer.mjs"],
+    },
+    {
       content: await readFile(path.join(projectRoot, "runtime", "validate-video-file.mjs"), "utf8"),
       paths: ["windows/scripts/validate-video-file.mjs", "macos/scripts/validate-video-file.mjs"],
     },

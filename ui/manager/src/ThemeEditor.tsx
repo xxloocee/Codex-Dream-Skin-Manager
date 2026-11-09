@@ -8,6 +8,8 @@ import { parseThemePatch } from "../../../contracts/manager.mjs";
 import type { ThemeDetails, ThemeParameters, ThemePatch } from "../../../contracts/manager.mjs";
 import { previewParameters } from "./preview-model";
 import { ConfirmationDialog } from "./ConfirmationDialog";
+import type { ManagerClient } from "./client";
+import { MediaPreview } from "./MediaPreview";
 
 interface Props {
   theme: ThemeDetails; busy: boolean; canApply: boolean; mode?: "edit" | "create"; allowCopy?: boolean;
@@ -15,6 +17,8 @@ interface Props {
   onSave(patch: ThemePatch, copyName: string | null, applyAfter: boolean): Promise<void>;
   onNotice(value: UiMessage): void;
   preview?: ReactNode; sourcePicker?: ReactNode; readyToSave?: boolean;
+  application?: "codex" | "claude";
+  client?: ManagerClient | null; visible?: boolean;
 }
 const ranges = {
   focusX: ["焦点水平位置", 0, 1, 0.5], focusY: ["焦点垂直位置", 0, 1, 0.5],
@@ -29,7 +33,7 @@ const choices = {
   taskMode: ["任务页模式", [["auto", "自动"], ["ambient", "氛围"], ["banner", "横幅"], ["full", "完整"], ["off", "关闭"]]],
 } as const;
 
-export function ThemeEditor({ theme, busy, canApply, mode = "edit", allowCopy = false, onDirty, onPreview, onSave, onNotice, preview, sourcePicker, readyToSave = true }: Props) {
+export function ThemeEditor({ theme, busy, canApply, mode = "edit", allowCopy = false, onDirty, onPreview, onSave, onNotice, preview, sourcePicker, readyToSave = true, application = "codex", client, visible = true }: Props) {
   const tr = useText(), msg = useMessage();
   const [patch, setPatch] = useState<ThemePatch>({}), [error, setError] = useState<UiMessage>("");
   const [copying, setCopying] = useState(false), [copyName, setCopyName] = useState(theme.name.slice(0, 80));
@@ -75,7 +79,7 @@ export function ThemeEditor({ theme, busy, canApply, mode = "edit", allowCopy = 
   }
   function choiceControl(key: keyof typeof choices) {
     const [label, options] = choices[key];
-    return <label>{tr(label)}<Select aria-label={tr(label)} value={String(display[key])} disabled={busy || !theme.availability.update.allowed}
+    return <label>{tr(label)}<Select aria-label={tr(label)} value={String(display[key])} disabled={busy || application === "codex" && !theme.availability.update.allowed}
       onChange={value => change(key, value as ThemeParameters[typeof key])}
       options={options.map(([value, label]) => ({ value, label: tr(label) }))} /></label>;
   }
@@ -91,22 +95,25 @@ export function ThemeEditor({ theme, busy, canApply, mode = "edit", allowCopy = 
         const checked = event.target.checked;
         setPatch(previous => ({ ...previous, tags: checked ? [...new Set([...(previous.tags ?? theme.tags), tag])] : (previous.tags ?? theme.tags).filter(value => value !== tag) }));
       }} />{tr(tag)}</label>)}
-    </div><p className="muted">{tr("可同时选择多个分类；未选择时归入艺术。")}</p></section>{preview}</div>}
+    </div></section>{preview}</div>}
+    {mode === "edit" && client && <div className="editor-live-preview"><MediaPreview client={client}
+      target={{ kind: "theme", theme: theme.ref, revision: theme.revision, variant: "preview" }} name={theme.name}
+      application={application} parameters={display} visible={visible} /></div>}
     <div className="editor-form">
-      {mode === "edit" && <><h3>{tr("显示与取景参数")}</h3><p className="muted">{tr("正在使用的主题保存后会刷新；已暂停的皮肤保持暂停。")}</p></>}
-      <fieldset disabled={busy || !theme.availability.update.allowed}>
+      {mode === "edit" && <h3>{tr(application === "claude" ? "Claude Desktop 显示与取景" : "Codex 显示与取景")}</h3>}
+      <fieldset disabled={busy || application === "codex" && !theme.availability.update.allowed}>
         {mode === "create" && <div className="editor-fields"><label>{tr("主题名称")}<input maxLength={80} value={patch.name ?? theme.name} onChange={event => setPatch(previous => ({ ...previous, name: event.target.value }))} /></label>{sourcePicker}</div>}
         <div className="editor-fields">{choiceControl("appearance")}</div>
         {mode === "edit" ? <>{rangeControl("focusX")}{rangeControl("focusY")}</> : framingControls()}
-        <div className="editor-fields">{choiceControl("safeArea")}{choiceControl("taskMode")}</div>
+        {application === "codex" && <div className="editor-fields">{choiceControl("safeArea")}{choiceControl("taskMode")}</div>}
         {rangeControl("shellOpacity")}
         <div className="framing-actions"><button type="button" disabled={parameter("shellOpacity") == null}
           title={tr("清除自定义背景遮罩，随浅色和深色外观自动调整。")}
           onClick={() => change("shellOpacity", null)}>{tr("使用外观默认值")}</button></div>
-        {rangeControl("bubbleOpacity")}{rangeControl("surfaceOpacity")}
+        {application === "codex" && rangeControl("bubbleOpacity")}{rangeControl("surfaceOpacity")}
         {theme.mediaKind === "video" && rangeControl("playbackRate")}
-        <label className="accent-field">{tr("主题强调色")}<span><input maxLength={7} placeholder="#RRGGBB" value={String(parameter("accent") ?? "")} onChange={event => change("accent", event.target.value || null)} />
-          <input type="color" aria-label={tr("选择颜色")} value={/^#[0-9a-f]{6}$/i.test(String(parameter("accent"))) ? String(parameter("accent")) : "#B65CFF"} onChange={event => change("accent", event.target.value.toUpperCase())} /></span></label>
+        {application === "codex" && <label className="accent-field">{tr("主题强调色")}<span><input maxLength={7} placeholder="#RRGGBB" value={String(parameter("accent") ?? "")} onChange={event => change("accent", event.target.value || null)} />
+          <input type="color" aria-label={tr("选择颜色")} value={/^#[0-9a-f]{6}$/i.test(String(parameter("accent"))) ? String(parameter("accent")) : "#B65CFF"} onChange={event => change("accent", event.target.value.toUpperCase())} /></span></label>}
         {mode === "edit" && <><div className="editor-row"><label><input type="checkbox" checked={framing === true} onChange={event => change("framingEnabled", event.target.checked)} />{tr("启用自定义取景")}</label></div>{framingControls()}</>}
         <div className="editor-actions">
           {mode === "edit" && <button type="button" disabled={!dirty} onClick={() => { setPatch({}); setError(""); }}>{tr("恢复已存参数")}</button>}

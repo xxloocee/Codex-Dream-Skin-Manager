@@ -17,9 +17,10 @@ export const MAINTENANCE_METHODS = ["maintenance.inspect", "maintenance.prepare"
 export const RECOVERY_METHODS = ["themes.delete", "library.recovery.list", "library.recover"] as const;
 export const RUNTIME_METHODS = ["skin.pause", "skin.resume", "skin.reset", "skin.restore", "runtime.repair", "runtime.upgrade"] as const;
 export const STARTUP_METHODS = ["startup.get", "startup.update"] as const;
+export const CLAUDE_METHODS = ["claude.status", "claude.apply", "claude.pause", "claude.resume", "claude.reset", "claude.restore", "claude.operations.get", "claude.parameters.get", "claude.parameters.update", "claude.startup.get", "claude.startup.update"] as const;
 export type RuntimeMethod = typeof RUNTIME_METHODS[number];
 export type RuntimeCommand = { method: RuntimeMethod; params: { operationId: string; expectedRuntimeRevision: string } };
-export type ManagerMethod = ReadMethod | typeof SESSION_METHODS[number] | typeof MEDIA_METHOD | typeof OPERATION_METHODS[number] | ThemeEditMethod | typeof SOURCE_METHODS[number] | typeof PACKAGE_METHODS[number] | typeof COMMUNITY_METHODS[number] | typeof UPDATE_METHODS[number] | typeof DESKTOP_METHODS[number] | typeof MAINTENANCE_METHODS[number] | typeof RECOVERY_METHODS[number] | RuntimeMethod | typeof STARTUP_METHODS[number];
+export type ManagerMethod = ReadMethod | typeof SESSION_METHODS[number] | typeof MEDIA_METHOD | typeof OPERATION_METHODS[number] | ThemeEditMethod | typeof SOURCE_METHODS[number] | typeof PACKAGE_METHODS[number] | typeof COMMUNITY_METHODS[number] | typeof UPDATE_METHODS[number] | typeof DESKTOP_METHODS[number] | typeof MAINTENANCE_METHODS[number] | typeof RECOVERY_METHODS[number] | RuntimeMethod | typeof STARTUP_METHODS[number] | typeof CLAUDE_METHODS[number];
 export const ERROR_CODES = [
   "PROTOCOL_UNSUPPORTED", "INVALID_REQUEST", "METHOD_UNSUPPORTED", "BACKEND_UNAVAILABLE",
   "THEME_NOT_FOUND", "THEME_INVALID", "THEME_CHANGED", "CATALOG_CHANGED", "MEDIA_UNSUPPORTED",
@@ -56,6 +57,20 @@ export interface ThemeParameters {
   surfaceOpacity: number | null;
   shellOpacity: number | null;
   accent: string | null;
+}
+export type ClaudeParameters = Pick<ThemeParameters, "appearance" | "focusX" | "focusY" | "positionX" | "positionY" | "zoom" | "playbackRate" | "positionMode" | "framingEnabled" | "shellOpacity" | "bubbleOpacity" | "surfaceOpacity">;
+export const CLAUDE_PARAMETER_KEYS = ["appearance", "focusX", "focusY", "positionX", "positionY", "zoom", "playbackRate", "positionMode", "framingEnabled", "shellOpacity", "bubbleOpacity", "surfaceOpacity"] as const;
+export interface ClaudeSnapshot {
+  target: "claude"; supported: boolean;
+  connection: "connected" | "awaiting-debugger" | "unavailable";
+  theme: ThemeRef | null; themeRevision: string | null; parameters: ClaudeParameters | null;
+  paused: boolean; renderer: "applied" | "removed" | "unknown" | "unavailable"; diagnostics: Diagnostic[];
+}
+export type ClaudeMutationMethod = "claude.apply" | "claude.pause" | "claude.resume" | "claude.reset" | "claude.restore";
+export interface ClaudeOperation {
+  id: string; target: "claude"; method: ClaudeMutationMethod;
+  state: "running" | "succeeded" | "failed" | "indeterminate";
+  snapshot: ClaudeSnapshot; error: ManagerError | null;
 }
 export interface ThemeSummary {
   ref: ThemeRef;
@@ -203,6 +218,17 @@ export interface OperationPage { revision: string; operations: OperationSnapshot
 export type ManagerEvent = { protocol: typeof PROTOCOL; kind: "event"; backendSessionId: string; sequence: number } & (
   { event: "status.changed"; snapshot: ManagerSnapshot } | { event: "operation.changed"; operation: OperationSnapshot } | { event: "status.invalidated" } | { event: "session.closing" });
 export interface MethodMap {
+  "claude.status": { params: Record<string, never>; result: ClaudeSnapshot };
+  "claude.apply": { params: { operationId: string; theme: ThemeRef; expectedRevision: string; parameters?: Partial<ClaudeParameters> }; result: ClaudeOperation };
+  "claude.pause": { params: { operationId: string }; result: ClaudeOperation };
+  "claude.resume": { params: { operationId: string }; result: ClaudeOperation };
+  "claude.reset": { params: { operationId: string }; result: ClaudeOperation };
+  "claude.restore": { params: { operationId: string }; result: ClaudeOperation };
+  "claude.operations.get": { params: { operationId: string }; result: ClaudeOperation };
+  "claude.parameters.get": { params: { theme: ThemeRef }; result: { parameters: Partial<ClaudeParameters> } };
+  "claude.parameters.update": { params: { theme: ThemeRef; expectedRevision: string; parameters: Partial<ClaudeParameters> }; result: { parameters: Partial<ClaudeParameters>; snapshot: ClaudeSnapshot | null; refreshError: ManagerError | null } };
+  "claude.startup.get": { params: Record<string, never>; result: StartupAnimationSettings };
+  "claude.startup.update": { params: StartupAnimationUpdate; result: StartupAnimationSettings };
   "startup.get": { params: Record<string, never>; result: StartupAnimationSettings };
   "startup.update": { params: StartupAnimationUpdate; result: StartupAnimationSettings };
   "desktop.get": { params: Record<string, never>; result: DesktopInfo };
@@ -319,6 +345,12 @@ export function parseThemePatch(value: unknown): ThemePatch {
   }
   return value as ThemePatch;
 }
+export function parseClaudeParameters(value: unknown): Partial<ClaudeParameters> {
+  if (!record(value)) throw new ContractError("INVALID_REQUEST", "Invalid Claude Desktop parameters.");
+  fields(value, CLAUDE_PARAMETER_KEYS);
+  parseThemePatch({ parameters: value });
+  return value as Partial<ClaudeParameters>;
+}
 export function parseCommunityQuery(value: unknown): CommunityQuery {
   if (!record(value)) throw new ContractError("INVALID_REQUEST", "Invalid community query.");
   fields(value, ["limit", "offset", "sort", "query", "appearance"]);
@@ -364,13 +396,26 @@ export function parseRequest(value: unknown): ManagerRequest {
   if (value.kind !== "request" || responseId(value) === null || !boundedText(value.method, 80) || !record(value.params)) {
     throw new ContractError("INVALID_REQUEST", "Invalid request envelope.");
   }
-  if (!([...READ_METHODS, ...SESSION_METHODS, MEDIA_METHOD, ...OPERATION_METHODS, ...LIBRARY_METHODS, ...SOURCE_METHODS, ...PACKAGE_METHODS, ...COMMUNITY_METHODS, ...UPDATE_METHODS, ...DESKTOP_METHODS, ...MAINTENANCE_METHODS, ...RECOVERY_METHODS, ...RUNTIME_METHODS, ...STARTUP_METHODS] as readonly string[]).includes(value.method)) {
+  if (!([...READ_METHODS, ...SESSION_METHODS, MEDIA_METHOD, ...OPERATION_METHODS, ...LIBRARY_METHODS, ...SOURCE_METHODS, ...PACKAGE_METHODS, ...COMMUNITY_METHODS, ...UPDATE_METHODS, ...DESKTOP_METHODS, ...MAINTENANCE_METHODS, ...RECOVERY_METHODS, ...RUNTIME_METHODS, ...STARTUP_METHODS, ...CLAUDE_METHODS] as readonly string[]).includes(value.method)) {
     throw new ContractError("METHOD_UNSUPPORTED", "This method is not implemented by this backend.");
   }
   const params = value.params;
   switch (value.method) {
-    case "startup.get": fields(params, []); break;
-    case "startup.update":
+    case "claude.status": fields(params, []); break;
+    case "claude.pause": case "claude.resume": case "claude.reset": case "claude.restore": case "claude.operations.get":
+      fields(params, ["operationId"]);
+      if (!validOperationId(params.operationId)) throw new ContractError("INVALID_REQUEST", "Invalid Claude Desktop operation identity.");
+      break;
+    case "claude.parameters.get": fields(params, ["theme"]); parseThemeRef(params.theme); break;
+    case "claude.apply": case "claude.parameters.update":
+      fields(params, ["theme", "expectedRevision", "parameters", ...(value.method === "claude.apply" ? ["operationId"] : [])]);
+      parseThemeRef(params.theme);
+      if (typeof params.expectedRevision !== "string" || !/^[a-f0-9]{64}$/.test(params.expectedRevision) ||
+          (value.method === "claude.apply" && !validOperationId(params.operationId))) throw new ContractError("INVALID_REQUEST", "Invalid Claude Desktop theme revision or operation identity.");
+      if (value.method === "claude.parameters.update" || params.parameters !== undefined) parseClaudeParameters(params.parameters);
+      break;
+    case "startup.get": case "claude.startup.get": fields(params, []); break;
+    case "startup.update": case "claude.startup.update":
       fields(params, ["enabled", "theme", "expectedRevision"]);
       if ((!Object.hasOwn(params, "enabled") && !Object.hasOwn(params, "theme")) ||
           (Object.hasOwn(params, "enabled") && typeof params.enabled !== "boolean")) throw new ContractError("INVALID_REQUEST", "Invalid startup animation settings.");

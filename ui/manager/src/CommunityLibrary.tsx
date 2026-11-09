@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { CommunityPage, CommunityQuery, CommunityTheme, HelloResult } from "../../../contracts/manager.mjs";
+import type { CommunityPage, CommunityQuery, CommunityTheme, HelloResult, ThemeRef } from "../../../contracts/manager.mjs";
 import type { ManagerClient } from "./client";
 import type { CommunityActionRequest, CommunityDownloadUpdate } from "./CommunityPanel";
 import { useMessage, useText } from "./desktop";
@@ -13,9 +13,11 @@ import { communityCompatibilityMessages, communityPlatformName, mergeCommunityCo
 const initial: CommunityQuery = { limit: 24, offset: 0, sort: "recent", query: "", appearance: "all" };
 const size = (bytes: number) => bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KiB` : `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
 
-export function CommunityLibrary({ client, visible, busy, canApply, platform, engineVersion, downloadUpdate, onAction, onDelete }: {
+export function CommunityLibrary({ client, visible, busy, canApply, platform, engineVersion, downloadUpdate, onAction, onDelete, application = "codex", activeThemes }: {
   client: ManagerClient; visible: boolean; busy: boolean; canApply: boolean; downloadUpdate: CommunityDownloadUpdate | null;
   platform: HelloResult["platform"]; engineVersion: string | null;
+  application?: "codex" | "claude";
+  activeThemes: (ThemeRef | null)[];
   onAction(theme: CommunityTheme, action: CommunityActionRequest["action"]): void;
   onDelete(local: NonNullable<CommunityTheme["downloaded"]>): void;
 }) {
@@ -46,6 +48,7 @@ export function CommunityLibrary({ client, visible, busy, canApply, platform, en
     return () => { active = false; };
   }, [client, opened, query, refresh]);
   const theme = page?.items.find(value => value.id === selected);
+  const activeSelection = !!theme?.downloaded && activeThemes.some(ref => ref?.source === theme.downloaded!.theme.source && ref.id === theme.downloaded!.theme.id);
   const declaration = theme ? mergeCommunityCompatibility(mergeCommunityCompatibility({ applyCompatible: theme.applyCompatible, platforms: theme.platforms }, theme.compatibility), theme.downloaded?.compatibility) : undefined;
   function filter(patch: Partial<CommunityQuery>) { setQuery(previous => ({ ...previous, ...patch, offset: 0 })); }
   return <div className="community-layout">
@@ -63,7 +66,7 @@ export function CommunityLibrary({ client, visible, busy, canApply, platform, en
       <div className="theme-scroll" ref={scroll} tabIndex={0} aria-label={tr("社区主题列表")}>
         <div className="theme-grid community-grid">{page?.items.map(item => <button key={item.id} type="button" className={`theme-card ${selected === item.id ? "active" : ""}`}
           aria-pressed={selected === item.id} onClick={() => setSelected(item.id)}>
-          <MediaPreview client={client} target={{ kind: "community", version: item.id, variant: "thumbnail" }} name={item.name} visible={visible} thumbnail />
+          <MediaPreview client={client} target={{ kind: "community", version: item.id, variant: "thumbnail" }} name={item.name} application={application} visible={visible} thumbnail />
           <div className="theme-card-caption"><strong title={item.name}><span>{item.name}</span></strong><small className="community-author" title={item.authorDisplayName}>{item.authorDisplayName}</small>
             <div className="theme-card-badges"><small>{size(item.packageBytes)}</small><small>{tr("下载")} {item.downloadCount}</small>
               {item.downloaded && <small>{tr("已下载")}</small>}</div></div>
@@ -82,7 +85,7 @@ export function CommunityLibrary({ client, visible, busy, canApply, platform, en
     <aside className="inspector dashboard-inspector community-inspector" aria-label={tr("社区主题详情")}>
       {theme ? <>
         <MediaPreview key={theme.id} client={client} target={{ kind: "community", version: theme.id, variant: "preview" }} name={theme.name}
-          parameters={previewParameters(emptyParameters, { appearance: theme.appearance ?? "auto" })} visible={visible} />
+          parameters={previewParameters(emptyParameters, { appearance: application === "claude" ? "auto" : theme.appearance ?? "auto" })} application={application} visible={visible} />
         <div className="detail-body"><p className="eyebrow">{tr("社区主题")}</p><h2>{theme.name}</h2>
           <dl className="community-metadata"><dt>{tr("作者")}</dt><dd>{theme.authorDisplayName}</dd><dt>{tr("版本")}</dt><dd>{theme.version}</dd>
             <dt>{tr("许可")}</dt><dd>{theme.license}</dd><dt>{tr("大小")}</dt><dd>{size(theme.packageBytes)}</dd>
@@ -91,7 +94,7 @@ export function CommunityLibrary({ client, visible, busy, canApply, platform, en
           <p className="muted">{tr("预览展示背景，实际外观以应用结果为准。")}</p>
           {communityCompatibilityMessages(declaration, platform, engineVersion).map((value, index) => <p className="muted" key={index}>{msg(value)}</p>)}
           <div className="editor-actions"><button className="primary" disabled={busy || !canApply} onClick={() => onAction(theme, "apply")}>{tr("应用主题")}</button>
-            {theme.downloaded && <button disabled={busy} onClick={() => onDelete(theme.downloaded!)}>{tr("删除已下载主题")}</button>}</div>
+            {theme.downloaded && <button disabled={busy || activeSelection} title={activeSelection ? tr("当前正在使用该主题，请先应用其他主题后再删除。") : undefined} onClick={() => onDelete(theme.downloaded!)}>{tr("删除已下载主题")}</button>}</div>
         </div>
       </> : <p className="muted">{tr("选择社区主题，查看预览与安装信息。")}</p>}
     </aside>

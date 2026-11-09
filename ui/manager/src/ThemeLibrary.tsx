@@ -10,8 +10,9 @@ const categories: Record<string, string> = { dynamic: "动态", people: "人物"
 const identity = (theme: ThemeSummary) => `${theme.ref.source}:${theme.ref.id}`;
 const modified = (theme: ThemeSummary) => { const time = Date.parse(theme.modifiedAt ?? ""); return Number.isFinite(time) ? time : -Infinity; };
 
-export function ThemeLibrary({ client, platform, visible: pageVisible, themes, selected, busy, loading, onChoose, commands }: {
+export function ThemeLibrary({ client, platform, application = "codex", visible: pageVisible, themes, selected, busy, loading, onChoose, commands }: {
   client: ManagerClient | null; platform?: HelloResult["platform"] | undefined; visible: boolean;
+  application?: "codex" | "claude";
   themes: ThemeSummary[]; selected: string; busy: boolean; loading: boolean;
   onChoose(theme: ThemeSummary): void; commands: ReactNode;
 }) {
@@ -50,7 +51,7 @@ export function ThemeLibrary({ client, platform, visible: pageVisible, themes, s
     <div className="theme-grid">{visible.map(theme => {
       return <button disabled={busy} aria-pressed={selected === identity(theme)} className={`theme-card ${selected === identity(theme) ? "active" : ""}`} key={identity(theme)} onClick={() => onChoose(theme)}>
         {client ? <MediaPreview key={theme.revision} client={client} target={{ kind: "theme", theme: theme.ref, revision: theme.revision, variant: "thumbnail" }} name={theme.name}
-          mediaKind={theme.mediaKind} visible={pageVisible} thumbnail /> : <div className="theme-art">{tr("预览未连接")}</div>}
+          mediaKind={theme.mediaKind} application={application} visible={pageVisible} thumbnail /> : <div className="theme-art">{tr("预览未连接")}</div>}
         <div className="theme-card-caption">
           <strong title={theme.name}><i className={`category-dot category-${theme.displayCategories[0] ?? "art"}`} /><span>{theme.name}</span></strong>
           <div className="theme-card-badges">

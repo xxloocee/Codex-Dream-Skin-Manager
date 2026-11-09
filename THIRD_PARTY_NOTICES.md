@@ -17,6 +17,10 @@ macOS 应用将对应原文放在 `Contents/Resources/LICENSE.txt` 与 `Contents
 
 Codex Dream Skin 是非官方定制项目，与 OpenAI 不存在隶属、认可或赞助关系。OpenAI、Codex 和 ChatGPT 的商标、产品名称、标识及商业外观不因上述软件许可证而获得授权。
 
+## Application icons
+
+管理器中的 Codex、Claude 应用图标分别来自 OpenAI、Anthropic 应用原始资源，仅用于标识皮肤应用目标；来源和版本见 `ui/manager/src/assets/SOURCES.md`。图标的权利归各自权利人所有，不属于本项目 MIT 软件许可证的授权范围。
+
 ## Node.js
 
 正式发布包包含 [Node.js](https://nodejs.org/) 的 Windows x64 可执行文件，用于运行随包附带的 JavaScript 工具。GitHub Actions 当前固定使用 Node.js `22.22.2`；本地构建会复制 `build.ps1 -NodeExecutable` 指定的 Windows x64 Node.js `>=22.22.2 <23`。

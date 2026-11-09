@@ -279,7 +279,7 @@ function mp4ChunkRangesAreValid(chunkOffsets, chunking, sampleSizes, mediaBoxes)
   });
 }
 
-function mp4VideoMetadata(bytes) {
+function mp4VideoMetadata(bytes, track = null) {
   const roots = isoBoxes(bytes, 0, bytes.length);
   if (!roots?.some((box) => box.type === "ftyp") ||
       roots.some((box) => box.type === "moof")) return null;
@@ -333,15 +333,164 @@ function mp4VideoMetadata(bytes) {
         !chunking ||
         !mp4ChunkRangesAreValid(chunkOffsets, chunking, sizes.sampleSizes, mediaBoxes)) continue;
     const selected = configurations.find((entry) => chunking.descriptionIndices.has(entry.index));
-    if (selected) return {
-      ...selected,
-      sampleCount: sizes.sampleCount,
-      durationSeconds: timing.durationSeconds,
-      fps: timing.fps,
-      peakFps: timing.peakFps,
-    };
+    if (selected) {
+      if (track) Object.assign(track, { roots, trak, stbl, stsd, timescale, selected, sizes, chunkOffsets, chunking });
+      return {
+        ...selected,
+        sampleCount: sizes.sampleCount,
+        durationSeconds: timing.durationSeconds,
+        fps: timing.fps,
+        peakFps: timing.peakFps,
+      };
+    }
   }
   return null;
+}
+
+function mp4PresentationTimes(bytes, stbl, sampleCount) {
+  const stts = childBox(bytes, stbl, "stts");
+  const runs = uint32be(bytes, stts.data + 4);
+  if (bytes[stts.data] !== 0 || stts.data + 8 + runs * 8 !== stts.end) return null;
+  const durations = [], timestamps = [];
+  let time = 0;
+  for (let run = 0; run < runs; run += 1) {
+    const offset = stts.data + 8 + run * 8;
+    const count = uint32be(bytes, offset), delta = uint32be(bytes, offset + 4);
+    for (let index = 0; index < count; index += 1) {
+      timestamps.push(time); durations.push(delta); time += delta;
+    }
+  }
+  if (timestamps.length !== sampleCount) return null;
+  const ctts = childBox(bytes, stbl, "ctts");
+  if (ctts) {
+    if (ctts.data + 8 > ctts.end || bytes[ctts.data] > 1) return null;
+    const count = uint32be(bytes, ctts.data + 4);
+    if (ctts.data + 8 + count * 8 !== ctts.end) return null;
+    let sample = 0;
+    for (let index = 0; index < count; index += 1) {
+      const offset = ctts.data + 8 + index * 8;
+      const run = uint32be(bytes, offset);
+      let shift = uint32be(bytes, offset + 4);
+      if (bytes[ctts.data] === 1 && shift >= 0x80000000) shift -= 0x100000000;
+      if (run < 1 || sample + run > sampleCount) return null;
+      for (let end = sample + run; sample < end; sample += 1) timestamps[sample] += shift;
+    }
+    if (sample !== sampleCount) return null;
+  }
+  return { timestamps, durations };
+}
+
+function mp4SyncSamples(bytes, stbl, sampleCount) {
+  const stss = childBox(bytes, stbl, "stss");
+  if (!stss) return new Set(Array.from({ length: sampleCount }, (_, index) => index));
+  if (stss.data + 8 > stss.end || bytes[stss.data] !== 0) return null;
+  const count = uint32be(bytes, stss.data + 4);
+  if (count < 1 || stss.data + 8 + count * 4 !== stss.end) return null;
+  const sync = new Set();
+  let previous = 0;
+  for (let index = 0; index < count; index += 1) {
+    const sample = uint32be(bytes, stss.data + 8 + index * 4);
+    if (sample <= previous || sample > sampleCount) return null;
+    previous = sample; sync.add(sample - 1);
+  }
+  return sync.has(0) ? sync : null;
+}
+
+function mp4DecoderConfiguration(bytes, stsd, selected) {
+  const entries = isoBoxes(bytes, stsd.data + 8, stsd.end);
+  const entry = entries?.[selected.index - 1];
+  if (!entry) return null;
+  const configuration = childBox(bytes, { data: entry.data + 78, end: entry.end },
+    MP4_VIDEO_CODECS.has(entry.type) ? "avcC" : "hvcC");
+  if (!configuration) return null;
+  const description = Array.from(bytes.subarray(configuration.data, configuration.end));
+  const hex = value => value.toString(16).toUpperCase();
+  let codec;
+  if (MP4_VIDEO_CODECS.has(entry.type)) {
+    codec = `${entry.type}.${description.slice(1, 4).map(value => hex(value).padStart(2, "0")).join("")}`;
+  } else {
+    const profileSpace = ["", "A", "B", "C"][description[1] >> 6];
+    let compatibility = uint32be(bytes, configuration.data + 2), reversed = 0;
+    for (let bit = 0; bit < 32; bit += 1) { reversed = reversed * 2 + (compatibility & 1); compatibility >>>= 1; }
+    const constraints = description.slice(6, 12);
+    while (constraints.length && constraints.at(-1) === 0) constraints.pop();
+    codec = `${entry.type}.${profileSpace}${description[1] & 0x1f}.${hex(reversed)}.${description[1] & 0x20 ? "H" : "L"}${description[12]}`;
+    if (constraints.length) codec += `.${constraints.map(hex).join(".")}`;
+  }
+  return { codec, codedWidth: selected.width, codedHeight: selected.height, description };
+}
+
+function mp4Rotation(bytes, trak) {
+  const tkhd = childBox(bytes, trak, "tkhd");
+  if (!tkhd || tkhd.data + 4 > tkhd.end || bytes[tkhd.data] > 1) return null;
+  const offset = tkhd.data + (bytes[tkhd.data] === 1 ? 52 : 40);
+  if (offset + 36 > tkhd.end) return null;
+  const matrix = Array.from({ length: 9 }, (_, index) => uint32be(bytes, offset + index * 4));
+  if (matrix[2] !== 0 || matrix[5] !== 0 || matrix[8] !== 0x40000000) return null;
+  const basis = [matrix[0], matrix[1], matrix[3], matrix[4]].join(",");
+  return new Map([
+    ["65536,0,0,65536", 0], ["0,65536,4294901760,0", 90],
+    ["4294901760,0,0,4294901760", 180], ["0,4294901760,65536,0", 270],
+  ]).get(basis) ?? null;
+}
+
+function mp4EditWindow(bytes, roots, trak, timescale, timestamps, durations) {
+  const minimum = Math.min(...timestamps);
+  const maximum = Math.max(...timestamps.map((time, index) => time + durations[index]));
+  const edts = childBox(bytes, trak, "edts");
+  if (!edts) return { start: minimum, duration: (maximum - minimum) / timescale };
+  const elst = childBox(bytes, edts, "elst");
+  if (!elst || elst.data + 8 > elst.end || bytes[elst.data] > 1 || uint32be(bytes, elst.data + 4) !== 1) return null;
+  const wide = bytes[elst.data] === 1, offset = elst.data + 8, width = wide ? 20 : 12;
+  if (offset + width !== elst.end) return null;
+  const movieDuration = wide ? uint64be(bytes, offset) : uint32be(bytes, offset);
+  const mediaOffset = offset + (wide ? 8 : 4);
+  let mediaTime;
+  if (wide) {
+    const high = uint32be(bytes, mediaOffset), low = uint32be(bytes, mediaOffset + 4);
+    mediaTime = (high >= 0x80000000 ? high - 0x100000000 : high) * 0x100000000 + low;
+  } else {
+    mediaTime = uint32be(bytes, mediaOffset);
+    if (mediaTime >= 0x80000000) mediaTime -= 0x100000000;
+  }
+  const rate = mediaOffset + (wide ? 8 : 4);
+  const moov = roots.find(box => box.type === "moov");
+  const movieTimescale = mp4Timescale(bytes, childBox(bytes, moov, "mvhd"));
+  if (!movieTimescale || !Number.isSafeInteger(mediaTime) || mediaTime < 0 || mediaTime >= maximum ||
+      !movieDuration || uint16be(bytes, rate) !== 1 || uint16be(bytes, rate + 2) !== 0) return null;
+  return { start: mediaTime, duration: movieDuration / movieTimescale };
+}
+
+// Container demux only: samples stay in decode order and point into the input.
+// A single rate-1 edit may leave negative timestamps for decoder preroll.
+// Complex edits, non-orthogonal transforms and changing descriptions are not
+// supported; the existing metadata readers retain their previous behaviour.
+export function readMp4VideoTrack(value) {
+  const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+  const track = {};
+  const metadata = mp4VideoMetadata(bytes, track);
+  if (!metadata || !classifyImageDimensions(metadata) || track.chunking.descriptionIndices.size !== 1) return null;
+  const timing = mp4PresentationTimes(bytes, track.stbl, metadata.sampleCount);
+  const sync = mp4SyncSamples(bytes, track.stbl, metadata.sampleCount);
+  const config = mp4DecoderConfiguration(bytes, track.stsd, track.selected);
+  const rotate = mp4Rotation(bytes, track.trak);
+  if (!timing || !sync || !config || rotate === null) return null;
+  const edit = mp4EditWindow(bytes, track.roots, track.trak, track.timescale, timing.timestamps, timing.durations);
+  if (!edit || !(edit.duration > 0 && edit.duration <= MAX_VIDEO_DURATION_SECONDS)) return null;
+  const samples = [];
+  for (let chunk = 0; chunk < track.chunkOffsets.length; chunk += 1) {
+    let offset = track.chunkOffsets[chunk];
+    const { sampleStart, sampleCount } = track.chunking.chunks[chunk];
+    for (let index = sampleStart; index < sampleStart + sampleCount; index += 1) {
+      const size = track.sizes.sampleSizes[index];
+      samples.push({ offset, size,
+        timestamp: Math.round((timing.timestamps[index] - edit.start) * 1e6 / track.timescale),
+        duration: Math.round(timing.durations[index] * 1e6 / track.timescale), key: sync.has(index) });
+      offset += size;
+    }
+  }
+  return { width: metadata.width, height: metadata.height, config, samples,
+    duration: Math.round(edit.duration * 1e6), rotate };
 }
 
 function gifDimensions(bytes) {
