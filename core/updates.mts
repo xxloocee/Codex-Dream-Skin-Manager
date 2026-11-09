@@ -25,6 +25,7 @@ export class Updates {
   private readonly directory: string;
   private readonly proposals = new Map<string, Proposal>();
   private readonly live = new Map<string, Entry>();
+  private readonly restarts = new Map<string, Promise<{ quit: true }>>();
   private readonly jobs = new Set<Promise<void>>();
   private active: string | null = null;
   private checking = false;
@@ -91,7 +92,7 @@ export class Updates {
           value.operation = { ...value.operation, stage: progress.stage, updatedAt: new Date().toISOString(),
             ...(progress.stage === "downloading" ? { progress: { downloadedBytes: progress.downloadedBytes, totalBytes: progress.totalBytes } } : {}) };
         });
-        await this.update(value, { state: "handoff", stage: outcome.managerMustQuit ? "waitingForManagerExit" : "installerStarted", managerMustQuit: outcome.managerMustQuit });
+        await this.update(value, { state: "handoff", stage: outcome.managerMustQuit ? "readyToRestart" : "installerStarted", managerMustQuit: outcome.managerMustQuit });
       } catch (error) {
         const response = failure(null, error);
         const uncertain = executing && !(error instanceof UpdateNotStartedError);
@@ -110,6 +111,13 @@ export class Updates {
     const value = this.live.get(id) ?? await this.read(id);
     if (!value) throw new ContractError("OPERATION_UNKNOWN", "更新记录不在保留范围内，请核对已安装版本。");
     let operation = structuredClone(value.operation);
+    // A prepared update never launched a helper. Closing its session is a
+    // definite non-install, not an ambiguous handoff that blocks all retries.
+    if (!this.live.has(id) && operation.state === "handoff" && operation.stage === "readyToRestart") {
+      operation = { ...operation, state: "failed", stage: "preparedSessionClosed", managerMustQuit: false,
+        error: { code: "IO_ERROR", message: "管理器已关闭，尚未启动安装，请重新检查更新。", retryable: true } };
+      await this.update(value, operation);
+    }
     if (!this.live.has(id) && writerStates.includes(operation.state)) operation = { ...operation, state: "indeterminate", stage: "previousSessionInterrupted" };
     if (!this.live.has(id) && operation.state === "handoff" && operation.managerMustQuit) operation = { ...operation, state: "indeterminate", stage: "previousSessionHandoff", managerMustQuit: false };
     if (["handoff", "indeterminate"].includes(operation.state)) {
@@ -133,9 +141,34 @@ export class Updates {
     if (!proposal.result.updateAvailable) throw new ContractError("INVALID_REQUEST", "No new version is available.");
     return { channel: proposal.result.channel, version: proposal.result.latestVersion };
   }
-  async quit(id: string): Promise<{ quit: true }> {
+  quit(id: string): Promise<{ quit: true }> {
+    const existing = this.restarts.get(id);
+    if (existing) return existing.then(async result => {
+      const operation = await this.get(id);
+      if (this.closed || operation.state !== "handoff" || !operation.managerMustQuit || this.businessBusy()) throw new ContractError("BUSY", "尚未确认安全的安装退出条件。");
+      return result;
+    });
+    const job = this.startRestart(id);
+    this.restarts.set(id, job);
+    // Keep successful handoffs idempotent if the native reply is delayed/lost.
+    void job.catch(() => this.restarts.delete(id));
+    return job;
+  }
+  private async startRestart(id: string): Promise<{ quit: true }> {
     const operation = await this.get(id);
-    if (!this.live.has(id) || operation.state !== "handoff" || !operation.managerMustQuit || this.businessBusy() || (this.active !== null && this.active !== id)) throw new ContractError("BUSY", "尚未确认安全的安装退出条件。");
+    if (this.closed || !this.live.has(id) || operation.state !== "handoff" || !operation.managerMustQuit || this.businessBusy() || (this.active !== null && this.active !== id)) throw new ContractError("BUSY", "尚未确认安全的安装退出条件。");
+    if (operation.stage !== "readyToRestart") throw new ContractError("BUSY", "安装器已交接，请核对更新结果。");
+    const value = this.live.get(id)!;
+    // Persist intent before starting a detached process. A crash during launch
+    // must remain uncertain until its receipt is available.
+    try { await this.update(value, { stage: "waitingForManagerExit" }); }
+    catch (error) { value.operation = operation; throw error; }
+    try { await this.port.restart(id); }
+    catch (error) {
+      if (error instanceof UpdateNotStartedError) await this.update(value, { stage: "readyToRestart" });
+      else await this.update(value, { state: "indeterminate", stage: "reconciliationRequired", managerMustQuit: false });
+      throw error;
+    }
     return { quit: true };
   }
   async close(): Promise<void> { this.closed = true; await Promise.allSettled([...this.jobs]); this.proposals.clear(); }
