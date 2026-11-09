@@ -8,7 +8,7 @@ import type { ManagerClient } from "./client";
 import { BridgeError } from "./client";
 
 const labels: Record<UpdateOperation["state"], string> = { queued: "正在准备更新…", running: "正在下载更新…", handoff: "请完成安装", installed: "更新已安装", failed: "更新未完成", indeterminate: "结果待核对" };
-const stages: Record<string, string> = { downloading: "正在下载更新…", verifying: "正在校验更新…", preparing: "正在准备安装…", waitingForManagerExit: "更新已准备好，重启后完成安装。" };
+const stages: Record<string, string> = { downloading: "正在下载更新…", verifying: "正在校验更新…", preparing: "正在准备安装…", readyToRestart: "更新已下载，可稍后点击重启并更新。", waitingForManagerExit: "正在退出管理器以完成更新…" };
 const installing = (operation?: UpdateOperation) => operation?.state === "queued" || operation?.state === "running" || (operation?.state === "handoff" && operation.managerMustQuit);
 const channels = { "windows-release": "Windows 正式版", "macos-release": "macOS 正式版", "macos-gui": "macOS 签名 GUI" };
 const message = (error: unknown) => errorMessage(error, "更新处理未完成。");
@@ -129,7 +129,7 @@ export function UpdatePanel({ client, session, disabled, checkRequest = 0, onBus
       {latest.state === "handoff" && latest.managerMustQuit && <button disabled={disabled || running} onClick={() => void act(async () => { await client.call("updates.quit", { operationId: latestId! }); })}>{tr("重启并更新")}</button>}
     </> : <p role="status">{msg(queryError || notice)}</p>}
     {unresolved && !showOperation && <p>{tr("上次更新结果待核对，可继续检查版本；不会重复安装。")}</p>}
-    {unresolved && <button disabled={running} onClick={() => void act(async () => { setShowOperation(true); await read(unresolved); })}>{tr("核对结果")}</button>}
+    {unresolved && (latest?.state === "indeterminate" || !!queryError) && <button disabled={running} onClick={() => void act(async () => { setShowOperation(true); await read(unresolved); })}>{tr("核对结果")}</button>}
     {proposal?.updateAvailable && !attempted && !unresolved && <div className="editor-actions">
       {proposal.installMode === "manual" ? <button disabled={disabled || running || Date.parse(proposal.expiresAt) <= Date.now()} onClick={() => void act(async () => {
         const result = await client.call("updates.openRelease", { handle: proposal.handle }); if (alive.current) setNotice(uiMessage(result.opened ? "已打开发布页。" : "无法打开发布页。"));

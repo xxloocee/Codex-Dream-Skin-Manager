@@ -81,6 +81,8 @@ export const messages: Readonly<Record<string, string>> = {
   "正在下载更新…": "Downloading update…",
   "正在校验更新…": "Verifying update…",
   "正在准备安装…": "Preparing installation…",
+  "更新已下载，可稍后点击重启并更新。": "Update downloaded. Click Restart and update when ready.",
+  "正在退出管理器以完成更新…": "Quitting the manager to finish updating…",
   "更新已准备好，重启后完成安装。": "The update is ready. Restart to finish installing.",
   "更新下载进度": "Update download progress",
   "已下载 {downloaded} / {total} MB（{percent}%）": "Downloaded {downloaded} / {total} MB ({percent}%)",
