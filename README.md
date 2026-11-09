@@ -1,23 +1,23 @@
 # Codex Dream Skin Manager
 
-为 Codex 桌面客户端更换背景、管理主题和调整界面外观。Windows 和 macOS 共用一套管理界面、业务核心和换肤运行时，由各自的原生窗口承载。
+为 Codex 桌面客户端更换背景、管理主题和调整界面外观，Windows 版同时支持 Claude Desktop 的 Code 页面。Windows 和 macOS 共用管理界面、业务核心和 Codex 换肤运行时，由各自的原生窗口承载。
 
 ## 下载与安装
 
-当前版本：`3.1.5`。前往 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载对应安装包：
+当前版本：`3.2.0`。前往 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载对应安装包：
 
 | 平台 | 系统要求 | 安装包 |
 | --- | --- | --- |
-| Windows 安装版 | Windows 10/11 x64 | `CodexDreamSkinManager-v3.1.5-windows-x64-setup.exe` |
-| Windows 便携版 | Windows 10/11 x64 | `CodexDreamSkinManager-v3.1.5-windows-x64-portable.zip` |
-| macOS Intel | macOS 13+ | `CodexDreamSkinManager-v3.1.5-macos-x64.dmg` |
-| macOS Apple Silicon | macOS 13+ | `CodexDreamSkinManager-v3.1.5-macos-arm64.dmg` |
+| Windows 安装版 | Windows 10/11 x64 | `CodexDreamSkinManager-v3.2.0-windows-x64-setup.exe` |
+| Windows 便携版 | Windows 10/11 x64 | `CodexDreamSkinManager-v3.2.0-windows-x64-portable.zip` |
+| macOS Intel | macOS 13+ | `CodexDreamSkinManager-v3.2.0-macos-x64.dmg` |
+| macOS Apple Silicon | macOS 13+ | `CodexDreamSkinManager-v3.2.0-macos-arm64.dmg` |
 
-请先安装 Codex 桌面客户端。发布包已内置 Node.js，无需单独配置运行环境；Windows 便携版须完整解压，不能只复制 EXE。`SHA256SUMS.txt` 提供下载包校验值。
+请先安装所需的 Codex 或 Claude Desktop 客户端。发布包已内置 Node.js，无需单独配置运行环境；Windows 便携版须完整解压，不能只复制 EXE。`SHA256SUMS.txt` 提供下载包校验值。
 
 ## 主要功能
 
-两端共用以下主要功能，系统差异由平台适配层处理：
+Windows 与 macOS 的 Codex 管理共用以下主要功能，系统差异由平台适配层处理：
 
 - **主题库**：浏览内置与自定义主题，按名称、标签、分类筛选，先预览再应用。
 - **社区主题库**：在软件内浏览 [DreamSkin 社区](https://dreamskin.cc/gallery)，按名称或作者搜索，按最新、下载热度或收藏数排序，筛选浅深色并翻页。选中主题可查看背景预览、作者、许可和支持平台；点击“应用主题”即可下载并应用，已下载时直接使用本地副本；社区下载不进入“我的”，卡片显示“已下载”标记并在重开后恢复。首版不包含社区账号、收藏写入、评论或投稿。
@@ -30,9 +30,11 @@
 
 **macOS**：使用相同的管理页面，另外适配菜单栏、ZIP 导入、原生媒体转换和应用更新。发布者配置签名密钥后，正式版支持应用内下载并重启更新，保留旧应用供恢复。尚未启用该通道的旧版需先手动安装一次；未配置签名通道的源码构建仍提供手动下载。详见 [GUI 使用说明](macos/GUI使用说明.md) 和 [更新服务部署](macos/UPDATER.md)。
 
+**Claude Desktop（Windows）**：左侧图标切换应用，主题与素材共用，皮肤参数、当前状态及启动动画分别保存；支持图片、动图、MP4、暂停/继续、重置与恢复。使用前在 Claude 的 `Developer → Enable Main Process Debugger` 手动开启原生连接入口，并打开 Code 页面。macOS 暂不支持 Claude，Codex 专用 CSS 和消息气泡透明度不套用到 Claude。Claude 进程退出后需重新连接应用。
+
 ## 快速上手
 
-1. 打开管理器，选择主题查看预览，或添加自己的图片、视频。
+1. 打开管理器，在左侧选择目标应用，再选择主题查看预览，或添加自己的图片、视频。
 2. 点击 **应用皮肤**。需要重启 Codex 时会先请求确认，请保存未完成的输入。
 3. 在 **主题设置**中调整取景和透明度；日常可暂停/继续，异常时可重新应用主题或恢复原始外观。
 
@@ -73,7 +75,7 @@ bash macos/scripts/build-app.sh
 
 公共运行时修改后用 `node tools/sync-runtime-assets.mjs` 生成两端镜像。
 开发说明见 [CONTRIBUTING.md](CONTRIBUTING.md)，打包布局见 [hosts/README.md](hosts/README.md)。
-3.0.0 起已切换到共享管理器入口。当前发布内容、验证范围与已知限制见 [版本说明](.github/release-notes/v3.1.5.md)。
+3.0.0 起已切换到共享管理器入口。当前发布内容、验证范围与已知限制见 [版本说明](.github/release-notes/v3.2.0.md)。
 
 ## 致谢与许可
 
