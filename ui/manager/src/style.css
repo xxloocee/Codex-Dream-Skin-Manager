@@ -8,7 +8,8 @@ button { cursor: pointer; padding: 9px 13px; background: #111214; color: #e9cb7b
 button:hover:enabled { background: #1b1812; border-color: #c79a44; color: #f6e3a8; }
 button:active:enabled { background: #08090a; border-color: #9d722e; }
 button:disabled { color: #827865; background: #2a2926; border-color: #5b513d; opacity: .65; cursor: default; }
-button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline: 3px solid #d8ae57; outline-offset: 3px; }
+button:focus-visible, select:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline: 3px solid #d8ae57; outline-offset: 3px; }
+input:focus-visible { outline: none; }
 input:not([type=checkbox]):not([type=range]):not([type=color]), select { min-width: 0; min-height: 36px; padding: 8px 10px; color: #20242a; background: white; border: 1px solid #d9dee5; border-radius: 7px; }
 input[type=checkbox] { accent-color: #b79b62; }
 .select-trigger { display: inline-flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; max-width: 100%; min-height: 36px; padding: 8px 11px; font-size: 12px; line-height: 18px; text-align: left; color: #34383e; background: linear-gradient(#fff, #fafbfc); border: 1px solid #d9dee5; border-radius: 8px; box-shadow: 0 1px 2px #20242a05; transition: border-color .15s, background .15s, box-shadow .15s; }
