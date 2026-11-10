@@ -27,6 +27,7 @@ export class Updates {
   private readonly live = new Map<string, Entry>();
   private readonly restarts = new Map<string, Promise<{ quit: true }>>();
   private readonly jobs = new Set<Promise<void>>();
+  private readonly reads = new Map<string, Promise<UpdateOperation>>();
   private active: string | null = null;
   private checking = false;
   private closed = false;
@@ -83,31 +84,45 @@ export class Updates {
     this.live.set(params.operationId, value); this.active = params.operationId; this.proposals.delete(params.handle);
     const job = new Promise<void>(resolve => setImmediate(resolve)).then(async () => {
       let executing = false;
+      let finishing = false;
       try {
         const current = await this.port.check();
         if (JSON.stringify(current) !== JSON.stringify(proposal.candidate)) throw new ContractError("RUNTIME_CHANGED", "版本、更新源、包摘要或安装身份已改变，请重新检查和批准。");
         await this.update(value, { state: "running", stage: "downloadingAndVerifying" }); executing = true;
         const outcome = await this.port.install(current, params.operationId, progress => {
           if (value.operation.state !== "running") return;
-          value.operation = { ...value.operation, stage: progress.stage, updatedAt: new Date().toISOString(),
+          const { progress: _progress, ...operation } = value.operation;
+          value.operation = { ...operation, stage: progress.stage, updatedAt: new Date().toISOString(),
             ...(progress.stage === "downloading" ? { progress: { downloadedBytes: progress.downloadedBytes, totalBytes: progress.totalBytes } } : {}) };
         });
+        if (value.operation.state !== "running") return; // A durable platform receipt may already have reconciled the operation.
+        finishing = true;
         await this.update(value, { state: "handoff", stage: outcome.managerMustQuit ? "readyToRestart" : "installerStarted", managerMustQuit: outcome.managerMustQuit });
       } catch (error) {
+        if (!finishing && !["queued", "running"].includes(value.operation.state)) return;
         const response = failure(null, error);
         const uncertain = executing && !(error instanceof UpdateNotStartedError);
         try { await this.update(value, { state: uncertain ? "indeterminate" : "failed", stage: uncertain ? "reconciliationRequired" : executing ? "downloadOrVerificationFailed" : "preconditionChanged", error: response.ok ? null : response.error }); }
         catch { value.operation.state = "indeterminate"; value.operation.stage = "journalUnavailable"; }
-      } finally { this.active = value.operation.state === "handoff" && value.operation.managerMustQuit ? value.operation.id : null; }
+      } finally { if (this.active === value.operation.id) this.active = value.operation.state === "handoff" && value.operation.managerMustQuit ? value.operation.id : null; }
     });
     this.jobs.add(job); void job.finally(() => this.jobs.delete(job)); return structuredClone(value.operation);
   }
   private async update(value: Entry, patch: Partial<UpdateOperation>): Promise<void> {
     value.operation = { ...value.operation, ...patch, updatedAt: new Date().toISOString() };
+    if (patch.stage && patch.stage !== "downloading") delete value.operation.progress;
     await durableJson(this.file(value.operation.id), this.directory, value);
     if (["installed", "failed"].includes(value.operation.state)) this.live.delete(value.operation.id);
   }
   async get(id: string): Promise<UpdateOperation> {
+    const pending = this.reads.get(id);
+    if (pending) return structuredClone(await pending);
+    const job = this.getCurrent(id);
+    this.reads.set(id, job);
+    try { return structuredClone(await job); }
+    finally { if (this.reads.get(id) === job) this.reads.delete(id); }
+  }
+  private async getCurrent(id: string): Promise<UpdateOperation> {
     const value = this.live.get(id) ?? await this.read(id);
     if (!value) throw new ContractError("OPERATION_UNKNOWN", "更新记录不在保留范围内，请核对已安装版本。");
     let operation = structuredClone(value.operation);
@@ -120,11 +135,18 @@ export class Updates {
     }
     if (!this.live.has(id) && writerStates.includes(operation.state)) operation = { ...operation, state: "indeterminate", stage: "previousSessionInterrupted" };
     if (!this.live.has(id) && operation.state === "handoff" && operation.managerMustQuit) operation = { ...operation, state: "indeterminate", stage: "previousSessionHandoff", managerMustQuit: false };
-    if (["handoff", "indeterminate"].includes(operation.state)) {
-      const receipt = await this.port.receipt(id).catch(() => null);
+    if (["running", "handoff", "indeterminate"].includes(operation.state)) {
+      const receipt = await this.port.receipt(id, operation.latestVersion).catch(() => null);
       if (receipt) {
-        operation = { ...operation, state: receipt, stage: receipt === "installed" ? "bundleReplacedAndOpenAccepted" : "installerFailed", managerMustQuit: false };
-        await this.update(value, operation);
+        const state = typeof receipt === "string" ? receipt : receipt.state;
+        const stage = state === "installed" ? operation.channel === "windows-release" ? "installedVersionConfirmed" : "bundleReplacedAndOpenAccepted"
+          : state === "handoff" ? "installerStarted" : state === "failed" ? "installerFailed" : "reconciliationRequired";
+        operation = { ...operation, state, stage, managerMustQuit: false, error: typeof receipt === "string" ? state === "installed" ? null : operation.error : receipt.error };
+        delete operation.progress;
+        if (operation.state !== value.operation.state || operation.stage !== value.operation.stage || value.operation.managerMustQuit || value.operation.progress || JSON.stringify(operation.error) !== JSON.stringify(value.operation.error)) {
+          await this.update(value, operation);
+          operation = structuredClone(value.operation);
+        }
         if (this.active === id) this.active = null;
       }
     }

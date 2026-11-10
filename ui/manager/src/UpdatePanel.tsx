@@ -116,25 +116,45 @@ export function UpdatePanel({ client, session, disabled, checkRequest = 0, onBus
     } finally { if (alive.current) setIds(records.current); }
   }
   const unresolved = unresolvedId(), latestId = unresolved ?? ids[ids.length - 1], latest = latestId ? operations[latestId] : undefined;
-  const progress = latest?.state === "running" && latest.stage === "downloading" ? latest.progress : undefined;
-  return <section id="software-updates" className="update-dialog" aria-label={tr("软件更新")}><h2>{tr("软件更新")}</h2>
-    {proposal && <p>{tr("当前 {current} · 最新稳定发布 {latest}", { current: proposal.currentVersion, latest: proposal.latestVersion })}</p>}
-    {showOperation && latest ? <><p role="status">{queryError ? msg(queryError) : tr((installing(latest) ? stages[latest.stage] : undefined) ?? labels[latest.state])}</p>{latest.error && <p className="error">{msg(diagnosticMessage(latest.error))}</p>}
-      {actionError && <p role="alert" className="error">{msg(actionError)}</p>}
-      {progress && <><progress aria-label={tr("更新下载进度")} value={progress.downloadedBytes} max={progress.totalBytes} /><p>{tr("已下载 {downloaded} / {total} MB（{percent}%）", {
-        downloaded: (progress.downloadedBytes / 1048576).toFixed(1), total: (progress.totalBytes / 1048576).toFixed(1), percent: Math.floor(progress.downloadedBytes / progress.totalBytes * 100),
-      })}</p></>}
-      {latest.state === "indeterminate" && <p>{tr("请核对已安装版本，不会重复安装。")}</p>}
-      {latest.state === "handoff" && !latest.managerMustQuit && <p>{tr("安装器已启动，请按提示完成更新。")}</p>}
-      {latest.state === "handoff" && latest.managerMustQuit && <button disabled={disabled || running} onClick={() => void act(async () => { await client.call("updates.quit", { operationId: latestId! }); })}>{tr("重启并更新")}</button>}
-    </> : <p role="status">{msg(queryError || notice)}</p>}
-    {unresolved && !showOperation && <p>{tr("上次更新结果待核对，可继续检查版本；不会重复安装。")}</p>}
-    {unresolved && (latest?.state === "indeterminate" || !!queryError) && <button disabled={running} onClick={() => void act(async () => { setShowOperation(true); await read(unresolved); })}>{tr("核对结果")}</button>}
-    {proposal?.updateAvailable && !attempted && !unresolved && <div className="editor-actions">
-      {proposal.installMode === "manual" ? <button disabled={disabled || running || Date.parse(proposal.expiresAt) <= Date.now()} onClick={() => void act(async () => {
-        const result = await client.call("updates.openRelease", { handle: proposal.handle }); if (alive.current) setNotice(uiMessage(result.opened ? "已打开发布页。" : "无法打开发布页。"));
-      })}>{tr("打开下载页面")}</button> : <><p>{tr("下载并安装新版本？安装时需要退出管理器。")}</p><button disabled={disabled || running || Date.parse(proposal.expiresAt) <= Date.now()} onClick={() => void act(install)}>{tr("下载并安装")}</button></>}
+  const shown = showOperation ? latest : undefined;
+  const progress = shown?.state === "running" && shown.stage === "downloading" ? shown.progress : undefined;
+  const percent = progress && progress.totalBytes > 0 ? Math.min(100, Math.floor(progress.downloadedBytes / progress.totalBytes * 100)) : undefined;
+  const canDownload = proposal?.updateAvailable && !attempted && !unresolved;
+  return <section id="software-updates" className="update-dialog" aria-label={tr("软件更新")}>
+    <header className="update-heading">
+      <span className="update-mark" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4" /></svg></span>
+      <div><h2>{tr("软件更新")}</h2><p>{tr("获取最新版本，安全下载并安装。")}</p></div>
+    </header>
+    {proposal && <div className="update-versions">
+      <div><span>{tr("当前版本")}</span><strong>{proposal.currentVersion}</strong></div>
+      <span className="update-version-arrow" aria-hidden="true">→</span>
+      <div className="update-latest"><span>{tr("最新稳定版本")}</span><strong>{proposal.latestVersion}</strong></div>
     </div>}
-    {!running && (attempted || unresolved || !proposal || Date.parse(proposal.expiresAt) <= Date.now()) && <button disabled={disabled || installing(latest)} onClick={() => void check(false)}>{tr(latest?.state === "failed" ? "重新检查并重试" : "重新检查")}</button>}
+    <div className={`update-status update-status--${shown?.state ?? (running ? "running" : "idle")}`}>
+      <p className="update-status-title" role="status"><span className="update-status-dot" aria-hidden="true" />
+        {shown ? queryError ? msg(queryError) : tr((installing(shown) ? stages[shown.stage] : undefined) ?? labels[shown.state]) : msg(queryError || notice) || tr("检查新版本，获取最新改进。")}
+      </p>
+      {shown && (shown.state === "queued" || shown.state === "running") && <div className="update-progress">
+        <div className="update-progress-caption"><span>{tr(progress ? "更新下载进度" : "更新处理进度")}</span><strong>{percent === undefined ? "" : `${percent}%`}</strong></div>
+        <progress aria-label={tr("更新下载进度")} value={percent === undefined ? undefined : progress!.downloadedBytes} max={progress && progress.totalBytes > 0 ? progress.totalBytes : 1} />
+        {progress && <p className="update-progress-size">{progress.totalBytes > 0 ? tr("已下载 {downloaded} / {total} MB（{percent}%）", {
+          downloaded: (progress.downloadedBytes / 1048576).toFixed(1), total: (progress.totalBytes / 1048576).toFixed(1), percent: percent!,
+        }) : tr("已下载 {downloaded} MB", { downloaded: (progress.downloadedBytes / 1048576).toFixed(1) })}</p>}
+      </div>}
+      {shown?.state === "indeterminate" && <p className="update-hint">{tr("正在等待更新结果，不会重复安装。")}</p>}
+      {shown?.state === "handoff" && !shown.managerMustQuit && <p className="update-hint">{tr("安装器已启动，请按提示完成更新。")}</p>}
+      {shown?.error && <p role="alert" className="error">{msg(diagnosticMessage(shown.error))}</p>}
+      {actionError && <p role="alert" className="error">{msg(actionError)}</p>}
+    </div>
+    {unresolved && !showOperation && <p className="update-hint">{tr("上次更新结果待核对，可继续检查版本；不会重复安装。")}</p>}
+    {canDownload && proposal.installMode !== "manual" && <p className="update-hint">{tr("下载并安装新版本？安装时需要退出管理器。")}</p>}
+    <footer className="update-actions">
+      {unresolved && (latest?.state === "indeterminate" || !!queryError) && <button className="update-secondary" disabled={running} onClick={() => void act(async () => { setShowOperation(true); await read(unresolved); })}>{tr("核对结果")}</button>}
+      {!running && (attempted || unresolved || !proposal || Date.parse(proposal.expiresAt) <= Date.now()) && <button className="update-secondary" disabled={disabled || installing(latest)} onClick={() => void check(false)}>{tr(latest?.state === "failed" ? "重新检查并重试" : "重新检查")}</button>}
+      {shown?.state === "handoff" && shown.managerMustQuit && <button className="primary" disabled={disabled || running} onClick={() => void act(async () => { await client.call("updates.quit", { operationId: latestId! }); })}>{tr("重启并更新")}</button>}
+      {canDownload && (proposal.installMode === "manual" ? <button className="primary" disabled={disabled || running || Date.parse(proposal.expiresAt) <= Date.now()} onClick={() => void act(async () => {
+        const result = await client.call("updates.openRelease", { handle: proposal.handle }); if (alive.current) setNotice(uiMessage(result.opened ? "已打开发布页。" : "无法打开发布页。"));
+      })}>{tr("打开下载页面")}</button> : <button className="primary" disabled={disabled || running || Date.parse(proposal.expiresAt) <= Date.now()} onClick={() => void act(install)}>{tr("下载并安装")}</button>)}
+    </footer>
   </section>;
 }

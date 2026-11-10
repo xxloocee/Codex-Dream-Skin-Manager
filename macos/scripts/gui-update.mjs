@@ -29,7 +29,7 @@ async function download(url,limit,reportProgress=false) {
   for(let i=0;i<6;i++){
     const parsed=new URL(url);
     if(parsed.protocol!=='https:'||parsed.username||parsed.password||!hosts.has(parsed.hostname))throw Error('更新地址不在允许的 GitHub 服务中。');
-    const response=await fetch(url,{redirect:'manual',signal:AbortSignal.timeout(limit>MB?600000:20000),headers:{'User-Agent':'CodexDreamSkinGUI-Updater','Accept':parsed.hostname==='api.github.com'?'application/vnd.github+json':'application/octet-stream'}});
+    const response=await fetch(url,{redirect:'manual',signal:AbortSignal.timeout(reportProgress?1800000:20000),headers:{'User-Agent':'CodexDreamSkinGUI-Updater','Accept':parsed.hostname==='api.github.com'?'application/vnd.github+json':'application/octet-stream'}});
     if(response.status>=300&&response.status<400){const location=response.headers.get('location');await response.body?.cancel();if(!location)throw Error('更新地址重定向无效。');url=new URL(location,url).href;continue;}
     if(!response.ok)throw Error(`更新服务返回 HTTP ${response.status}。`);
     if(Number(response.headers.get('content-length'))>limit){await response.body?.cancel();throw Error('更新文件超过限制。');}

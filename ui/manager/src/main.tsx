@@ -585,7 +585,7 @@ function App() {
           <p className="empty">{claude.parametersError ? msg(claude.parametersError) : tr(details && claude.supported ? "正在读取详情…" : "选择主题")}</p>}
       </div></section>}</div></div>
     </section>
-    <dialog ref={utilityDialog} className="utility-panel" onCancel={() => setUtility(null)} aria-label={tr(utility === "system" ? "系统与信息" : "软件更新")}>
+    <dialog ref={utilityDialog} className={`utility-panel${utility === "updates" ? " utility-panel--updates" : ""}`} onCancel={() => setUtility(null)} aria-label={tr(utility === "system" ? "系统与信息" : "软件更新")}>
       <div className="utility-content"><button className="utility-close" onClick={() => setUtility(null)}>{tr("关闭")}</button>
         {(utility === "system" || maintenanceBusy) && hello?.platform === "macos" && client && hello.capabilities.methods.includes("desktop.get") && <div hidden={utility !== "system"}><SystemPanel client={client} hello={hello} info={desktopInfo} onInfo={onDesktopInfo}
           disabled={operationBusy || fileBusy || importBusy || updateBusy || draftDirty || pendingOperation(operation)} onBusy={onMaintenanceBusy} onConsole={() => { setUtility(null); goPage("console"); }} /></div>}

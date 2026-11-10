@@ -189,16 +189,61 @@ function Assert-DreamSkinPlainDirectory {
   }
 }
 
+function Write-DreamSkinUpdateProgress {
+  param([Parameter(Mandatory = $true)][string]$Stage, [long]$DownloadedBytes = 0, [long]$TotalBytes = 0)
+  $value = @{ kind = 'update.progress'; stage = $Stage }
+  if ($Stage -eq 'downloading') {
+    $value.downloadedBytes = $DownloadedBytes
+    $value.totalBytes = $TotalBytes
+  }
+  [Console]::Error.WriteLine(($value | ConvertTo-Json -Compress))
+}
+
 function Invoke-DreamSkinUpdateDownload {
   param(
     [Parameter(Mandatory = $true)][string]$Url,
     [Parameter(Mandatory = $true)][string]$Destination,
-    [Parameter(Mandatory = $true)][int]$TimeoutSeconds
+    [Parameter(Mandatory = $true)][int]$TimeoutSeconds,
+    [switch]$ReportProgress
   )
-  $null = Invoke-WebRequest -Uri $Url -Headers @{
-    Accept = 'application/octet-stream'
-    'User-Agent' = 'CodexDreamSkinManager'
-  } -Method Get -UseBasicParsing -TimeoutSec $TimeoutSeconds -OutFile $Destination
+  $request = [Net.HttpWebRequest]::Create($Url)
+  $request.Accept = 'application/octet-stream'
+  $request.UserAgent = 'CodexDreamSkinManager'
+  $request.MaximumAutomaticRedirections = 5
+  $request.Timeout = $TimeoutSeconds * 1000
+  $request.ReadWriteTimeout = $TimeoutSeconds * 1000
+  $clock = [Diagnostics.Stopwatch]::StartNew()
+  $response = $null; $source = $null; $destinationStream = $null
+  try {
+    $response = $request.GetResponse()
+    $source = $response.GetResponseStream()
+    $destinationStream = [IO.File]::Open($Destination, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    $total = [Math]::Max([long]0, $response.ContentLength)
+    $downloaded = [long]0; $lastProgress = [long]0
+    $buffer = New-Object byte[] 65536
+    if ($ReportProgress) { Write-DreamSkinUpdateProgress -Stage 'downloading' -TotalBytes $total }
+    while ($true) {
+      $remaining = [long]$TimeoutSeconds * 1000 - $clock.ElapsedMilliseconds
+      if ($remaining -le 0) { throw [TimeoutException]::new('Update download deadline exceeded.') }
+      $source.ReadTimeout = [int]$remaining
+      $count = $source.Read($buffer, 0, $buffer.Length)
+      if ($clock.ElapsedMilliseconds -ge [long]$TimeoutSeconds * 1000) { throw [TimeoutException]::new('Update download deadline exceeded.') }
+      if ($count -eq 0) { break }
+      $destinationStream.Write($buffer, 0, $count)
+      $downloaded += $count
+      if ($ReportProgress -and $clock.ElapsedMilliseconds - $lastProgress -ge 250) {
+        Write-DreamSkinUpdateProgress -Stage 'downloading' -DownloadedBytes $downloaded -TotalBytes $total
+        $lastProgress = $clock.ElapsedMilliseconds
+      }
+    }
+    if ($ReportProgress) { Write-DreamSkinUpdateProgress -Stage 'downloading' -DownloadedBytes $downloaded -TotalBytes $total }
+  } finally {
+    if ($destinationStream) { $destinationStream.Dispose() }
+    if ($source) { $source.Dispose() }
+    if ($response) { $response.Dispose() }
+    $request.Abort()
+    $clock.Stop()
+  }
 }
 
 function Get-DreamSkinLatestRelease {
@@ -267,15 +312,21 @@ function Install-DreamSkinUpdate {
       throw 'The installer checksum in update.json does not match SHA256SUMS.txt.'
     }
     $script:DreamSkinUpdateStage = 'installerDownload'
-    Invoke-DreamSkinUpdateDownload -Url $Result.installerAssetUrl -Destination $installerDownload -TimeoutSeconds 180
+    Invoke-DreamSkinUpdateDownload -Url $Result.installerAssetUrl -Destination $installerDownload -TimeoutSeconds 1800 -ReportProgress
     $script:DreamSkinUpdateStage = 'installerValidation'
+    Write-DreamSkinUpdateProgress -Stage 'verifying'
     Assert-DreamSkinInstallerChecksum -Path $installerDownload -ExpectedHash $expectedHash
     Move-Item -LiteralPath $installerDownload -Destination $installerPath
     Assert-DreamSkinInstallerChecksum -Path $installerPath -ExpectedHash $expectedHash
     $script:DreamSkinUpdateStage = 'installerLaunch'
+    Write-DreamSkinUpdateProgress -Stage 'preparing'
     # Once launch is attempted, an exception cannot prove that no installer ran.
     $script:DreamSkinInstallerLaunchAttempted = $true
-    $process = Start-Process -FilePath $installerPath -WorkingDirectory $downloadRoot -PassThru
+    # Keep the interactive installer independent of the updater's protocol
+    # pipes, so its lifetime cannot delay the updater's final close/result.
+    $process = Start-Process -FilePath $installerPath -WorkingDirectory $downloadRoot -PassThru `
+      -RedirectStandardOutput (Join-Path $downloadRoot 'installer.stdout.log') `
+      -RedirectStandardError (Join-Path $downloadRoot 'installer.stderr.log')
     if ($null -eq $process -or $process.Id -le 0) { throw 'The verified installer could not be started.' }
     $keepDownload = $true
     $Result.installerStarted = $true

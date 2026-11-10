@@ -1,4 +1,4 @@
-import type { UpdateCheck, UpdateProgress } from "../../contracts/manager.mjs";
+import type { ManagerError, UpdateCheck, UpdateProgress } from "../../contracts/manager.mjs";
 import { ContractError } from "../../contracts/manager.mjs";
 
 // Only a platform's explicit pre-launch failure may release the retry guard.
@@ -10,10 +10,11 @@ export class UpdateNotStartedError extends ContractError {
 // Private approval binding includes channel/key/package identity; never a URL
 // or installation path supplied by the page.
 export interface UpdateCandidate extends Omit<UpdateCheck, "handle" | "expiresAt" | "updateAvailable"> { binding: string }
+export type UpdateReceipt = "installed" | "failed" | { state: "handoff" | "failed" | "indeterminate"; error: ManagerError | null };
 export interface UpdatePort {
   check(): Promise<UpdateCandidate>;
   install(candidate: UpdateCandidate, operationId: string, onProgress?: (progress: UpdateProgress) => void): Promise<{ managerMustQuit: boolean }>;
   // Starts the prepared macOS installer only after the user requests restart.
   restart(id: string): Promise<void>;
-  receipt(id: string): Promise<"installed" | "failed" | null>;
+  receipt(id: string, expectedVersion: string): Promise<UpdateReceipt | null>;
 }

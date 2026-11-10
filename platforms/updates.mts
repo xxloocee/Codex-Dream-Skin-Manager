@@ -4,11 +4,12 @@ import { access, copyFile, lstat, open } from "node:fs/promises";
 import { constants } from "node:fs";
 import { spawn } from "node:child_process";
 import { ContractError, record, validOperationId } from "../contracts/manager.mjs";
-import type { UpdateCandidate, UpdatePort } from "../core/ports/updates.mjs";
+import type { UpdateCandidate, UpdatePort, UpdateReceipt } from "../core/ports/updates.mjs";
 import type { UpdateProgress } from "../contracts/manager.mjs";
 import { UpdateNotStartedError } from "../core/ports/updates.mjs";
 import { fileBytes, jsonObject, optionalBytes, safePath, sha256 } from "../core/local-files.mjs";
-import { stableVersion } from "../core/updates.mjs";
+import { newerVersion, stableVersion } from "../core/updates.mjs";
+import { privateDirectory } from "../core/write-files.mjs";
 import { transactionProcess } from "./transaction-process.mjs";
 import { ManifestNetworkError, verifiedReleaseManifest, type VerifiedManifest } from "./update-manifest.mjs";
 
@@ -32,7 +33,15 @@ export class PlatformUpdates implements UpdatePort {
   private readonly candidates = new Map<string, PrivateCandidate>();
   private readonly platform = process.platform === "win32" ? "windows" : "macos";
   constructor(private readonly root: string, private readonly state: string) {}
-  private async windows(action: "Check" | "Install", candidate?: UpdateCandidate): Promise<Record<string, unknown>> {
+  private progress(value: Record<string, unknown>, onProgress?: (progress: UpdateProgress) => void): void {
+    if (!onProgress || value.kind !== "update.progress") return;
+    if (value.stage === "downloading" && Number.isSafeInteger(value.downloadedBytes) && Number.isSafeInteger(value.totalBytes) &&
+        (value.downloadedBytes as number) >= 0 && (value.totalBytes as number) >= 0 && (value.totalBytes as number) <= maxPackageBytes &&
+        (value.totalBytes === 0 || (value.downloadedBytes as number) <= (value.totalBytes as number))) {
+      onProgress({ stage: "downloading", downloadedBytes: value.downloadedBytes as number, totalBytes: value.totalBytes as number });
+    } else if (value.stage === "verifying" || value.stage === "preparing") onProgress({ stage: value.stage });
+  }
+  private async windows(action: "Check" | "Install", candidate?: UpdateCandidate, id?: string, onProgress?: (progress: UpdateProgress) => void): Promise<Record<string, unknown>> {
     const script = path.join(this.root, "windows", "scripts", "manager-updates.ps1"); await safePath(script, this.root);
     const system = process.env.SystemRoot;
     if (!system || !path.isAbsolute(system)) throw new ContractError("BACKEND_UNAVAILABLE", "Windows system directory unavailable.");
@@ -50,8 +59,13 @@ export class PlatformUpdates implements UpdatePort {
     }
     const { manifest, manifestDigest, publicKeyDigest } = verified;
     if (action === "Install" && (approved?.raw.manifestDigest !== manifestDigest || approved?.raw.publicKeyDigest !== publicKeyDigest)) throw new UpdateNotStartedError(windowsUpdateErrors.approval!);
+    const resultArgs: string[] = [];
+    if (action === "Install") {
+      await privateDirectory(path.join(this.state, "updates"));
+      resultArgs.push("-OperationId", id!, "-ResultPath", this.resultFile(id!));
+    }
     const raw = await transactionProcess(path.join(system, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-      await powerShellArgs(this.root, script, ["-Action", action, "-ManifestSource", "stdin", ...(candidate ? ["-ExpectedVersion", candidate.latestVersion, "-ApprovedHash", String(approved?.raw.installerSha256)] : [])]), action === "Check" ? 45000 : 360000, action === "Install", undefined, undefined, manifest.toString("utf8"));
+      await powerShellArgs(this.root, script, ["-Action", action, "-ManifestSource", "stdin", ...resultArgs, ...(candidate ? ["-ExpectedVersion", candidate.latestVersion, "-ApprovedHash", String(approved?.raw.installerSha256)] : [])]), action === "Check" ? 45000 : 1800000, action === "Install", undefined, value => this.progress(value, onProgress), manifest.toString("utf8"));
     if (typeof raw.updateError === "string") {
       const message = windowsUpdateErrors[raw.updateError] ?? "更新处理失败，请重新检查更新。";
       if (action === "Install" && raw.installerLaunchAttempted === false) throw new UpdateNotStartedError(message);
@@ -64,13 +78,7 @@ export class PlatformUpdates implements UpdatePort {
     const approved = candidate ? this.candidates.get(candidate.binding) : null;
     // Preparation only writes a private download stage. It never replaces the
     // application, so a timed-out downloader can be stopped before retrying.
-    return transactionProcess("/bin/bash", [script, action, ...(candidate ? [candidate.latestVersion, String(approved?.raw.manifestDigest)] : [])], action === "inspect" ? 120000 : 1200000, false, undefined, value => {
-      if (!onProgress || value.kind !== "update.progress") return;
-      if (value.stage === "downloading" && Number.isSafeInteger(value.downloadedBytes) && Number.isSafeInteger(value.totalBytes) &&
-          (value.downloadedBytes as number) >= 0 && (value.totalBytes as number) > 0 && (value.totalBytes as number) <= maxPackageBytes && (value.downloadedBytes as number) <= (value.totalBytes as number)) {
-        onProgress({ stage: "downloading", downloadedBytes: value.downloadedBytes as number, totalBytes: value.totalBytes as number });
-      } else if (value.stage === "verifying" || value.stage === "preparing") onProgress({ stage: value.stage });
-    });
+    return transactionProcess("/bin/bash", [script, action, ...(candidate ? [candidate.latestVersion, String(approved?.raw.manifestDigest)] : [])], action === "inspect" ? 120000 : 1800000, false, undefined, value => this.progress(value, onProgress));
   }
   private async plist(file: string, field: string): Promise<string> {
     await safePath(file, path.parse(file).root);
@@ -140,13 +148,13 @@ export class PlatformUpdates implements UpdatePort {
   }
   private resultFile(id: string): string {
     if (!validOperationId(id)) throw new ContractError("INVALID_REQUEST", "Invalid update result identity.");
-    return path.join(this.state, "updates", "manager-" + sha256([Buffer.from(id)]) + ".plist");
+    return path.join(this.state, "updates", "manager-" + sha256([Buffer.from(id)]) + (this.platform === "windows" ? ".json" : ".plist"));
   }
   async install(candidate: UpdateCandidate, id: string, onProgress?: (progress: UpdateProgress) => void): Promise<{ managerMustQuit: boolean }> {
     const privateCandidate = this.candidates.get(candidate.binding);
     if (!privateCandidate) throw new ContractError("RESOURCE_EXPIRED", "更新批准绑定已失效。");
     if (candidate.installMode === "windows-installer") {
-      const raw = await this.windows("Install", candidate);
+      const raw = await this.windows("Install", candidate, id, onProgress);
       if (raw.installerStarted !== true || typeof raw.installerProcessId !== "number" || raw.installerProcessId <= 0) throw new ContractError("IO_ERROR", "安装器未确认启动。");
       return { managerMustQuit: false };
     }
@@ -186,9 +194,37 @@ export class PlatformUpdates implements UpdatePort {
       throw error;
     }
   }
-  async receipt(id: string): Promise<"installed" | "failed" | null> {
-    if (this.platform !== "macos") return null;
-    const bytes = await optionalBytes(this.resultFile(id), this.state, 65536); if (!bytes) return null;
+  async receipt(id: string, expectedVersion: string): Promise<UpdateReceipt | null> {
+    const bytes = await optionalBytes(this.resultFile(id), this.state, 65536);
+    if (this.platform === "windows") {
+      const value = bytes ? jsonObject(bytes) : null;
+      if (value) {
+        if (value.operationId !== id || value.expectedVersion !== expectedVersion || typeof value.installerStarted !== "boolean" ||
+            typeof value.installerLaunchAttempted !== "boolean" || !(value.updateError === null || typeof value.updateError === "string" && Object.hasOwn(windowsUpdateErrors, value.updateError)) ||
+            !(value.installerStarted && value.installerLaunchAttempted && value.updateError === null || !value.installerStarted && typeof value.updateError === "string")) {
+          throw new ContractError("IO_ERROR", "更新结果回执无效，请核对已安装版本。");
+        }
+      }
+      // Only the installed payload confirms success. This also reconciles
+      // older helpers with no receipt and later runs after an installer handoff.
+      const executable = path.join(this.root, "CodexDreamSkinManager.exe");
+      const version = await optionalBytes(path.join(this.root, "windows", "VERSION"), this.root, 128);
+      if (version && !newerVersion(expectedVersion, stableVersion(Buffer.from(version).toString("utf8").trim()))) {
+        try {
+          await safePath(executable, this.root);
+          if ((await lstat(executable)).isFile()) return "installed";
+        } catch (error) { if (!record(error) || error.code !== "ENOENT") throw error; }
+      }
+      if (value) {
+        if (value.installerStarted && value.installerLaunchAttempted && value.updateError === null) return { state: "handoff", error: null };
+        if (!value.installerStarted && typeof value.updateError === "string") return {
+          state: value.installerLaunchAttempted ? "indeterminate" : "failed",
+          error: { code: "IO_ERROR", message: windowsUpdateErrors[value.updateError]!, retryable: !value.installerLaunchAttempted },
+        };
+      }
+      return null;
+    }
+    if (!bytes) return null;
     const status = await this.plist(this.resultFile(id), "status");
     return status === "installed" || status === "failed" ? status : null;
   }
