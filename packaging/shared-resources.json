@@ -8,6 +8,7 @@
         "scripts/check-update.ps1",
         "scripts/common-windows.ps1",
         "scripts/config-utf8.ps1",
+        "scripts/dsh-runtime.ps1",
         "scripts/injector.mjs",
         "scripts/localization-windows.ps1",
         "scripts/manager-community.ps1",

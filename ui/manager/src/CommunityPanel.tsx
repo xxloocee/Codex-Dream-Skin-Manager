@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ClaudeOperation, CommunityCompatibility, CommunityLocalTheme, CommunityProposal, DesktopIntent, HelloResult, OperationSnapshot, ThemeRef } from "../../../contracts/manager.mjs";
+import type { AppearanceOperation, CommunityCompatibility, CommunityLocalTheme, CommunityProposal, DesktopIntent, HelloResult, OperationSnapshot, ThemeRef } from "../../../contracts/manager.mjs";
 import type { ApplicationTarget } from "./ApplicationTarget";
 import type { ManagerClient } from "./client";
 import { useMessage, useText } from "./desktop";
@@ -15,7 +15,7 @@ const pending = (value: OperationSnapshot | null) => !!value && ["queued", "runn
 
 export function CommunityPanel({ client, hello, busy, canApply, incoming, request, onConsume, onConsumeRequest, onBusy, onOperation, onIntent, onSaved, onDownloadState, onNotice, onApplyTheme }: {
   client: ManagerClient; hello: HelloResult; busy: boolean; canApply: boolean; incoming: (DesktopIntent & { application: ApplicationTarget }) | null; request: CommunityActionRequest | null;
-  onApplyTheme(theme: ThemeRef, revision: string, application: ApplicationTarget): Promise<OperationSnapshot | ClaudeOperation>;
+  onApplyTheme(theme: ThemeRef, revision: string, application: ApplicationTarget): Promise<OperationSnapshot | AppearanceOperation>;
   onConsume(id: string): void; onConsumeRequest(id: string): void; onBusy(value: boolean): void;
   onOperation(value: OperationSnapshot): void; onIntent(id: string): void; onSaved(): void;
   onDownloadState(version: string, downloaded: CommunityLocalTheme | null): void; onNotice(value: UiMessage): void;
@@ -81,7 +81,7 @@ export function CommunityPanel({ client, hello, busy, canApply, incoming, reques
     throw new UiMessageError(uiMessage("窗口已关闭；已接受的操作继续处理。"));
   }
   async function install(version: string, action: CommunityActionRequest["action"], application: ApplicationTarget, declared?: CommunityCompatibility) {
-    if (action === "apply" && (!canApply || !hello.capabilities.methods.includes(application === "claude" ? "claude.apply" : "skin.apply"))) return;
+    if (action === "apply" && (!canApply || !hello.capabilities.methods.includes(application === "codex" ? "skin.apply" : `${application}.apply`))) return;
     let declaration = declared ?? (proposal?.metadata.id === version ? mergeCommunityCompatibility({ applyCompatible: proposal.metadata.applyCompatible }, proposal.metadata.compatibility) : undefined);
     const report = (value: UiMessage) => tell(joinMessages([value, ...communityCompatibilityMessages(declaration, hello.platform, hello.versions.application)], " "));
     let local = await client.call("community.local", { version });
@@ -133,7 +133,7 @@ export function CommunityPanel({ client, hello, busy, canApply, incoming, reques
     {proposal && <><h3>{proposal.metadata.name}</h3><p>{proposal.metadata.authorDisplayName} · {proposal.metadata.version}</p><p>{tr("许可")}：{proposal.metadata.license}</p></>}
     {communityCompatibilityMessages(compatibility, hello.platform, hello.versions.application).map((value, index) => <p className="muted" key={index}>{msg(value)}</p>)}
     <p className="muted">{tr("未下载时会先下载并应用；已下载时直接应用本地副本。")}</p>
-    <div className="editor-actions"><button className="primary" disabled={locked || !canApply || !hello.capabilities.methods.includes(linkApplication === "claude" ? "claude.apply" : "skin.apply") || !version} onClick={() => { if (version) void action(() => install(version, "apply", linkApplication)); }}>{tr("应用主题")}</button>
+    <div className="editor-actions"><button className="primary" disabled={locked || !canApply || !hello.capabilities.methods.includes(linkApplication === "codex" ? "skin.apply" : `${linkApplication}.apply`) || !version} onClick={() => { if (version) void action(() => install(version, "apply", linkApplication)); }}>{tr("应用主题")}</button>
       <button disabled={locked || !version} onClick={() => { if (version) void action(() => install(version, "download", linkApplication)); }}>{tr("下载主题")}</button>
       {!running && <button disabled={locked || reading} onClick={() => void inspect()}>{tr("重新读取主题信息")}</button>}</div>
     {notice && <p className="notice" role="status">{msg(notice)}</p>}

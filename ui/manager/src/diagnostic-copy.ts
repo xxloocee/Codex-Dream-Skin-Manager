@@ -1,6 +1,34 @@
 // Only backend diagnostics enter this catalog. Theme names, file names and other
 // user content are passed separately and retain their original spelling.
 const messages: Readonly<Record<string, string>> = {
+  "Desktop video requires WebCodecs support.": "桌面视频播放需要 WebCodecs 支持。",
+  "Desktop media request was superseded.": "此素材请求已被更新的请求替代。",
+  "Desktop video canvas could not be created.": "无法创建桌面视频播放画布。",
+  "Desktop media decode failed or was blocked by the application content policy.": "素材解码失败，或被应用内容策略阻止。",
+  "Desktop media decode/play deadline exceeded.": "素材解码或播放超时。",
+  "Desktop MP4 video track could not be prepared for playback.": "未能准备 MP4 视频轨道。",
+  "Desktop startup animation was not installed.": "启动动画未能安装。",
+  "Desktop background could not be reapplied to the new document.": "未能为新页面重新应用背景。",
+  "Apply a skin to start DSH with its main process debugger.": "应用皮肤时会自动启动 DSH。",
+  "Apply a skin to restart DSH with its main process debugger.": "应用皮肤时会按需正常重启 DSH。",
+  "No verified DSH Main Process Debugger is available. Apply a skin to restart DSH with its main process debugger.": "尚未连接 DSH，应用皮肤时会按需正常重启 DSH。",
+  "DSH process preparation did not complete.": "未能完成 DSH 启动准备。",
+  "DSH preparation timed out; no further launch was attempted.": "DSH 启动准备超时，未继续启动。",
+  "DSH preparation timed out; retry applying the skin.": "DSH 启动准备超时，请重新应用皮肤。",
+  "DSH process changed before preparation; retry applying the skin.": "DSH 进程已变化，请重新应用皮肤。",
+  "Expected one registered DSH installation before starting it.": "无法确认唯一的已安装 DSH，未能启动。",
+  "DSH main process debugger is unavailable.": "无法连接 DSH 主进程。",
+  "DSH started, but its main process debugger did not become ready.": "DSH 已启动，但主进程连接尚未就绪。",
+  "DSH started, but its main application page did not become ready.": "DSH 已启动，但主应用页面尚未就绪。",
+  "DSH process changed during discovery; retry applying the skin.": "查找期间 DSH 进程已变化，请重新应用皮肤。",
+  "DSH executable is not a registered installation.": "DSH 程序不属于已登记的安装。",
+  "Expected one registered DSH desktop main process before restarting it.": "无法确认唯一的已安装 DSH 主进程，未能重启。",
+  "DSH normal shutdown did not identify only its registered main process.": "无法确认 DSH 正常退出操作只涉及其已安装的主进程。",
+  "DSH normal shutdown target changed; no restart was attempted.": "DSH 正常退出目标已变化，未尝试重启。",
+  "DSH did not close normally within 15 seconds; no restart was attempted.": "DSH 未在 15 秒内正常退出，未尝试重启。",
+  "DSH installation or process changed before launch; no restart was attempted.": "启动前 DSH 安装或进程已变化，未尝试重启。",
+  "Open the main DSH application page (dsh-app://app/).": "请打开 DSH 主应用页面（dsh-app://app/）。",
+  "An application background snapshot is being written.": "正在保存应用背景，请等待当前操作结束。",
   "Start the registered Claude Desktop application and open its Code page.": "请启动 Claude Desktop 并打开 Code 页面。",
   "In Claude, enable Developer → Enable Main Process Debugger manually, then retry.": "请在 Claude Desktop 的 Developer 菜单开启 Enable Main Process Debugger，然后刷新。",
   "No verified Claude Main Process Debugger is available. Enable it manually in Claude, then retry.": "无法连接 Claude Desktop，请手动开启 Main Process Debugger 后刷新。",
@@ -358,6 +386,8 @@ const messages: Readonly<Record<string, string>> = {
 // retains the reason for each malformed request instead of replacing every error
 // with a generic failure.
 const invalidSubjects: Readonly<Record<string, string>> = {
+  "appearance parameters": "应用外观参数", "appearance operation identity": "应用外观操作标识",
+  "appearance theme revision or operation identity": "应用外观主题版本或操作标识",
   "active inspection": "当前皮肤检查参数", "active preview revision": "当前皮肤预览版本",
   "apply parameters": "应用参数", "apply receipt identity": "应用结果标识",
   "authorized release page": "已确认的版本发布页", "bundled PowerShell script arguments": "内置 PowerShell 脚本参数",
@@ -425,6 +455,11 @@ const invalidSubjects: Readonly<Record<string, string>> = {
 };
 
 const packageRules: readonly [RegExp, (...parts: string[]) => string][] = [
+  [/^DSH normal shutdown could not start \(Windows error (\d+)\)\.$/, code => `无法开始正常退出 DSH（Windows 错误 ${code}）。`],
+  [/^DSH normal shutdown registration failed \(Windows error (\d+)\)\.$/, code => `DSH 正常退出注册失败（Windows 错误 ${code}）。`],
+  [/^DSH did not accept normal shutdown \(Windows error (\d+)\); no restart was attempted\.$/, code => `DSH 未接受正常退出请求（Windows 错误 ${code}），未尝试重启。`],
+  [/^Desktop video codec is not supported: (.+)\.$/, codec => `不支持桌面视频编码：${codec}。`],
+  [/^Desktop video decode\/playback failed \((.+)\): (.+)$/, (codec, reason) => `桌面视频解码或播放失败（${codec}）：${reason}`],
   [/^(\d+) journal entries could not be read safely\.$/, count => `${count} 条操作记录无法安全读取。`],
   [/^Theme requires Dream Skin (.+) or newer; installed version is (.+)$/, (required, installed) => `主题需要 Dream Skin ${required} 或更新版本，当前安装版本为 ${installed}。`],
   [/^Theme package does not support (windows|macos)$/, platform => `主题包未声明支持 ${platform === "windows" ? "Windows" : "macOS"}。`],
@@ -467,6 +502,72 @@ const packageRules: readonly [RegExp, (...parts: string[]) => string][] = [
   [/^(.+) SHA-256 does not match manifest.json$/, file => `${file} 的文件摘要与清单声明不一致。`],
 ];
 
+// Exact shared diagnostics keep application names separate from user content.
+const appearanceMessages: Readonly<Record<string, string>> = {
+  "The {application} active snapshot is invalid.": "{application} 当前背景记录无效。",
+  "The {application} renderer does not match the selected background snapshot.": "{application} 的当前外观与选中背景不一致。",
+  "{application} status is unavailable.": "{application} 状态暂不可用。",
+  "The {application} selection changed during this status probe; refresh its renderer status.": "{application} 的背景已更新，请刷新状态。",
+  "The {application} parameter record is invalid.": "{application} 参数记录无效。",
+  "The {application} service is closing.": "{application} 外观服务正在关闭。",
+  "{application} controls are available in the Windows manager only.": "{application} 换肤目前仅支持 Windows，macOS 暂不支持。",
+  "Refresh the theme before saving {application} parameters.": "主题已变化，请刷新后再保存 {application} 参数。",
+  "The saved {application} parameters could not be confirmed in its renderer.": "{application} 参数已保存，当前显示尚未确认。",
+  "{application} media validation is unavailable.": "{application} 素材校验暂不可用。",
+  "{application} media exceeds the supported size limit.": "{application} 素材超出大小限制。",
+  "{application} supports JPEG, PNG, WebP, GIF, APNG and MP4 media.": "{application} 支持 JPEG、PNG、WebP、GIF、APNG 和 MP4 素材。",
+  "The {application} media snapshot changed.": "{application} 背景素材已变化，请重新应用主题。",
+  "The {application} media snapshot type changed.": "{application} 背景素材类型已变化，请重新应用主题。",
+  "Refresh the theme before selecting its {application} startup video.": "主题已变化，请刷新后再设为 {application} 启动动画。",
+  "The selected {application} startup video is unavailable; the built-in animation will be used.": "所选 {application} 启动视频不可用，将使用内置默认动画。",
+  "Invalid {application} operation identity.": "{application} 操作标识无效。",
+  "The {application} operation receipt is invalid.": "{application} 操作结果记录无效。",
+  "This {application} operation is unknown.": "找不到此 {application} 操作，请刷新核对状态。",
+  "This {application} operation identity was already used for another request.": "此 {application} 操作标识已用于其他请求。",
+  "A new {application} operation requires the current manager connection.": "新的 {application} 操作需要使用当前管理器连接。",
+  "The default {application} background is unavailable.": "{application} 默认背景不可用。",
+  "Refresh the theme before applying it to {application}.": "主题已变化，请刷新后再应用到 {application}。",
+  "The {application} media snapshot is damaged.": "{application} 背景素材记录已损坏。",
+  "Select a {application} background before resuming.": "请先选择 {application} 背景。",
+  "The requested {application} renderer state could not be confirmed.": "未能确认 {application} 的外观，请刷新后核对。",
+  "{application} process discovery did not complete.": "未能完成 {application} 进程查找，请刷新后重试。",
+  "{application} process inventory is invalid.": "{application} 进程信息无效。",
+  "Expected one registered {application} desktop main process.": "无法确认唯一的已安装 {application} 主进程。",
+  "{application} process or its debugger listener changed; reconnect is required.": "{application} 进程或调试连接已变化，请重新连接。",
+  "{application} listener is not an Inspector.": "{application} 监听端口不是主进程调试入口。",
+  "{application} Inspector discovery failed.": "无法发现 {application} 主进程调试入口。",
+  "{application} Inspector discovery response is invalid.": "{application} 主进程调试入口响应无效。",
+  "{application} Inspector discovery timed out.": "查找 {application} 主进程调试入口超时。",
+  "{application} Inspector target list is invalid.": "{application} 主进程调试目标列表无效。",
+  "Expected one {application} Node Inspector target.": "无法确认唯一的 {application} Node 主进程调试目标。",
+  "{application} Inspector endpoint is invalid.": "{application} 主进程调试地址无效。",
+  "Rejected {application} Inspector endpoint.": "{application} 主进程调试地址未通过校验。",
+  "{application} runtime evaluation failed; appearance may have changed.": "{application} 外观更新失败，当前显示可能已改变，请核对。",
+  "{application} Inspector connection failed.": "{application} 主进程调试连接失败。",
+  "{application} Inspector connection timed out.": "{application} 主进程调试连接超时。",
+  "{application} Inspector connection is closed.": "{application} 主进程调试连接已关闭。",
+  "{application} runtime timed out; the requested appearance change may still have taken effect.": "{application} 响应超时，外观可能已改变，请核对结果。",
+  "{application} Inspector connection closed; appearance state is unknown.": "{application} 连接已断开，当前外观尚未确认。",
+  "{application} Inspector disconnect was not confirmed.": "尚未确认 {application} 主进程调试连接已断开。",
+  "Inspector identity does not match registered {application}.": "主进程调试身份与已安装的 {application} 不一致。",
+  "{application} runtime could not complete the request.": "{application} 未能完成外观请求，请刷新核对。",
+  "A newer {application} appearance command superseded this request.": "此请求已被更新的 {application} 外观操作替代。",
+  "{application} startup animation configuration could not be confirmed in every window.": "部分 {application} 窗口的启动动画设置尚未确认。",
+  "No supported {application} page was found.": "未找到支持的 {application} 页面。",
+  "{application} appearance could not be confirmed in every window; some windows may have changed.": "部分 {application} 窗口的外观尚未确认，请核对后刷新。",
+  "{application} windows do not have a consistent verified appearance.": "{application} 各窗口的外观尚未确认一致，请核对后刷新。",
+  "{application} runtime could not be inspected. Its existing appearance has not been confirmed.": "无法读取 {application} 状态，当前外观尚未确认，请刷新后核对。",
+  "{application} background could not be applied; appearance state is unconfirmed.": "未能应用 {application} 背景，当前外观尚未确认。",
+  "{application} startup animation could not be configured.": "未能设置 {application} 启动动画。",
+  "{application} startup animation failed.": "{application} 启动动画播放失败。",
+  "{application} startup animation timeout.": "{application} 启动动画播放超时。",
+  "{application} background could not be removed; appearance state is unconfirmed.": "未能移除 {application} 背景，当前外观尚未确认。",
+  "{application} parameters are unavailable.": "{application} 参数功能暂不可用。",
+  "{application} startup settings are unavailable.": "{application} 启动动画设置暂不可用。",
+  "{application} operations are unavailable.": "{application} 操作记录暂不可用。",
+  "{application} controls are unavailable.": "{application} 换肤操作暂不可用。",
+};
+
 const systemMessages: Readonly<Record<string, string>> = {
   ENOENT: "文件或目录不存在", EACCES: "没有访问权限", EPERM: "系统拒绝此操作",
   EBUSY: "文件或资源正在使用中", ENOSPC: "磁盘空间不足", EEXIST: "文件或目录已存在",
@@ -482,6 +583,10 @@ const fileActions: Readonly<Record<string, string>> = {
 export function diagnosticText(language: "zh-CN" | "en-US", value: string): string {
   if (language === "en-US" || !value) return value;
   if (Object.hasOwn(messages, value)) return messages[value]!;
+  for (const application of ["DSH", "Claude Desktop", "Claude"]) {
+    const template = value.replaceAll(application, "{application}");
+    if (Object.hasOwn(appearanceMessages, template)) return appearanceMessages[template]!.replaceAll("{application}", application === "Claude" ? "Claude Desktop" : application);
+  }
   const invalid = /^Invalid (.+?)\.?$/.exec(value);
   if (invalid && Object.hasOwn(invalidSubjects, invalid[1]!)) return `${invalidSubjects[invalid[1]!]!}无效。`;
   const prefix = "主题包校验失败：";

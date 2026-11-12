@@ -118,8 +118,7 @@ export async function readThemeContent(local: LocalTheme): Promise<{ details: Th
     { file: local.mediaPath, root: local.mediaRoot, bytes: media, maximum: MAX_MEDIA_BYTES },
     ...(local.cssPath ? [{ file: local.cssPath, root: local.mediaRoot, bytes: css, maximum: 256 * 1024 }] : [])];
   for (const check of checks) {
-    const bytes = await optionalBytes(check.file, check.root, check.maximum);
-    const current = check.digest && bytes ? new TextEncoder().encode(sha256([bytes])) : bytes;
+    const current = await optionalBytes(check.file, check.root, check.maximum);
     if ((current === null) !== (check.bytes === null) ||
         (current !== null && check.bytes !== null && !Buffer.from(current).equals(check.bytes))) {
       throw new ContractError("THEME_CHANGED", "The theme dependency set changed during reading.", true);

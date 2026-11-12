@@ -134,6 +134,8 @@ transaction() {
     [ "$(field "$current" fingerprint)" = "$fingerprint" ] || return 1
     "$CORE_NODE" "$WORKER" check-refresh "$APPLICATION_ROOT" "$REQUEST_PATH" "$current" >/dev/null || return 1
     if [ "$RUNTIME_COMMAND" = true ]; then runtime_check "$current" >/dev/null || return 1; PAUSED_COMMITTED=null; fi
+    VERIFY_PATH="$(/usr/bin/mktemp "$REQUEST_PATH.verify.XXXXXX")" || return 1
+    verification_before="$current"
     COMMITTED=null
     if [ "$started" = true ]; then
       if [ "$UPGRADE" = true ]; then UPGRADED=null; fi
@@ -142,23 +144,26 @@ transaction() {
       COMMITTED_REVISION="$requested_revision"
       RENDERED=null
       if [ "$(field "$before" processRunning)" = true ]; then RESTARTED=null; fi
-      /bin/bash "$SCRIPT_DIR/start-dream-skin-macos.sh" --restart-existing --theme-staged --manager-precondition "$fingerprint" --manager-application-root "$APPLICATION_ROOT" >/dev/null || return 1
+      /bin/bash "$SCRIPT_DIR/start-dream-skin-macos.sh" --restart-existing --theme-staged --manager-precondition "$fingerprint" --manager-application-root "$APPLICATION_ROOT" --manager-verification-path "$VERIFY_PATH" >/dev/null || return 1
+      verification_before="$(probe)" || return 1
       # An existing CDP browser only hands off the watcher, without quitting Codex.
       RESTARTED=false
       if [ -z "$(field "$before" runtimeSessionId)" ]; then RESTARTED="$(field "$before" processRunning)"; fi
     else
       RENDERED=null
-      local switch_args=(--manager-snapshot-dir "$directory" --lock-token "$TOKEN" --no-auto-restart)
+      local switch_args=(--manager-snapshot-dir "$directory" --lock-token "$TOKEN" --no-auto-restart --manager-verification-path "$VERIFY_PATH")
       [ "$opacity_only" != true ] || switch_args+=(--opacity-only)
       /bin/bash "$SCRIPT_DIR/switch-theme-macos.sh" "${switch_args[@]}" >/dev/null || return 1
       COMMITTED=true
       COMMITTED_REVISION="$requested_revision"
     fi
   fi
-  verification_before="$(probe)" || return 1
+  if [ -z "$VERIFY_PATH" ]; then
+    verification_before="$(probe)" || return 1
+    VERIFY_PATH="$(/usr/bin/mktemp "$REQUEST_PATH.verify.XXXXXX")" || return 1
+    /bin/bash "$SCRIPT_DIR/verify-dream-skin-macos.sh" >"$VERIFY_PATH" || return 1
+  fi
   [ -n "$(field "$verification_before" runtimeSessionId)" ] || return 1
-  VERIFY_PATH="$(/usr/bin/mktemp "$REQUEST_PATH.verify.XXXXXX")" || return 1
-  /bin/bash "$SCRIPT_DIR/verify-dream-skin-macos.sh" >"$VERIFY_PATH" || return 1
   mapped="$("$CORE_NODE" "$WORKER" verify "$APPLICATION_ROOT" "$REQUEST_PATH" "$VERIFY_PATH")" || return 1
   /bin/rm -f "$VERIFY_PATH"
   VERIFY_PATH=""

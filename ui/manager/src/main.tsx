@@ -2,7 +2,7 @@ import { diagnosticMessage, errorMessage, joinMessages, uiMessage, UiMessageErro
 import type { UiMessage } from "./ui-message";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { ApplyRefresh, ClaudeMutationMethod, CommunityTheme, HelloResult, ManagerSnapshot, OperationSnapshot, RuntimeMethod, ThemeDetails, ThemeParameters, ThemePatch, ThemeRef, ThemeSummary } from "../../../contracts/manager.mjs";
+import type { ApplyRefresh, AppearanceMutationMethod, CommunityTheme, HelloResult, ManagerSnapshot, OperationSnapshot, RuntimeMethod, ThemeDetails, ThemeParameters, ThemePatch, ThemeRef, ThemeSummary } from "../../../contracts/manager.mjs";
 import { BridgeError, ManagerClient, reconnectManager } from "./client";
 import { ThemeEditor } from "./ThemeEditor";
 import { ImportPanel } from "./ImportPanel";
@@ -23,8 +23,8 @@ import { Select } from "./Select";
 import { ThemeDetailsPanel } from "./ThemeDetailsPanel";
 import { ApplicationTargets } from "./ApplicationTarget";
 import type { ApplicationTarget } from "./ApplicationTarget";
-import { ClaudeAppearancePanel } from "./ClaudeAppearancePanel";
-import { useClaudeAppearance } from "./useClaudeAppearance";
+import { AppearancePanel } from "./ClaudeAppearancePanel";
+import { useAppearance } from "./useClaudeAppearance";
 import "./style.css";
 
 const message = (error: unknown) => errorMessage(error, "操作失败，请稍后重试。");
@@ -81,7 +81,7 @@ function App() {
   const [details, setDetails] = useState<ThemeDetails | null>(null), [selected, setSelected] = useState("");
   const [activeSkin, setActiveSkin] = useState<ThemeDetails | null>(null), [activeRead, setActiveRead] = useState(0);
   const [application, setApplication] = useState<ApplicationTarget>("codex");
-  const [claudeRestore, setClaudeRestore] = useState(false), [importDirty, setImportDirty] = useState(false);
+  const [importDirty, setImportDirty] = useState(false);
   const onImportDirty = useCallback((value: boolean) => setImportDirty(value), []);
   const [utility, setUtility] = useState<"updates" | "system" | null>(null), [updateCheck, setUpdateCheck] = useState(0);
   const utilityDialog = useRef<HTMLDialogElement>(null);
@@ -142,19 +142,30 @@ function App() {
   const [draftDirty, setDraftDirty] = useState(false), [pendingSelection, setPendingSelection] = useState<ThemeSummary | "refresh" | null>(null);
   const [libraryNotice, setLibraryNotice] = useState<UiMessage>("");
   const [libraryRead, setLibraryRead] = useState(0), [editorVersion, setEditorVersion] = useState(0);
+  const [refreshingEditor, setRefreshingEditor] = useState<number | null>(null);
   const handledLibraryRead = useRef(0);
   const [importBusy, setImportBusy] = useState(false), [fileBusy, setFileBusy] = useState(false);
   const onDirty = useCallback((value: boolean) => setDraftDirty(value), []);
-  const claude = useClaudeAppearance(client, hello, details, onNotice);
-  const claudeTheme = claude.theme;
-  const operationBusy = codexOperationBusy || claude.busy;
+  const claude = useAppearance("claude", client, hello, details, onNotice);
+  const dsh = useAppearance("dsh", client, hello, details, onNotice);
+  const appearance = application === "dsh" ? dsh : claude;
+  const appearanceTheme = appearance.theme;
+  const [startupBusy, setStartupBusy] = useState({ codex: false, claude: false, dsh: false });
+  const onCodexStartupBusy = useCallback((value: boolean) => setStartupBusy(previous => ({ ...previous, codex: value })), []);
+  const onClaudeStartupBusy = useCallback((value: boolean) => setStartupBusy(previous => ({ ...previous, claude: value })), []);
+  const onDshStartupBusy = useCallback((value: boolean) => setStartupBusy(previous => ({ ...previous, dsh: value })), []);
+  const codexBusy = codexOperationBusy || pendingOperation(operation);
+  const libraryOperationBusy = pendingOperation(operation) && (operation!.method.startsWith("themes.") || operation!.method === "library.recover");
+  const operationBusy = (application === "codex" ? codexBusy : appearance.busy) || startupBusy[application];
+  const sharedBusy = fileBusy || importBusy || updateBusy || maintenanceBusy || libraryOperationBusy;
+  const libraryBusy = sharedBusy || codexBusy;
   const onImportBusy = useCallback((value: boolean) => setImportBusy(value), []);
   const onImportOperation = useCallback((value: OperationSnapshot) => { setOperation(value); setOperationId(value.id); }, []);
   const onImportIntent = useCallback((id: string) => { setOperation(previous => previous?.id === id ? previous : null); setOperationId(id); }, []);
   const onImported = useCallback(() => { setLibraryRead(value => value + 1); }, []);
   const mounted = useRef(true), connected = useRef(true);
-  const applicationContext = useRef({ client, hello, snapshot, statusError, draftDirty, operationBusy, fileBusy, updateBusy, maintenanceBusy, application });
-  applicationContext.current = { client, hello, snapshot, statusError, draftDirty, operationBusy, fileBusy, updateBusy, maintenanceBusy, application };
+  const applicationContext = useRef({ client, hello, snapshot, statusError, draftDirty, codexOperationBusy, operation, fileBusy, updateBusy, maintenanceBusy, application });
+  applicationContext.current = { client, hello, snapshot, statusError, draftDirty, codexOperationBusy, operation, fileBusy, updateBusy, maintenanceBusy, application };
   const communityDelete = useRef<{ id: string; version: string } | null>(null);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const loadSequence = useRef(0), selectionSequence = useRef(0), loadingList = useRef(false);
@@ -188,10 +199,10 @@ function App() {
   }, []);
   async function load(reset: boolean, discard = false) {
     if (!client || loadingList.current) return;
-    if (updateBusy || maintenanceBusy || operationBusy || importBusy || fileBusy || pendingOperation(operation)) return;
+    if (sharedBusy || operationBusy) return;
     if (reset && draftDirty && !discard) { setPendingSelection("refresh"); return; }
     const sequence = ++loadSequence.current; loadingList.current = true; setLoading(true); setError("");
-    const selection = selectionSequence.current, selectedTheme = details;
+    const selection = selectionSequence.current, selectedTheme = details, target = application;
     if (discard) { setEditorVersion(value => value + 1); setDraftDirty(false); }
     try {
       const library = await readLibrary(client);
@@ -201,13 +212,13 @@ function App() {
       if (reset && selectedTheme) {
         try {
           const current = await client.call("themes.get", { theme: selectedTheme.ref });
-          if (sequence === loadSequence.current && selection === selectionSequence.current && !applicationContext.current.draftDirty) {
+          if (sequence === loadSequence.current && selection === selectionSequence.current && applicationContext.current.application === target && !applicationContext.current.draftDirty) {
             setDetails(current);
             setThemes(previous => previous.some(theme => identity(theme) === identity(current)) ? previous : [...previous, current]);
-            if (applicationContext.current.application === "claude") claude.refreshParameters();
+            if (applicationContext.current.application !== "codex") (applicationContext.current.application === "dsh" ? dsh : claude).refreshParameters();
           }
         } catch (error) {
-          if (selection === selectionSequence.current && !applicationContext.current.draftDirty) {
+          if (selection === selectionSequence.current && applicationContext.current.application === target && !applicationContext.current.draftDirty) {
             if (error instanceof BridgeError && error.detail.code === "THEME_NOT_FOUND") { setSelected(""); setDetails(null); }
             else setError(message(error));
           }
@@ -228,12 +239,12 @@ function App() {
     return () => { current = false; };
   }, [client, hello, snapshot?.runtime?.activeRevision, activeRead, !!statusError, !!snapshot]);
   useEffect(() => {
-    if (page === "settings" && !selected && themes.length && !loading && !operationBusy && !fileBusy && !importBusy && !updateBusy && !maintenanceBusy && !pendingOperation(operation)) {
-      const active = application === "claude" ? claude.snapshot?.theme : snapshot?.desired.theme;
+    if (page === "settings" && !selected && themes.length && !loading && !operationBusy && !sharedBusy) {
+      const active = application !== "codex" ? appearance.snapshot?.theme : snapshot?.desired.theme;
       const initial = themes.find(theme => theme.ref.source === active?.source && theme.ref.id === active?.id) ?? themes[0];
       if (initial) void choose(initial);
     }
-  }, [page, selected, themes, loading, hello, operationBusy, fileBusy, importBusy, updateBusy, maintenanceBusy, operation, application, claude.snapshot?.theme]);
+  }, [page, selected, themes, loading, hello, operationBusy, fileBusy, importBusy, updateBusy, maintenanceBusy, operation, application, appearance.snapshot?.theme]);
   useEffect(() => {
     if (!hello || !client || !hello.capabilities.methods.includes("operations.get")) return;
     try { const saved = sessionStorage.getItem(storageKey); if (saved) setOperationId(saved); }
@@ -297,15 +308,16 @@ function App() {
     } finally { if (mounted.current) setOperationId(id); }
   }
   async function applyTarget(theme: ThemeRef, revision: string, target: ApplicationTarget, parameters?: ThemeParameters) {
-    if (target === "claude") {
-      const result = await claude.run("claude.apply", { ref: theme, revision, ...(parameters ? { storedParameters: parameters } : {}) });
+    if (!mounted.current || !connected.current) throw new UiMessageError(uiMessage("管理器连接已关闭，请重新连接；已接受的操作不会自动重试。"));
+    if (target !== "codex") {
+      const result = await (target === "dsh" ? dsh : claude).run(`${target}.apply`, { ref: theme, revision, ...(parameters ? { storedParameters: parameters } : {}) });
       if (result.state === "failed" || result.state === "indeterminate") throw new UiMessageError(result.error ? diagnosticMessage(result.error) : uiMessage("结果待核对"));
       return result;
     } else return startApply(theme, revision);
   }
   async function applyImported(result: OperationSnapshot, target: ApplicationTarget, parameters: ThemeParameters, applyAfter: boolean) {
     try {
-      if (target === "claude") {
+      if (target !== "codex") {
         if (!client || !result.resultTheme || !result.resultRevision) throw new UiMessageError(uiMessage("已保存主题或应用能力尚未确认，未继续应用。"));
         if (applyAfter) await applyTarget(result.resultTheme, result.resultRevision, target, parameters);
       } else if (applyAfter) await prepareImportedApply(result);
@@ -317,27 +329,23 @@ function App() {
   }
   async function prepareImportedApply(result: OperationSnapshot) {
     const context = applicationContext.current, manager = context.client, session = context.hello;
-    if (!mounted.current || !connected.current || !manager || !session || context.draftDirty || context.updateBusy || context.maintenanceBusy || context.operationBusy || context.fileBusy) throw new UiMessageError(uiMessage("请先处理主题设置草稿或当前操作，再从主题库应用已保存主题。"));
+    if (!mounted.current || !connected.current || !manager || !session || context.updateBusy || context.maintenanceBusy || context.codexOperationBusy || context.fileBusy || pendingOperation(context.operation) && context.operation?.id !== result.id) throw new UiMessageError(uiMessage("请等待当前操作结束。"));
     if (result.method !== "themes.create" || result.state !== "succeeded" || !result.resultTheme || !result.resultRevision || !session.capabilities.methods.includes("skin.apply")) throw new UiMessageError(uiMessage("已保存主题或应用能力尚未确认，未继续应用。"));
-    const current = await manager.call("themes.get", { theme: result.resultTheme });
-    if (current.revision !== result.resultRevision) throw new UiMessageError(uiMessage("主题版本已变化或不可应用，请刷新主题库核对。"));
-    const latest = applicationContext.current;
-    if (!mounted.current || !connected.current || latest.client !== manager || latest.hello?.backendSessionId !== session.backendSessionId || latest.draftDirty || latest.updateBusy || latest.maintenanceBusy || latest.operationBusy || latest.fileBusy) throw new UiMessageError(uiMessage("请先处理主题设置草稿或当前操作，再从主题库应用已保存主题。"));
     setOperationBusy(true); setOperationError(""); setLibraryNotice(uiMessage("主题已保存，正在准备应用；启动或重启时仍须确认。"));
-    try { await startApply(current.ref, current.revision); }
+    try { await startApply(result.resultTheme, result.resultRevision); }
     catch (error) { if (mounted.current) setOperationError(uiMessage("主题已保存，应用提交未确认：", undefined, { after: message(error) })); throw error; }
     finally { if (mounted.current) setOperationBusy(false); }
   }
   async function apply() {
-    if (!details || updateBusy || maintenanceBusy || operationBusy || importBusy || fileBusy || draftDirty || pendingOperation(operation)) return;
+    if (!details || sharedBusy || codexBusy) return;
     setOperationBusy(true); setOperationError("");
     try { await startApply(details.ref, details.revision); }
     catch (error) { setOperationError(message(error)); }
     finally { setOperationBusy(false); }
   }
   async function saveTheme(patch: ThemePatch, copyName: string | null, applyAfter: boolean) {
-    if (!client || !hello || !details || updateBusy || maintenanceBusy || operationBusy || importBusy || fileBusy || pendingOperation(operation)) throw new UiMessageError(uiMessage("请等待当前操作结束。"));
-    const source = details, selection = selectionSequence.current, id = `${hello.backendSessionId}:${crypto.randomUUID()}`;
+    if (!client || !hello || !details || libraryBusy) throw new UiMessageError(uiMessage("请等待当前操作结束。"));
+    const source = details, selection = selectionSequence.current, target = application, id = `${hello.backendSessionId}:${crypto.randomUUID()}`;
     setOperationBusy(true); setOperationError(""); setLibraryNotice("");
     let saved = false;
     try {
@@ -370,14 +378,17 @@ function App() {
       if (value.state !== "succeeded" || !value.resultTheme || !value.resultRevision) throw new UiMessageError(value.error ? diagnosticMessage(value.error) : uiMessage("保存结果待核对，草稿已保留。"));
       saved = true;
       setLibraryNotice(uiMessage(applyAfter ? "主题已保存，正在准备应用；启动或重启时仍须确认。" : "主题已保存到主题库，当前 Codex 外观未切换。"));
-      const current = await client.call("themes.get", { theme: value.resultTheme });
-      if (!mounted.current || selectionSequence.current !== selection) return;
-      if (current.revision !== value.resultRevision) throw new UiMessageError(uiMessage("主题保存后又被修改；请刷新核对，未继续应用。"));
-      setSelected(identity(current)); setDetails(current); setDraftDirty(false);
-      setThemes(previous => {
-        const values = previous.map(theme => identity(theme) === identity(current) ? current : theme);
-        return values.some(theme => identity(theme) === identity(current)) ? values : [...values, current];
-      });
+      // Editor refresh is independent of the already authorized apply.
+      setRefreshingEditor(selection);
+      void client.call("themes.get", { theme: value.resultTheme }).then(current => {
+        if (!mounted.current || selectionSequence.current !== selection || applicationContext.current.application !== target) return;
+        setSelected(identity(current)); setDetails(current); setDraftDirty(false);
+        setThemes(previous => {
+          const values = previous.map(theme => identity(theme) === identity(current) ? current : theme);
+          return values.some(theme => identity(theme) === identity(current)) ? values : [...values, current];
+        });
+      }).catch(error => { if (mounted.current && selectionSequence.current === selection && applicationContext.current.application === target) setError(message(error)); })
+        .finally(() => { if (mounted.current) setRefreshingEditor(previous => previous === selection ? null : previous); });
       if ((applyAfter || refresh) && mounted.current) {
         // The backend validates this refresh binding against the live session.
         await startApply(value.resultTheme, value.resultRevision, applyAfter ? undefined : refresh);
@@ -390,7 +401,7 @@ function App() {
     } finally { if (mounted.current) setOperationBusy(false); }
   }
   async function confirm(accepted: boolean) {
-    if (!client || !operation?.confirmation || operationBusy) return;
+    if (!client || !operation?.confirmation || codexOperationBusy) return;
     setOperationBusy(true); setOperationError("");
     try {
       const value = await client.call("operations.confirm", { operationId: operation.id, confirmationId: operation.confirmation.id, accepted });
@@ -404,14 +415,15 @@ function App() {
     try { const current = await client.call("status.get", {}); if (mounted.current && connected.current) { setSnapshot(previous => !previous || previous.backendSessionId !== current.backendSessionId || previous.sequence <= current.sequence ? current : previous); setActiveRead(value => value + 1); } }
     catch (error) { if (mounted.current) { setSnapshot(null); setStatusError(message(error)); } }
   }
-  async function controlClaude(method: ClaudeMutationMethod) {
-    if (busy || draftDirty) return;
-    try { await claude.run(method); } catch { /* The hook retains the exact operation and reports its error. */ }
+  async function controlAppearance(method: AppearanceMutationMethod) {
+    const target = method.startsWith("dsh.") ? "dsh" : "claude", controller = target === "dsh" ? dsh : claude;
+    if (sharedBusy || controller.busy || startupBusy[target]) return;
+    try { await controller.run(method); } catch { /* The hook retains the exact operation and reports its error. */ }
   }
   async function controlRuntime(method: RuntimeMethod) {
     if (application !== "codex") return;
-    if (!client || !hello || method !== "skin.pause" && (!snapshot?.runtime?.revision || draftDirty) || updateBusy || maintenanceBusy || operationBusy || fileBusy || importBusy || pendingOperation(operation)) return;
-    // Pause is bound to the live connection by the backend, not a status snapshot.
+    if (!client || !hello?.capabilities.methods.includes(method) || sharedBusy || codexBusy || startupBusy.codex || method === "skin.restore" && !snapshot?.runtime?.revision) return;
+    // Resume, reset and pause use the live runtime; restore and upgrade retain revision binding.
     const id = `${hello.backendSessionId}:${crypto.randomUUID()}`;
     let expectedRuntimeRevision = snapshot?.runtime?.revision ?? "0".repeat(64), submitted = false;
     setOperationBusy(true); setOperationError("");
@@ -428,7 +440,6 @@ function App() {
       submitted = true;
       setOperation(await client.call(method, { operationId: id, expectedRuntimeRevision }));
     } catch (error) {
-      if (submitted && error instanceof BridgeError) { submitted = false; sessionStorage.removeItem(storageKey); }
       if (error instanceof BridgeError && error.detail.code === "RUNTIME_CHANGED") {
         await refreshRuntime();
         if (mounted.current) setOperationError(uiMessage("运行状态已变化，请核对刷新后的状态再操作。"));
@@ -437,7 +448,7 @@ function App() {
     finally { if (mounted.current) { if (submitted) setOperationId(id); setOperationBusy(false); } }
   }
   async function deleteSelected() {
-    if (!client || !hello || !details || updateBusy || maintenanceBusy || operationBusy || importBusy || fileBusy || draftDirty || pendingOperation(operation)) return;
+    if (!client || !hello || !details || libraryBusy || draftDirty) return;
     const id = `${hello.backendSessionId}:${crypto.randomUUID()}`; setOperationBusy(true); setOperationError("");
     try {
       sessionStorage.setItem(storageKey, id); setOperationId(null); setOperation(null);
@@ -445,7 +456,7 @@ function App() {
     } catch (error) { setOperationError(message(error)); } finally { if (mounted.current) { setOperationId(id); setOperationBusy(false); } }
   }
   async function deleteCommunity(local: NonNullable<CommunityTheme["downloaded"]>) {
-    if (!client || !hello || updateBusy || maintenanceBusy || operationBusy || importBusy || fileBusy || pendingOperation(operation)) return;
+    if (!client || !hello || libraryBusy) return;
     const id = `${hello.backendSessionId}:${crypto.randomUUID()}`; setOperationBusy(true); setOperationError("");
     try {
       sessionStorage.setItem(storageKey, id); setOperationId(null); setOperation(null); communityDelete.current = { id, version: local.version };
@@ -453,7 +464,7 @@ function App() {
     } catch (error) { setOperationError(message(error)); } finally { if (mounted.current) { setOperationId(id); setOperationBusy(false); } }
   }
   async function original(action: "files.saveOriginal" | "files.playOriginal" | "files.exportPackage") {
-    if (!client || !details || updateBusy || maintenanceBusy || fileBusy || importBusy || operationBusy || pendingOperation(operation)) return;
+    if (!client || !details || sharedBusy || operationBusy) return;
     const selectedTheme = details; setFileBusy(true); setLibraryNotice("");
     try {
       if (action === "files.saveOriginal" || action === "files.exportPackage") {
@@ -467,16 +478,16 @@ function App() {
     finally { if (mounted.current) setFileBusy(false); }
   }
   async function choose(theme: ThemeSummary, discard = false) {
-    if (!client || operationBusy || fileBusy || importBusy || pendingOperation(operation) || (selected === identity(theme) && details)) return;
+    if (!client || operationBusy || sharedBusy || (selected === identity(theme) && details)) return;
     if (draftDirty && !discard) { setPendingSelection(theme); return; }
     const sequence = ++selectionSequence.current;
     setSelected(identity(theme)); setDetails(null); setLoadingDetails(true); setError("");
     setLibraryNotice("");
-    try { const value = await client.call("themes.get", { theme: theme.ref }); if (sequence === selectionSequence.current) setDetails(value); }
-    catch (error) { if (sequence === selectionSequence.current) setError(message(error)); }
-    finally { if (sequence === selectionSequence.current) setLoadingDetails(false); }
+    try { const value = await client.call("themes.get", { theme: theme.ref }); if (mounted.current && sequence === selectionSequence.current) setDetails(value); }
+    catch (error) { if (mounted.current && sequence === selectionSequence.current) setError(message(error)); }
+    finally { if (mounted.current && sequence === selectionSequence.current) setLoadingDetails(false); }
   }
-  const busy = operationBusy || fileBusy || importBusy || updateBusy || maintenanceBusy || pendingOperation(operation);
+  const busy = operationBusy || sharedBusy;
   useEffect(() => {
     if (!hello || !client || busy || loading || loadingList.current || draftDirty || libraryRead <= handledLibraryRead.current) return;
     handledLibraryRead.current = libraryRead; void load(true);
@@ -484,11 +495,11 @@ function App() {
   const canApply = application === "codex" && !!hello?.capabilities.methods.includes("skin.apply") && !!details;
   const confirmation = operation ? confirmationText(language, operation) : null;
   const detailProps = { client, hello, theme: details, loading: loadingDetails, busy, draftDirty, canApply,
-    onStartupBusy: setFileBusy,
+    onStartupBusy: onCodexStartupBusy,
     onApply: () => { void apply(); }, onOriginal: (action: "files.saveOriginal" | "files.playOriginal" | "files.exportPackage") => { void original(action); } };
   useEffect(() => { if (error) setFeedback(error); }, [error]);
   useEffect(() => { if (application === "codex" && statusError) setFeedback(statusError); }, [statusError, application]);
-  useEffect(() => { if (application === "claude" && (claude.statusError || claude.parametersError)) setFeedback(claude.statusError || claude.parametersError); }, [application, claude.statusError, claude.parametersError]);
+  useEffect(() => { if (application !== "codex" && (appearance.statusError || appearance.parametersError)) setFeedback(appearance.statusError || appearance.parametersError); }, [application, appearance.statusError, appearance.parametersError]);
   useEffect(() => { if (libraryNotice) setFeedback(libraryNotice); }, [libraryNotice]);
   useEffect(() => { if (operationError) setFeedback(operationError); }, [operationError]);
   useEffect(() => { if (operation) { const value = operationFeedback(operation); if (value) setFeedback(value); } }, [operation?.id, operation?.state, operation?.error?.message]);
@@ -498,17 +509,17 @@ function App() {
   }, [operation?.id, operation?.state]);
   const openUpdates = () => { setUtility("updates"); if (!busy) setUpdateCheck(value => value + 1); };
   const runtimeLabel = disconnected ? tr("需要重新连接") : !hello ? tr("正在连接本地管理器…") : statusError || !snapshot ? tr("状态暂不可用") : snapshot.desired.paused ? tr("已暂停") : tr(health[snapshot.engine.health]);
-  const claudeLabel = disconnected ? tr("需要重新连接") : !hello ? tr("正在连接本地管理器…") : !claude.supported ? tr("暂不支持") : claude.statusError || !claude.snapshot ? tr("状态暂不可用") : claude.snapshot.connection === "awaiting-debugger" ? tr("等待开启调试") : claude.snapshot.connection !== "connected" ? tr("未连接") : claude.snapshot.paused ? tr("已暂停") : tr(claude.snapshot.renderer === "applied" ? "运行中" : "已连接");
-  const activeSelection = details && (snapshot?.desired.theme?.source === details.ref.source && snapshot.desired.theme.id === details.ref.id || snapshot?.renderer.theme?.source === details.ref.source && snapshot.renderer.theme.id === details.ref.id || claude.snapshot?.theme?.source === details.ref.source && claude.snapshot.theme.id === details.ref.id);
+  const appearanceLabel = disconnected ? tr("需要重新连接") : !hello ? tr("正在连接本地管理器…") : !appearance.supported ? tr("暂不支持") : appearance.statusError || !appearance.snapshot ? tr("状态暂不可用") : appearance.snapshot.connection === "awaiting-debugger" ? tr("等待开启调试") : appearance.snapshot.connection !== "connected" ? tr("未连接") : appearance.snapshot.paused ? tr("已暂停") : tr(appearance.snapshot.renderer === "applied" ? "运行中" : "已连接");
+  const activeSelection = details && (snapshot?.desired.theme?.source === details.ref.source && snapshot.desired.theme.id === details.ref.id || snapshot?.renderer.theme?.source === details.ref.source && snapshot.renderer.theme.id === details.ref.id || claude.snapshot?.theme?.source === details.ref.source && claude.snapshot.theme.id === details.ref.id || dsh.snapshot?.theme?.source === details.ref.source && dsh.snapshot.theme.id === details.ref.id);
   return <LanguageContext.Provider value={language}><div className="app"><main>
     <aside className="application-rail">
       <ApplicationTargets value={application} onChange={setApplication}
-        disabled={busy || draftDirty || importDirty || claudeRestore || !!communityRequest || incomingLinks.length > 0} />
+        disabled={sharedBusy || draftDirty || importDirty || !!communityRequest || incomingLinks.length > 0} />
     </aside>
     <div className="manager-workspace">
     <header className="desktop-header">
       <nav className="page-navigation" aria-label={tr("管理器页面")}>{(Object.keys(pages) as Page[]).map(id => <button key={id} aria-current={page === id ? "page" : undefined} aria-controls={`page-${id}`} onClick={() => goPage(id)}>{t(id)}</button>)}</nav>
-      <div className="header-actions"><span className={`runtime-indicator ${(application === "codex" ? snapshot?.engine.health === "healthy" && !snapshot.desired.paused && !statusError : claude.snapshot?.connection === "connected" && claude.snapshot.renderer === "applied" && !claude.snapshot.paused && !claude.statusError) ? "healthy" : ""}`} title={application === "claude" ? [claudeLabel, ...(claude.snapshot?.diagnostics.map(item => msg(diagnosticMessage(item))) ?? [])].join("\n") : snapshot ? [runtimeLabel, tr(renderer[snapshot.renderer.status]), ...snapshot.diagnostics.map(item => msg(diagnosticMessage(item)))].join("\n") : runtimeLabel}><span aria-hidden="true" /><span className="runtime-label">{application === "codex" ? runtimeLabel : claudeLabel}</span></span>
+      <div className="header-actions"><span className={`runtime-indicator ${(application === "codex" ? snapshot?.engine.health === "healthy" && !snapshot.desired.paused && !statusError : appearance.snapshot?.connection === "connected" && appearance.snapshot.renderer === "applied" && !appearance.snapshot.paused && !appearance.statusError) ? "healthy" : ""}`} title={application !== "codex" ? [appearanceLabel, ...(appearance.snapshot?.diagnostics.map(item => msg(diagnosticMessage(item))) ?? [])].join("\n") : snapshot ? [runtimeLabel, tr(renderer[snapshot.renderer.status]), ...snapshot.diagnostics.map(item => msg(diagnosticMessage(item)))].join("\n") : runtimeLabel}><span aria-hidden="true" /><span className="runtime-label">{application === "codex" ? runtimeLabel : appearanceLabel}</span></span>
         <button disabled={!hello} onClick={openUpdates}>{tr("检查更新")}{updateAvailable ? " ·" : ""}</button></div>
     </header>
     {pendingSelection && <ConfirmationDialog title={tr("未保存主题设置")} onCancel={() => setPendingSelection(null)}>
@@ -518,50 +529,44 @@ function App() {
           if (next === "refresh") void load(true, true); else void choose(next, true);
         }}>{tr("丢弃并继续")}</button></div>
     </ConfirmationDialog>}
-    {claudeRestore && <ConfirmationDialog title={tr("恢复原貌")} onCancel={() => setClaudeRestore(false)}>
-      <p>{tr("恢复 Claude Desktop 原始外观，保留主题与已保存参数。")}</p><div className="editor-actions">
-        <button disabled={busy} onClick={() => setClaudeRestore(false)}>{tr("取消")}</button>
-        <button className="danger" disabled={busy} onClick={() => { setClaudeRestore(false); void controlClaude("claude.restore"); }}>{tr("恢复原貌")}</button>
-      </div>
-    </ConfirmationDialog>}
-    {operation?.state === "awaitingConfirmation" && operation.confirmation && <ConfirmationDialog title={tr("确认所选操作")} onCancel={() => void confirm(false)}>
+    {operation?.state === "awaitingConfirmation" && operation.confirmation && (application === "codex" || libraryOperationBusy) && <ConfirmationDialog title={tr("确认所选操作")} modal={operation.method === "skin.restore" || libraryOperationBusy} onCancel={() => void confirm(false)}>
       <p>{confirmation?.reason ?? operation.confirmation.reason}</p><p>{operation.method === "themes.delete" && operation.id === communityDelete.current?.id ? tr("将删除此社区主题的本地储存，不影响后续二次下载使用。") : confirmation?.impact ?? operation.confirmation.impact}</p>
       {operationError && <p className="field-error" role="alert">{msg(operationError)}</p>}
-      <div className="editor-actions"><button disabled={!hello || operationBusy} onClick={() => void confirm(false)}>{tr("取消")}</button><button className="confirm-accept" disabled={!hello || operationBusy} onClick={() => void confirm(true)}>{tr(operation.method === "themes.delete" ? "确认删除" : "继续")}</button></div>
+      <div className="editor-actions"><button disabled={!hello || codexOperationBusy} onClick={() => void confirm(false)}>{tr("取消")}</button><button className="confirm-accept" disabled={!hello || codexOperationBusy} onClick={() => void confirm(true)}>{tr(operation.method === "themes.delete" ? "确认删除" : "继续")}</button></div>
     </ConfirmationDialog>}
     <section id="page-import" className="manager-page" aria-labelledby="page-import-title" hidden={page !== "import"}>
       <h2 id="page-import-title" className="visually-hidden" tabIndex={-1}>{tr("导入图片")}</h2>
-      {client && hello?.capabilities.methods.includes("themes.create") && <ImportPanel client={client} hello={hello} busy={busy} visible={page === "import"} operation={operation} application={application}
-        canApply={!draftDirty && hello.capabilities.methods.includes(application === "claude" ? "claude.apply" : "skin.apply")}
-        onSaveParameters={claude.saveForTheme} onSavedTheme={applyImported} onDraftDirty={onImportDirty} onBusy={onImportBusy} onOperation={onImportOperation} onIntent={onImportIntent} onSaved={onImported} onNotice={onNotice} />}
+      {client && hello?.capabilities.methods.includes("themes.create") && <ImportPanel client={client} hello={hello} busy={busy || libraryBusy} visible={page === "import"} operation={operation} application={application}
+        canApply={hello.capabilities.methods.includes(application === "codex" ? "skin.apply" : `${application}.apply`)}
+        onSaveParameters={appearance.saveForTheme} onSavedTheme={applyImported} onDraftDirty={onImportDirty} onBusy={onImportBusy} onOperation={onImportOperation} onIntent={onImportIntent} onSaved={onImported} onNotice={onNotice} />}
     </section>
     <section id="page-console" className="manager-page" aria-labelledby="page-console-title" hidden={page !== "console"}>
       <h2 id="page-console-title" className="visually-hidden" tabIndex={-1}>{tr("控制台")}</h2>
       <div className="content"><ThemeLibrary client={client} platform={hello?.platform} application={application} visible={page === "console"} themes={themes} selected={selected} loading={loading} busy={busy || !hello}
         onChoose={theme => { void choose(theme); }} commands={<>
-          <button disabled={!hello?.capabilities.methods.includes("themes.create") || busy} onClick={() => setQuickImport(value => ({ sequence: value.sequence + 1, packages: false }))}>{tr("添加图片")}</button>
-          <button disabled={!hello?.capabilities.methods.includes("themes.importPackage") || busy} onClick={() => setQuickImport(value => ({ sequence: value.sequence + 1, packages: true }))}>{tr("导入主题包")}</button>
+          <button disabled={!hello?.capabilities.methods.includes("themes.create") || libraryBusy} onClick={() => setQuickImport(value => ({ sequence: value.sequence + 1, packages: false }))}>{tr("添加图片")}</button>
+          <button disabled={!hello?.capabilities.methods.includes("themes.importPackage") || libraryBusy} onClick={() => setQuickImport(value => ({ sequence: value.sequence + 1, packages: true }))}>{tr("导入主题包")}</button>
           <button disabled={busy || !details || !hello?.capabilities.methods.includes("files.exportPackage")} onClick={() => void original("files.exportPackage")}>{tr("导出主题")}</button>
           {details && (details.ref.source === "saved" || details.ref.source === "preset") && hello?.capabilities.methods.includes("themes.delete") && <button className="danger" title={activeSelection ? tr("当前正在使用该主题，请先应用其他主题后再删除。") : !details.availability.delete?.allowed ? tr("当前主题受保护，暂时不能删除。") : undefined}
-            disabled={busy || draftDirty || !!activeSelection || !details.availability.delete?.allowed} onClick={() => void deleteSelected()}>{tr(details.ref.source === "preset" ? "删除内置主题" : "删除主题")}</button>}
+            disabled={libraryBusy || draftDirty || !!activeSelection || !details.availability.delete?.allowed} onClick={() => void deleteSelected()}>{tr(details.ref.source === "preset" ? "删除内置主题" : "删除主题")}</button>}
         </>} />
         {application === "codex" ? <ThemeDetailsPanel {...detailProps} selectedPreview={themes.find(theme => identity(theme) === selected) ?? null} activeTheme={activeSkin} snapshot={statusError ? null : snapshot} visible={page === "console"} onEdit={() => goPage("settings")}
           onApply={() => { if (details) void apply(); else if (!selected) void controlRuntime("skin.resume"); }} onControl={method => void controlRuntime(method)} onRefresh={() => { void refreshRuntime(); void load(true); }} /> :
-          <ClaudeAppearancePanel client={client} hello={hello} theme={claudeTheme} selectedPreview={themes.find(theme => identity(theme) === selected) ?? null}
-            snapshot={claude.statusError ? null : claude.snapshot} supported={claude.supported} busy={busy || !hello} draftDirty={draftDirty}
-            activeTheme={themes.find(theme => theme.ref.source === claude.snapshot?.theme?.source && theme.ref.id === claude.snapshot.theme.id) ?? null}
-            visible={page === "console"} onEdit={() => goPage("settings")} onApply={() => { if (!busy && !draftDirty) { if (claudeTheme) void applyTarget(claudeTheme.ref, claudeTheme.revision, "claude", claudeTheme.storedParameters).catch(() => {}); else if (!selected) void controlClaude("claude.resume"); } }}
-            onOriginal={action => void original(action)} onStartupBusy={setFileBusy}
-            onControl={method => { if (method === "claude.restore") setClaudeRestore(true); else void controlClaude(method); }} onRefresh={() => { void claude.refresh(); void load(true); }} />}
+          <AppearancePanel target={application} client={client} hello={hello} theme={appearanceTheme} selectedPreview={themes.find(theme => identity(theme) === selected) ?? null}
+            snapshot={appearance.statusError ? null : appearance.snapshot} supported={appearance.supported} busy={busy || !hello} draftDirty={draftDirty}
+            activeTheme={themes.find(theme => theme.ref.source === appearance.snapshot?.theme?.source && theme.ref.id === appearance.snapshot.theme.id) ?? null}
+            visible={page === "console"} onEdit={() => goPage("settings")} onApply={() => { if (!busy) { if (appearanceTheme) void applyTarget(appearanceTheme.ref, appearanceTheme.revision, application, appearanceTheme.storedParameters).catch(() => {}); else if (!selected) void controlAppearance(application === "dsh" ? "dsh.resume" : "claude.resume"); } }}
+            onOriginal={action => void original(action)} onStartupBusy={application === "dsh" ? onDshStartupBusy : onClaudeStartupBusy}
+            onControl={method => void controlAppearance(method)} onRefresh={() => { void appearance.refresh(); void load(true); }} />}
       </div>
     </section>
     <section id="page-community" className="manager-page" aria-labelledby="page-community-title" hidden={page !== "community"}>
       <h2 id="page-community-title" className="visually-hidden" tabIndex={-1}>{tr("社区主题库")}</h2>
       {client && hello?.capabilities.methods.includes("community.list") && hello.capabilities.methods.includes("community.preview") ?
-        <CommunityLibrary key={hello.backendSessionId} client={client} visible={page === "community"} busy={busy || incomingLinks.length > 0 || !!communityRequest}
+        <CommunityLibrary key={hello.backendSessionId} client={client} visible={page === "community"} busy={busy || libraryBusy || incomingLinks.length > 0 || !!communityRequest}
           platform={hello.platform} engineVersion={hello.versions.application}
-          activeThemes={[snapshot?.desired.theme ?? null, snapshot?.renderer.theme ?? null, claude.snapshot?.theme ?? null]}
-          application={application} canApply={!draftDirty && hello.capabilities.methods.includes(application === "claude" ? "claude.apply" : "skin.apply")} downloadUpdate={communityDownload}
+          activeThemes={[snapshot?.desired.theme ?? null, snapshot?.renderer.theme ?? null, claude.snapshot?.theme ?? null, dsh.snapshot?.theme ?? null]}
+          application={application} canApply={hello.capabilities.methods.includes(application === "codex" ? "skin.apply" : `${application}.apply`)} downloadUpdate={communityDownload}
           onDelete={local => void deleteCommunity(local)}
           onAction={(theme, action) => setCommunityRequest({ id: crypto.randomUUID(), version: theme.id, action, application,
             compatibility: mergeCommunityCompatibility({ applyCompatible: theme.applyCompatible, platforms: theme.platforms }, theme.compatibility) })} /> :
@@ -576,34 +581,34 @@ function App() {
             label: theme.name + (themes.filter(other => other.name === theme.name).length > 1 ? ` · ${tr(theme.ref.source === "preset" ? "内置" : "我的")} (${theme.ref.id})` : "") }))]} />
         </label>{application === "codex" && details && !details.availability.update.allowed && <p className="muted">{tr("当前主题暂时不能编辑。")}</p>}
       </aside><div className="settings-editor">{application === "codex" ? <ThemeDetailsPanel {...detailProps} visible={page === "settings"}>
-        {details && hello?.capabilities.methods.includes("themes.update") && <ThemeEditor key={`${identity(details)}:${details.revision}:${editorVersion}`} theme={details} client={client} visible={page === "settings"} busy={busy || !hello} canApply={canApply} allowCopy={hello.platform === "macos"} onDirty={onDirty} onSave={saveTheme} onNotice={onNotice} />}
-      </ThemeDetailsPanel> : <section className="inspector claude-settings"><div className="detail-body">
-        {claudeTheme ? <ThemeEditor key={`${identity(claudeTheme)}:${claudeTheme.revision}:${editorVersion}`} theme={claudeTheme} client={client} visible={page === "settings"} busy={busy || !hello} canApply={false} application="claude" onDirty={onDirty}
+        {details && hello?.capabilities.methods.includes("themes.update") && <ThemeEditor key={`${identity(details)}:${details.revision}:${editorVersion}`} theme={details} client={client} visible={page === "settings"} busy={busy || !hello || refreshingEditor === selectionSequence.current} canApply={canApply} allowCopy={hello.platform === "macos"} onDirty={onDirty} onSave={saveTheme} onNotice={onNotice} />}
+      </ThemeDetailsPanel> : <section className="inspector appearance-settings"><div className="detail-body">
+        {appearanceTheme ? <ThemeEditor key={`${application}:${identity(appearanceTheme)}:${appearanceTheme.revision}:${editorVersion}`} theme={appearanceTheme} client={client} visible={page === "settings"} busy={busy || !hello} canApply={false} application={application} onDirty={onDirty}
           onNotice={onNotice} onSave={async patch => {
-            await claude.save(patch.parameters ?? {});
+            await appearance.save(patch.parameters ?? {});
           }} /> :
-          <p className="empty">{claude.parametersError ? msg(claude.parametersError) : tr(details && claude.supported ? "正在读取详情…" : "选择主题")}</p>}
+          <p className="empty">{appearance.parametersError ? msg(appearance.parametersError) : tr(details && appearance.supported ? "正在读取详情…" : "选择主题")}</p>}
       </div></section>}</div></div>
     </section>
     <dialog ref={utilityDialog} className={`utility-panel${utility === "updates" ? " utility-panel--updates" : ""}`} onCancel={() => setUtility(null)} aria-label={tr(utility === "system" ? "系统与信息" : "软件更新")}>
       <div className="utility-content"><button className="utility-close" onClick={() => setUtility(null)}>{tr("关闭")}</button>
         {(utility === "system" || maintenanceBusy) && hello?.platform === "macos" && client && hello.capabilities.methods.includes("desktop.get") && <div hidden={utility !== "system"}><SystemPanel client={client} hello={hello} info={desktopInfo} onInfo={onDesktopInfo}
-          disabled={operationBusy || fileBusy || importBusy || updateBusy || draftDirty || pendingOperation(operation)} onBusy={onMaintenanceBusy} onConsole={() => { setUtility(null); goPage("console"); }} /></div>}
+          disabled={codexBusy || claude.busy || dsh.busy || Object.values(startupBusy).some(Boolean) || fileBusy || importBusy || updateBusy || draftDirty} onBusy={onMaintenanceBusy} onConsole={() => { setUtility(null); goPage("console"); }} /></div>}
         <div hidden={utility !== "updates"}>{client && hello?.capabilities.methods.includes("updates.check") && <UpdatePanel key={hello.backendSessionId} client={client} session={hello.backendSessionId} checkRequest={updateCheck}
-          disabled={operationBusy || fileBusy || importBusy || maintenanceBusy || draftDirty || pendingOperation(operation)} onBusy={onUpdateBusy} onAvailable={onUpdateAvailable} />}</div>
+          disabled={codexBusy || claude.busy || dsh.busy || Object.values(startupBusy).some(Boolean) || fileBusy || importBusy || maintenanceBusy || draftDirty} onBusy={onUpdateBusy} onAvailable={onUpdateAvailable} />}</div>
       </div>
     </dialog>
     {client && hello?.capabilities.methods.includes("community.inspect") && <CommunityPanel client={client} hello={hello}
-      busy={busy} incoming={incomingLinks[0] ?? null} onConsume={consumeLink}
+      busy={busy || libraryBusy} incoming={incomingLinks[0] ?? null} onConsume={consumeLink}
       request={communityRequest} onConsumeRequest={consumeCommunityRequest} onDownloadState={onCommunityDownload} onNotice={onNotice}
-      canApply={!draftDirty} onApplyTheme={applyTarget}
+      canApply={true} onApplyTheme={applyTarget}
       onBusy={onImportBusy} onOperation={onImportOperation} onIntent={onImportIntent} onSaved={onImported} />}
     <footer className="message-bar" aria-live="polite"><span title={msg(feedback)}>{operation?.state === "awaitingConfirmation" ? "" : msg(feedback) || (hello ? "" : runtimeLabel)}</span>
-      {client && hello && <QuickImport client={client} hello={hello} request={quickImport} busy={busy} onBusy={onImportBusy} onOperation={onImportOperation} onIntent={onImportIntent} onSaved={onImported} onNotice={onNotice} />}
+      {client && hello && <QuickImport client={client} hello={hello} request={quickImport} busy={busy || libraryBusy} onBusy={onImportBusy} onOperation={onImportOperation} onIntent={onImportIntent} onSaved={onImported} onNotice={onNotice} />}
       {disconnected && <button onClick={() => { if (!window.confirm(tr("重新连接会丢弃未保存的编辑，是否继续？"))) return; try { reconnectManager(); } catch (error) { setError(message(error)); } }}>{tr("重新连接")}</button>}
       {application === "codex" && (operationError || operation?.state === "indeterminate") && operationId && <button disabled={operationBusy} onClick={() => setOperationRead(value => value + 1)}>{tr("核对结果")}</button>}
-      {application === "claude" && (claude.operationError || claude.operation?.state === "indeterminate") && <button disabled={codexOperationBusy} onClick={claude.checkResult}>{tr("核对结果")}</button>}
-      {application === "codex" && !busy && snapshot?.runtime?.upgradeRequired && snapshot.availability.upgrade?.allowed && <button disabled={draftDirty} onClick={() => void controlRuntime("runtime.upgrade")}>{tr("升级皮肤运行时")}</button>}
+      {application !== "codex" && (appearance.operationError || appearance.operation?.state === "indeterminate") && <button disabled={appearance.busy} onClick={appearance.checkResult}>{tr("核对结果")}</button>}
+      {application === "codex" && !busy && snapshot?.runtime?.upgradeRequired && snapshot.availability.upgrade?.allowed && <button onClick={() => void controlRuntime("runtime.upgrade")}>{tr("升级皮肤运行时")}</button>}
     </footer>
     </div>
   </main></div></LanguageContext.Provider>;

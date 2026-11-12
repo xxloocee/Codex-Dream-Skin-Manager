@@ -10,6 +10,7 @@ assert_codex_user_environment || exit 1
 THEME_ID=""
 SNAPSHOT_DIR=""
 MANAGER_SNAPSHOT_DIR=""
+MANAGER_VERIFICATION_PATH=""
 AUTO_RESTART="true"
 EXPECTED_CONTENT_FINGERPRINT=""
 LOCK_TOKEN=""
@@ -36,6 +37,7 @@ while [ "$#" -gt 0 ]; do
     --id) THEME_ID="${2:-}"; shift 2 ;;
     --snapshot-dir) SNAPSHOT_DIR="${2:-}"; shift 2 ;;
     --manager-snapshot-dir) MANAGER_SNAPSHOT_DIR="${2:-}"; shift 2 ;;
+    --manager-verification-path) MANAGER_VERIFICATION_PATH="${2:-}"; shift 2 ;;
     --no-auto-restart) AUTO_RESTART="false"; shift ;;
     --expect-fingerprint) EXPECTED_CONTENT_FINGERPRINT="${2:-}"; shift 2 ;;
     --lock-token) LOCK_TOKEN="${2:-}"; shift 2 ;;
@@ -95,6 +97,11 @@ fi
 
 ensure_node_runtime
 assert_codex_process_environment || exit 1
+if [ -n "$MANAGER_VERIFICATION_PATH" ]; then
+  [ -n "$MANAGER_SNAPSHOT_DIR" ] && [ -n "$LOCK_TOKEN" ] || fail "Verification output requires a locked manager snapshot."
+  assert_manager_verification_path "$MANAGER_VERIFICATION_PATH" || fail "Invalid manager verification output."
+  case "$MANAGER_VERIFICATION_PATH" in "$STATE_ROOT/manager-operations/requests/$snapshot_leaf.json.verify."*) ;; *) fail "Verification output belongs to a different request." ;; esac
+fi
 if [ -n "$LOCK_TOKEN" ]; then
   assert_inherited_theme_switch_lock "$LOCK_TOKEN" "$LOCK_OWNER"
 else
@@ -235,10 +242,7 @@ fi
 
 # Hot path: CDP already open → seconds, not tens of seconds
 progress "$(dreamskin_text applying_theme_to_chatgpt)"
-if hot_reapply_theme "$PORT" 8000 "$OPERATION_TOKEN" "$OPACITY_ONLY"; then
-  progress "$(dreamskin_text verifying_rendered_theme)"
-  run_injector_with_diagnostics verify --verify --port "$PORT" --theme-dir "$THEME_DIR" --timeout-ms 10000 >/dev/null \
-    || fail "Theme injection completed but the visible renderer did not verify the exact active theme."
+if hot_reapply_theme "$PORT" 8000 "$OPERATION_TOKEN" "$OPACITY_ONLY" "${MANAGER_VERIFICATION_PATH:-/dev/null}"; then
   progress "$(dreamskin_text skin_applied): ${THEME_NAME}"
   exit 0
 fi

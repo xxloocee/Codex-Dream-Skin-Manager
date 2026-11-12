@@ -1,7 +1,7 @@
 import type { Diagnostic, ManagerSnapshot, ThemeRef } from "../../contracts/manager.mjs";
 
 // Filesystem paths remain internal to the platform/core boundary, never the wire.
-export interface RevisionFile { file: string; root: string; bytes: Uint8Array | null; maximum?: number; digest?: boolean }
+export interface RevisionFile { file: string; root: string; bytes: Uint8Array | null; maximum?: number }
 export interface LocalTheme {
   ref: ThemeRef;
   config: Record<string, unknown>;

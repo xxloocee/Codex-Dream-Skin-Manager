@@ -51,14 +51,6 @@ export async function existingTheme(root: string, id: string, source: "preset" |
   catch { return false; }
 }
 export async function mergedPreset(theme: LocalTheme, stateRoot: string): Promise<LocalTheme> {
-  // Flat presets have no theme.json reader. Include their shared LICENSE in the
-  // revision so a copy cannot silently pick up different attribution bytes.
-  const licenseFile = path.join(theme.mediaRoot, "LICENSE.txt");
-  if (!theme.revisionFiles.some(value => value.file === licenseFile)) {
-    const license = await optionalBytes(licenseFile, theme.mediaRoot, 65536);
-    theme = { ...theme, revisionInputs: [...theme.revisionInputs, new TextEncoder().encode(JSON.stringify({ license: license !== null })), license ?? new Uint8Array()],
-      revisionFiles: [...theme.revisionFiles, { file: licenseFile, root: theme.mediaRoot, bytes: license, maximum: 65536 }] };
-  }
   const file = path.join(stateRoot, "preset-settings", `${theme.ref.id}.json`);
   const bytes = await optionalBytes(file, stateRoot, 16384);
   const revisionFiles = [...theme.revisionFiles, { file, root: stateRoot, bytes, maximum: 16384 }];

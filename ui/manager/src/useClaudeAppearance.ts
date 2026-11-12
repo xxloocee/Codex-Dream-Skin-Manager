@@ -1,36 +1,38 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ClaudeOperation, ClaudeParameters, ClaudeSnapshot, HelloResult, ThemeDetails, ThemeParameters, ThemeRef } from "../../../contracts/manager.mjs";
+import type { AppearanceOperation, AppearanceParameters, AppearanceSnapshot, AppearanceTarget, HelloResult, ThemeDetails, ThemeParameters, ThemeRef } from "../../../contracts/manager.mjs";
 import { BridgeError, ManagerClient } from "./client";
 import { diagnosticMessage, errorMessage, joinMessages, uiMessage, UiMessageError } from "./ui-message";
 import type { UiMessage } from "./ui-message";
 import { emptyParameters, previewParameters } from "./preview-model";
 
-const storageKey = "dreamskin.manager.claude.operation";
 const identity = (theme: { ref: ThemeRef; revision: string }) => `${theme.ref.source}:${theme.ref.id}:${theme.revision}`;
-export const claudeParametersOnly = (parameters: Partial<ThemeParameters>): Partial<ClaudeParameters> => {
-  const result: Partial<ClaudeParameters> = {};
+export const appearanceParametersOnly = (parameters: Partial<ThemeParameters>): Partial<AppearanceParameters> => {
+  const result: Partial<AppearanceParameters> = {};
   for (const key of ["appearance", "focusX", "focusY", "positionX", "positionY", "zoom", "positionMode", "framingEnabled", "shellOpacity", "surfaceOpacity", "playbackRate"] as const) {
     if (Object.hasOwn(parameters, key)) Object.assign(result, { [key]: parameters[key] });
   }
   return result;
 };
 
-export function useClaudeAppearance(client: ManagerClient | null, hello: HelloResult | null, details: ThemeDetails | null, onNotice: (value: UiMessage) => void) {
-  const statusSupported = !!hello?.capabilities.methods.includes("claude.status");
-  const supported = !!hello?.capabilities.methods.includes("claude.apply");
-  const parametersSupported = !!hello?.capabilities.methods.includes("claude.parameters.get");
-  const [snapshot, setSnapshot] = useState<ClaudeSnapshot | null>(null);
+export function useAppearance(target: AppearanceTarget, client: ManagerClient | null, hello: HelloResult | null, details: ThemeDetails | null, onNotice: (value: UiMessage) => void) {
+  const storageKey = `dreamskin.manager.${target}.operation`;
+  const statusSupported = !!hello?.capabilities.methods.includes(`${target}.status`);
+  const supported = !!hello?.capabilities.methods.includes(`${target}.apply`);
+  const parametersSupported = !!hello?.capabilities.methods.includes(`${target}.parameters.get`);
+  const [snapshot, setSnapshot] = useState<AppearanceSnapshot | null>(null);
   const [statusError, setStatusError] = useState<UiMessage>("");
-  const [operation, setOperation] = useState<ClaudeOperation | null>(null);
+  const [operation, setOperation] = useState<AppearanceOperation | null>(null);
   const [operationId, setOperationId] = useState<string | null>(null);
   const [operationError, setOperationError] = useState<UiMessage>("");
   const [submitting, setSubmitting] = useState(false), [saving, setSaving] = useState(false);
   const [operationRead, setOperationRead] = useState(0), [parametersRead, setParametersRead] = useState(0);
-  const [saved, setSaved] = useState<{ key: string; parameters: Partial<ClaudeParameters> } | null>(null);
+  const [saved, setSaved] = useState<{ key: string; parameters: Partial<AppearanceParameters> } | null>(null);
   const [parametersError, setParametersError] = useState<UiMessage>("");
   const statusEpoch = useRef(0), parameterEpoch = useRef(0), mutating = useRef(false);
   const statusJob = useRef<Promise<void> | null>(null);
   const themeKey = details ? identity(details) : null;
+  const currentThemeKey = useRef(themeKey);
+  currentThemeKey.current = themeKey;
   const parametersReady = !!themeKey && saved?.key === themeKey;
   const theme = useMemo(() => {
     if (!details || !parametersReady) return null;
@@ -44,7 +46,7 @@ export function useClaudeAppearance(client: ManagerClient | null, hello: HelloRe
     const epoch = ++statusEpoch.current;
     const job = (async () => {
       try {
-        const value = await client.call("claude.status", {});
+        const value = await client.call(`${target}.status`, {});
         if (epoch === statusEpoch.current) { setSnapshot(value); setStatusError(""); }
       } catch (error) {
         if (epoch === statusEpoch.current) { setSnapshot(null); setStatusError(errorMessage(error, "状态暂不可用")); }
@@ -52,7 +54,7 @@ export function useClaudeAppearance(client: ManagerClient | null, hello: HelloRe
     })();
     statusJob.current = job;
     try { await job; } finally { if (statusJob.current === job) statusJob.current = null; }
-  }, [client, statusSupported]);
+  }, [client, statusSupported, target]);
   useEffect(() => {
     setSnapshot(null); setStatusError("");
     if (!statusSupported) return;
@@ -67,23 +69,23 @@ export function useClaudeAppearance(client: ManagerClient | null, hello: HelloRe
     const epoch = ++parameterEpoch.current;
     setParametersError(""); setSaved(null);
     if (client && parametersSupported && details) {
-      void client.call("claude.parameters.get", { theme: details.ref }).then(value => {
+      void client.call(`${target}.parameters.get`, { theme: details.ref }).then(value => {
         if (active && epoch === parameterEpoch.current) setSaved({ key: identity(details), parameters: value.parameters });
       }).catch(error => { if (active && epoch === parameterEpoch.current) setParametersError(errorMessage(error, "读取参数失败，请重新选择主题。")); });
     }
     return () => { active = false; };
-  }, [client, parametersSupported, themeKey, parametersRead]);
+  }, [client, parametersSupported, themeKey, parametersRead, target]);
   useEffect(() => {
     if (!client || !supported) return;
     try { setOperationId(sessionStorage.getItem(storageKey)); }
     catch (error) { setOperationError(errorMessage(error, "无法恢复之前的操作记录；请先核对运行状态。")); }
-  }, [client, supported]);
+  }, [client, supported, storageKey]);
   useEffect(() => {
     if (!client || !supported || !operationId) return;
     let active = true, timer: number | undefined;
     const poll = async () => {
       try {
-        const value = await client.call("claude.operations.get", { operationId });
+        const value = await client.call(`${target}.operations.get`, { operationId });
         if (!active) return;
         setOperation(value); setOperationError("");
         if (value.state === "running") timer = window.setTimeout(() => void poll(), 1500);
@@ -97,26 +99,27 @@ export function useClaudeAppearance(client: ManagerClient | null, hello: HelloRe
     };
     void poll();
     return () => { active = false; if (timer !== undefined) window.clearTimeout(timer); };
-  }, [client, supported, operationId, operationRead, refresh]);
+  }, [client, supported, operationId, operationRead, refresh, storageKey, target]);
   useEffect(() => {
     if (operationError) onNotice(operationError);
     else if (operation?.error) onNotice(diagnosticMessage(operation.error));
     else if (operation?.state === "indeterminate") onNotice(uiMessage("结果暂不确定，请刷新状态后核对；不会重复执行。"));
-    else if (operation?.state === "succeeded") onNotice(uiMessage(operation.snapshot.renderer === "unknown" || operation.snapshot.renderer === "unavailable" ? "操作已完成，请刷新确认当前外观。" : "Claude Desktop 操作已完成。"));
+    else if (operation?.state === "succeeded") onNotice(uiMessage(operation.snapshot.renderer === "unknown" || operation.snapshot.renderer === "unavailable" ? "操作已完成，请刷新确认当前外观。" : target === "dsh" ? "DSH 操作已完成。" : "Claude Desktop 操作已完成。"));
     else if (operation?.state === "failed") onNotice(uiMessage("操作未完成"));
-  }, [operation, operationError, onNotice]);
+  }, [operation, operationError, onNotice, target]);
 
-  const run = async (method: ClaudeOperation["method"], selectedTheme?: { ref: ThemeRef; revision: string; storedParameters?: Partial<ThemeParameters> }) => {
-    if (!client || !hello || !supported) throw new UiMessageError(uiMessage("当前管理器尚不支持此功能。"));
+  const run = async (method: AppearanceOperation["method"], selectedTheme?: { ref: ThemeRef; revision: string; storedParameters?: Partial<ThemeParameters> }) => {
+    if (!client || !hello?.capabilities.methods.includes(method)) throw new UiMessageError(uiMessage("当前管理器尚不支持此功能。"));
+    if (mutating.current || operation?.state === "running") throw new UiMessageError(uiMessage("请等待当前操作结束。"));
     const id = `${hello.backendSessionId}:${crypto.randomUUID()}`;
     statusEpoch.current++; mutating.current = true;
     setSubmitting(true); setOperationError("");
     let submitted = false;
     try {
       sessionStorage.setItem(storageKey, id); setOperation(null); setOperationId(null); submitted = true;
-      const value = method === "claude.apply" && selectedTheme
-        ? await client.call("claude.apply", { operationId: id, theme: selectedTheme.ref, expectedRevision: selectedTheme.revision, ...(selectedTheme.storedParameters ? { parameters: claudeParametersOnly(selectedTheme.storedParameters) } : {}) })
-        : method === "claude.apply" ? null : await client.call(method, { operationId: id });
+      const value = method === `${target}.apply` && selectedTheme
+        ? await client.call(`${target}.apply`, { operationId: id, theme: selectedTheme.ref, expectedRevision: selectedTheme.revision, ...(selectedTheme.storedParameters ? { parameters: appearanceParametersOnly(selectedTheme.storedParameters) } : {}) })
+        : method === `${target}.apply` ? null : await client.call(method, { operationId: id });
       if (!value) throw new UiMessageError(uiMessage("选择主题"));
       setOperation(value); setSnapshot(value.snapshot); setStatusError("");
       if (value.state === "succeeded" || value.state === "failed") { submitted = false; sessionStorage.removeItem(storageKey); }
@@ -138,14 +141,15 @@ export function useClaudeAppearance(client: ManagerClient | null, hello: HelloRe
     }
   };
   const saveForTheme = async (selectedTheme: { ref: ThemeRef; revision: string }, parameters: Partial<ThemeParameters>) => {
-    if (!client || !hello?.capabilities.methods.includes("claude.parameters.update")) throw new UiMessageError(uiMessage("当前管理器尚不支持此功能。"));
+    if (!client || !hello?.capabilities.methods.includes(`${target}.parameters.update`)) throw new UiMessageError(uiMessage("当前管理器尚不支持此功能。"));
+    if (mutating.current || operation?.state === "running") throw new UiMessageError(uiMessage("请等待当前操作结束。"));
     const selected = !!details && identity(details) === identity(selectedTheme);
     statusEpoch.current++; mutating.current = true; setSaving(true);
     try {
-      const value = await client.call("claude.parameters.update", { theme: selectedTheme.ref, expectedRevision: selectedTheme.revision, parameters: claudeParametersOnly(parameters) });
-      if (selected) { parameterEpoch.current++; setSaved({ key: identity(selectedTheme), parameters: value.parameters }); setParametersError(""); }
+      const value = await client.call(`${target}.parameters.update`, { theme: selectedTheme.ref, expectedRevision: selectedTheme.revision, parameters: appearanceParametersOnly(parameters) });
+      if (selected && currentThemeKey.current === identity(selectedTheme)) { parameterEpoch.current++; setSaved({ key: identity(selectedTheme), parameters: value.parameters }); setParametersError(""); }
       if (value.snapshot) { setSnapshot(value.snapshot); setStatusError(""); }
-      onNotice(value.refreshError ? joinMessages([uiMessage("Claude Desktop 参数已保存，当前显示更新失败。"), diagnosticMessage(value.refreshError)], " ") : uiMessage("Claude Desktop 参数已保存。"));
+      onNotice(value.refreshError ? joinMessages([uiMessage(target === "dsh" ? "DSH 参数已保存，当前显示更新失败。" : "Claude Desktop 参数已保存，当前显示更新失败。"), diagnosticMessage(value.refreshError)], " ") : uiMessage(target === "dsh" ? "DSH 参数已保存。" : "Claude Desktop 参数已保存。"));
     } finally { statusEpoch.current++; mutating.current = false; setSaving(false); }
   };
   return { supported, snapshot, statusError, operation, operationError, parametersError, theme, parametersReady,

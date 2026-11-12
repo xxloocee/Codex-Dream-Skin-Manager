@@ -5,7 +5,7 @@ import { lstat, mkdir, rename } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { ContractError, failure, parseRequest, PROTOCOL, record } from "../contracts/manager.mjs";
 import type { ThemeEditCommand, ThemeRef } from "../contracts/manager.mjs";
-import { fileBytes, jsonObject, leaf, MAX_CONFIG_BYTES, MAX_MEDIA_BYTES, optionalBytes, safePath, sha256 } from "./local-files.mjs";
+import { fileBytes, jsonObject, leaf, MAX_CONFIG_BYTES, MAX_MEDIA_BYTES, optionalBytes, safePath } from "./local-files.mjs";
 import type { RevisionFile } from "./ports/platform.mjs";
 import { durableBytes, durableJson, privateDirectory, syncDirectory } from "./write-files.mjs";
 import { editTheme, validateEdit } from "./theme-edit.mjs";
@@ -165,8 +165,7 @@ try {
       ...(local.cssPath ? [{ file: local.cssPath, root: local.mediaRoot, bytes: css, maximum: 256 * 1024 }] : []),
       ...(originalName ? [{ file: path.join(local.mediaRoot, originalName), root: local.mediaRoot, bytes: original, maximum: MAX_MEDIA_BYTES }] : [])];
     for (const check of checks) {
-      const bytes = await optionalBytes(check.file, check.root, check.maximum);
-      const current = check.digest && bytes ? new TextEncoder().encode(sha256([bytes])) : bytes;
+      const current = await optionalBytes(check.file, check.root, check.maximum);
       if ((current === null) !== (check.bytes === null) || (current && check.bytes && !Buffer.from(current).equals(check.bytes))) {
         throw new ContractError("THEME_CHANGED", "The source changed while copying; no theme was published.");
       }

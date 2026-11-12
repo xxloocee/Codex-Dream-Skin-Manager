@@ -34,9 +34,9 @@ import type { MaintenancePort } from "./maintenance.mjs";
 import { STARTUP_METHODS } from "../contracts/manager.mjs";
 import { startupAnimationSettings, saveStartupAnimationSettings } from "./startup-animation.mjs";
 import { communityCompatibility, communityOrigin } from "./community-origin.mjs";
-import { CLAUDE_METHODS } from "../contracts/manager.mjs";
-import { ClaudeService } from "./claude-service.mjs";
-import type { ClaudeMediaInspector, ClaudeRuntimePort } from "./ports/claude.mjs";
+import { CLAUDE_METHODS, DSH_METHODS } from "../contracts/manager.mjs";
+import { AppearanceService } from "./claude-service.mjs";
+import type { AppearanceMediaInspector, AppearanceRuntimePort } from "./ports/claude.mjs";
 
 function summary(theme: ThemeDetails): ThemeSummary {
   const { ref, name, storageCategory, displayCategories, tags, mediaKind, catalogOrder, addedAt, modifiedAt, revision } = theme;
@@ -49,7 +49,8 @@ export class ManagerService {
   private readonly community: Community | undefined;
   private readonly updates: Updates | undefined;
   private readonly maintenance: Maintenance | undefined;
-  private readonly claude: ClaudeService | undefined;
+  private readonly claude: AppearanceService<"claude"> | undefined;
+  private readonly dsh: AppearanceService<"dsh"> | undefined;
   private libraryAdmissions = 0;
   private readonly events = new SessionEvents(this.sessionId, () => this.snapshot(), () => !!this.operations?.activeIds.length);
   private closing = false;
@@ -67,9 +68,11 @@ export class ManagerService {
     private readonly sources?: SourceSnapshots, private readonly nativeFiles?: NativeFiles,
     private readonly packages?: PackageSources, private readonly packageValidation?: PackageValidation, private readonly runtimePort?: RuntimePort,
     communityHTTP?: CommunityHTTP, private readonly communityApply?: ApplyPort, updatePort?: UpdatePort, maintenancePort?: MaintenancePort,
-    private readonly claudeRuntime?: ClaudeRuntimePort, claudeDefaultTheme?: () => Promise<LocalTheme | null>, claudeMediaInspector?: ClaudeMediaInspector) {
-    if (stateRoot) this.claude = new ClaudeService(stateRoot, this.sessionId, theme => this.find(theme), claudeRuntime,
-      () => this.libraryAdmissions > 0 || !!this.operations?.activeIds.length || !!this.updates?.busy || !!this.maintenance?.busy, claudeDefaultTheme, claudeMediaInspector);
+    private readonly claudeRuntime?: AppearanceRuntimePort, appearanceDefaultTheme?: () => Promise<LocalTheme | null>, appearanceMediaInspector?: AppearanceMediaInspector, private readonly dshRuntime?: AppearanceRuntimePort) {
+    if (stateRoot) this.claude = new AppearanceService("claude", stateRoot, this.sessionId, theme => this.find(theme), claudeRuntime,
+      () => this.libraryAdmissions > 0 || !!this.operations?.libraryBusy, appearanceDefaultTheme, appearanceMediaInspector);
+    if (stateRoot) this.dsh = new AppearanceService("dsh", stateRoot, this.sessionId, theme => this.find(theme), dshRuntime,
+      () => this.libraryAdmissions > 0 || !!this.operations?.libraryBusy, appearanceDefaultTheme, appearanceMediaInspector);
     if (applyPort && stateRoot) this.operations = new Operations(this.sessionId, new OperationStore(stateRoot), applyPort, () => this.snapshot(), async (theme, revision) => {
       if ((await themeDetails(await this.find(theme))).revision !== revision) {
         throw new ContractError("THEME_CHANGED", "The selected theme changed; refresh before applying.");
@@ -103,13 +106,17 @@ export class ManagerService {
   }
 
   async execute(request: ManagerRequest): Promise<MethodMap[typeof request.method]["result"]> {
-    // The active Claude media is an immutable copy, so deleting its library
+    // Active appearance media is an immutable copy, so deleting its library
     // source is safe. Serialize only its capture with writers of that source.
-    const writer = [...LIBRARY_METHODS, "themes.create", "themes.importPackage", "themes.delete", "library.recover", "community.import", "operations.confirm", "updates.install", "maintenance.execute"].includes(request.method);
+    let writer = [...LIBRARY_METHODS, "themes.create", "themes.importPackage", "themes.delete", "library.recover", "community.import"].includes(request.method);
+    if (request.method === "operations.confirm" && request.params.accepted && this.operations) {
+      const operation = await this.operations.get(request.params.operationId);
+      writer = operation.method === "themes.delete" || operation.method === "library.recover";
+    }
     if (!writer) return this.executeRequest(request);
-    if (this.claude?.busy) throw new ContractError("BUSY", "A Claude Desktop background snapshot is being written.", true);
-    // Reserve before the first asynchronous library preflight; activeIds takes
-    // over after Operations admits its background job or confirmation.
+    if (this.claude?.capturing || this.dsh?.capturing) throw new ContractError("BUSY", "An application background snapshot is being captured.", true);
+    // Reserve before asynchronous library preflight; libraryBusy takes over
+    // once Operations queues its writer. Awaiting confirmation holds no source.
     this.libraryAdmissions++;
     try { return await this.executeRequest(request); }
     finally { this.libraryAdmissions--; }
@@ -139,6 +146,27 @@ export class ManagerService {
       case "claude.apply": case "claude.pause": case "claude.resume": case "claude.reset": case "claude.restore":
         if (!this.claude) throw new ContractError("METHOD_UNSUPPORTED", "Claude Desktop controls are unavailable.");
         return this.claude.command(request.method, request.params);
+      case "dsh.status":
+        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH status is unavailable.");
+        return this.dsh.status();
+      case "dsh.parameters.get":
+        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH parameters are unavailable.");
+        return this.dsh.parameters(request.params.theme);
+      case "dsh.parameters.update":
+        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH parameters are unavailable.");
+        return this.dsh.updateParameters(request.params);
+      case "dsh.startup.get":
+        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH startup settings are unavailable.");
+        return this.dsh.startupSettings();
+      case "dsh.startup.update":
+        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH startup settings are unavailable.");
+        return this.dsh.updateStartup(request.params);
+      case "dsh.operations.get":
+        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH operations are unavailable.");
+        return this.dsh.get(request.params.operationId);
+      case "dsh.apply": case "dsh.pause": case "dsh.resume": case "dsh.reset": case "dsh.restore":
+        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH controls are unavailable.");
+        return this.dsh.command(request.method, request.params);
       case "startup.get":
         if (!this.stateRoot) throw new ContractError("METHOD_UNSUPPORTED", "Startup animation settings are unavailable.");
         return startupAnimationSettings(this.stateRoot);
@@ -319,6 +347,7 @@ export class ManagerService {
       capabilities: { methods: [...READ_METHODS.filter(method => method === "themes.active" ? !!this.stateRoot : method === "media.activePreview" ? !!this.stateRoot && !!this.resources : method === "media.release" ? !!this.resources : true), ...SESSION_METHODS, ...(this.resources ? ["media.resolve" as const] : []), ...(this.operations ? OPERATION_METHODS : []),
         ...(this.operations && this.runtimePort ? RUNTIME_METHODS : []), ...(this.stateRoot && this.operations ? STARTUP_METHODS : []),
         ...(this.claudeRuntime ? CLAUDE_METHODS : this.claude ? ["claude.status" as const] : []),
+        ...(this.dshRuntime ? DSH_METHODS : this.dsh ? ["dsh.status" as const] : []),
         ...(this.operations && this.library ? [...LIBRARY_METHODS, ...RECOVERY_METHODS] : []), ...(this.sources && this.nativeFiles && this.resources && this.operations && this.library ? SOURCE_METHODS : []),
         ...(this.packages && this.packageValidation && this.nativeFiles && this.resources && this.operations && this.library ? PACKAGE_METHODS : []),
         ...(this.community ? COMMUNITY_METHODS : []), ...(this.updates && this.nativeFiles ? UPDATE_METHODS : []),
@@ -477,13 +506,14 @@ export class ManagerService {
   private async get(ref: MethodMap["themes.get"]["params"]["theme"]): Promise<ThemeDetails> {
     const details = await themeDetails(await this.find(ref));
     const writerBusy = !!this.operations?.activeIds.length || !!this.updates?.busy || !!this.maintenance?.busy;
+    const libraryBusy = writerBusy || !!this.claude?.capturing || !!this.dsh?.capturing;
     details.availability.apply = { allowed: !!this.operations && !writerBusy, reasonCode: !this.operations ? "METHOD_UNSUPPORTED" : writerBusy ? "BUSY" : null };
-    details.availability.update = details.availability.copy = { allowed: !!this.operations && !!this.library && !writerBusy,
-      reasonCode: !this.operations || !this.library ? "METHOD_UNSUPPORTED" : writerBusy ? "BUSY" : null };
+    details.availability.update = details.availability.copy = { allowed: !!this.operations && !!this.library && !libraryBusy,
+      reasonCode: !this.operations || !this.library ? "METHOD_UNSUPPORTED" : libraryBusy ? "BUSY" : null };
     // This affordance permits requesting deletion checks, not deletion itself.
     // Full runtime/tree protection and confirmation belong to proposeLibrary;
     // running that preflight for every selection would block the preview queue.
-    const deleteReason = !this.operations || !this.library ? "METHOD_UNSUPPORTED" : writerBusy ? "BUSY"
+    const deleteReason = !this.operations || !this.library ? "METHOD_UNSUPPORTED" : libraryBusy ? "BUSY"
       : defaultRecoveryThemeIds(this.platform.name).includes(ref.id.toLowerCase()) ? "THEME_PROTECTED" : null;
     details.availability.delete = { allowed: deleteReason === null, reasonCode: deleteReason };
     return details;
@@ -513,7 +543,7 @@ export class ManagerService {
     this.closing = true;
     return this.closeJob ??= (async () => {
       const events = this.events.close();
-      try { await this.community?.close(); await this.maintenance?.close(); await this.updates?.close(); await this.operations?.close(); await this.claude?.close(); }
+      try { await this.community?.close(); await this.maintenance?.close(); await this.updates?.close(); await this.operations?.close(); await this.claude?.close(); await this.dsh?.close(); }
       finally { await events; await this.nativeFiles?.close(); await this.sources?.close(); await this.packages?.close(); }
     })();
   }

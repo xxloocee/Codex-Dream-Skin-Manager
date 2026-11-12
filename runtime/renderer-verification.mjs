@@ -1,4 +1,42 @@
 const MIN_RENDERER_WIDTH = 320, MIN_RENDERER_HEIGHT = 240, MAX_RENDERER_DIMENSION = 65536;
+// Command completion only depends on the installed payload. Visual QA below is
+// explicit: background/minimized windows and unrelated layout cannot undo it.
+export function createAppliedRendererVerifier(skinVersion) {
+  return async function verifyAppliedSession(session, expectedThemeId = null, expectedRevision = null) {
+    return session.evaluate(`(() => {
+      const runtime = window.__CODEX_DREAM_SKIN_STATE__;
+      const adopted = runtime?.styleMode === 'adopted' && 'adoptedStyleSheets' in document &&
+        [...document.adoptedStyleSheets].includes(runtime.styleSheet);
+      const fallback = runtime?.styleMode === 'style' &&
+        document.getElementById('codex-dream-skin-style') === runtime.styleNode;
+      const mediaError = runtime?.mediaType === 'video' ? runtime.videoError : runtime?.imageError;
+      const mediaReady = runtime?.mediaType === 'video'
+        ? Boolean(runtime.videoLayer && runtime.videoLayer.readyState >= 1 &&
+            runtime.videoLayer.videoWidth > 0 && runtime.videoLayer.videoHeight > 0)
+        : runtime?.mediaType === 'image' && runtime.imageReady === true;
+      const result = {
+        installed: document.documentElement.getAttribute('data-dream-skin') === 'active',
+        disabled: window.__CODEX_DREAM_SKIN_DISABLED__ === true,
+        version: runtime?.version ?? null,
+        expectedVersion: ${JSON.stringify(skinVersion)},
+        themeId: runtime?.themeId ?? null,
+        expectedThemeId: ${JSON.stringify(expectedThemeId)},
+        revision: runtime?.revision ?? null,
+        expectedRevision: ${JSON.stringify(expectedRevision)},
+        opacityUpdateFailed: runtime?.opacityUpdateFailed === true,
+        stylePresent: Boolean(adopted || fallback),
+        mediaReady: Boolean(mediaReady),
+        mediaError: mediaError || null,
+      };
+      result.pass = result.installed && !result.disabled && !result.opacityUpdateFailed &&
+        result.version === result.expectedVersion && result.stylePresent && result.mediaReady && !result.mediaError &&
+        (!result.expectedThemeId || result.themeId === result.expectedThemeId) &&
+        (!result.expectedRevision || result.revision === result.expectedRevision);
+      return result;
+    })()`);
+  };
+}
+
 function hasReasonableDimensions(width, height) {
   return Number.isFinite(width) && Number.isFinite(height) && width >= MIN_RENDERER_WIDTH && height >= MIN_RENDERER_HEIGHT && width <= MAX_RENDERER_DIMENSION && height <= MAX_RENDERER_DIMENSION;
 }

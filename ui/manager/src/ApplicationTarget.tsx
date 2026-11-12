@@ -2,8 +2,9 @@ import { useText } from "./desktop";
 import { useEffect, useRef } from "react";
 import codexIcon from "./assets/codex.png";
 import claudeIcon from "./assets/claude.png";
+import dshIcon from "./assets/dsh.png";
 
-export type ApplicationTarget = "codex" | "claude";
+export type ApplicationTarget = "codex" | "claude" | "dsh";
 
 function ApplicationIcon({ source }: { source: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -26,10 +27,10 @@ export function ApplicationTargets({ value, onChange, disabled }: {
 }) {
   const tr = useText();
   return <div className="application-targets" role="group" aria-label={tr("应用目标")}>
-      {(["codex", "claude"] as const).map(target => <button key={target} className={`application-target target-${target}`} aria-pressed={value === target}
-        aria-label={target === "codex" ? "Codex" : "Claude Desktop"} disabled={disabled}
-        title={`${target === "codex" ? "Codex" : "Claude Desktop"}${disabled ? ` · ${tr("请先完成当前操作或保存主题草稿。")}` : ""}`} onClick={() => onChange(target)}>
-        <ApplicationIcon source={target === "codex" ? codexIcon : claudeIcon} />
+      {(["codex", "claude", "dsh"] as const).map(target => <button key={target} className={`application-target target-${target}`} aria-pressed={value === target}
+        aria-label={target === "codex" ? "Codex" : target === "dsh" ? "DSH" : "Claude Desktop"} disabled={disabled}
+        title={`${target === "codex" ? "Codex" : target === "dsh" ? "DSH" : "Claude Desktop"}${disabled ? ` · ${tr("请先完成当前操作或保存主题草稿。")}` : ""}`} onClick={() => onChange(target)}>
+        <ApplicationIcon source={target === "codex" ? codexIcon : target === "dsh" ? dshIcon : claudeIcon} />
       </button>)}
   </div>;
 }

@@ -42,12 +42,6 @@ export class NativeFiles {
       const css = local.cssPath ? await optionalBytes(local.cssPath, local.mediaRoot, 256 * 1024) : null;
       if (sha256([...local.revisionInputs, bytes, css ?? new Uint8Array()]) !== revision) throw new ContractError("THEME_CHANGED", "Original background bytes no longer belong to this revision.");
     }
-    if (original) {
-      const dependency = local.revisionFiles.find(item => path.resolve(item.file) === path.resolve(source));
-      if (!dependency?.bytes || !dependency.digest || new TextDecoder().decode(dependency.bytes) !== sha256([bytes])) {
-        throw new ContractError("THEME_CHANGED", "Original media no longer belongs to this theme revision.");
-      }
-    }
     if ((await themeDetails(local)).revision !== revision || !Buffer.from(bytes).equals(await fileBytes(source, local.mediaRoot, MAX_MEDIA_BYTES))) {
       throw new ContractError("THEME_CHANGED", "The original media changed during snapshot preparation.");
     }

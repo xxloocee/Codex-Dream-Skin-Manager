@@ -1,5 +1,5 @@
 export { assessRendererVerification } from "./renderer-verification.mjs";
-import { createRendererVerifier, assessRendererVerification } from "./renderer-verification.mjs";
+import { createRendererVerifier, createAppliedRendererVerifier, assessRendererVerification } from "./renderer-verification.mjs";
 import { createThemePayload } from "./theme-payload.mjs";
 import { operationUiExpression as sharedOperationUiExpression, bindMediaFileToSession, applyLoadedToSession, removeFromSession, verifyRemovedSession, cleanupExcludedSurface } from "./renderer-session.mjs";
 export { bindMediaFileToSession, applyLoadedToSession, cleanupExcludedSurface };
@@ -134,6 +134,7 @@ function parseArgs(argv) {
     screenshot: null,
     reload: false,
     opacityOnly: false,
+    visualVerification: false,
     themeDir: null,
     operationState: null,
     operationAck: null,
@@ -148,6 +149,7 @@ function parseArgs(argv) {
     else if (arg === "--once") options.mode = "once";
     else if (arg === "--watch") options.mode = "watch";
     else if (arg === "--verify") options.mode = "verify";
+    else if (arg === "--verify-visual") { options.mode = "verify"; options.visualVerification = true; }
     else if (arg === "--remove") options.mode = "remove";
     else if (arg === "--verify-removed") options.mode = "verify-removed";
     else if (arg === "--begin-operation") options.mode = "begin-operation";
@@ -295,6 +297,7 @@ export async function inspectNativeWindow(session) {
 }
 
 const verifyRenderer = createRendererVerifier(selectorLiteral, stableTestidLiteral, SKIN_VERSION);
+export const verifyAppliedSession = createAppliedRendererVerifier(SKIN_VERSION);
 export async function verifySession(session, expectedThemeId = null, expectedRevision = null) {
   return verifyRenderer(session, await inspectNativeWindow(session), expectedThemeId, expectedRevision);
 }
@@ -306,6 +309,7 @@ export async function waitForVerifiedSession(
   expectedRevision = null,
   retryDelayMs = 500,
   deferWhenHidden = false,
+  visualVerification = false,
 ) {
   const deadline = Date.now() + timeoutMs;
   const retryDelay = Number.isFinite(retryDelayMs) && retryDelayMs >= 0 ? retryDelayMs : 500;
@@ -313,7 +317,7 @@ export async function waitForVerifiedSession(
   let lastError;
   while (Date.now() < deadline) {
     try {
-      lastResult = await verifySession(session, expectedThemeId, expectedRevision);
+      lastResult = await (visualVerification ? verifySession : verifyAppliedSession)(session, expectedThemeId, expectedRevision);
       lastError = null;
       if (lastResult.pass || deferWhenHidden && lastResult.checks?.documentVisible === false) return lastResult;
     } catch (error) {
@@ -451,6 +455,9 @@ async function runOneShot(options) {
           options.timeoutMs,
           loaded?.theme.id ?? null,
           loaded?.revision ?? null,
+          500,
+          false,
+          options.visualVerification,
         );
       results.push({ targetId: target.id, markers: probe?.markers, result, ...(opacity ? { opacity } : {}) });
       if (operationToken) {

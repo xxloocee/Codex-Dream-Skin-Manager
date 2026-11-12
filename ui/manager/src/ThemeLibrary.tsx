@@ -12,7 +12,7 @@ const modified = (theme: ThemeSummary) => { const time = Date.parse(theme.modifi
 
 export function ThemeLibrary({ client, platform, application = "codex", visible: pageVisible, themes, selected, busy, loading, onChoose, commands }: {
   client: ManagerClient | null; platform?: HelloResult["platform"] | undefined; visible: boolean;
-  application?: "codex" | "claude";
+  application?: "codex" | "claude" | "dsh";
   themes: ThemeSummary[]; selected: string; busy: boolean; loading: boolean;
   onChoose(theme: ThemeSummary): void; commands: ReactNode;
 }) {

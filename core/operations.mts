@@ -23,6 +23,11 @@ export class Operations {
     private readonly snapshot: () => Promise<ManagerSnapshot>, private readonly validate: (theme: ThemeRef, revision: string) => Promise<void>,
     private readonly library?: LibraryPort, private readonly validateLibrary?: (command: ThemeEditCommand) => Promise<void>, private readonly runtimePort?: RuntimePort) {}
   get activeIds(): string[] { return this.activeId ? [this.activeId] : []; }
+  get libraryBusy(): boolean {
+    const operation = this.activeId ? this.live.get(this.activeId)?.operation : undefined;
+    return !!operation && ["themes.update", "themes.copy", "themes.create", "themes.importPackage", "themes.delete", "library.recover"].includes(operation.method) &&
+      ["queued", "running"].includes(operation.state);
+  }
   private async record(id: string): Promise<OperationRecord> {
     const current = this.live.get(id) ?? await this.store.read(id);
     if (!current) throw new ContractError("OPERATION_UNKNOWN", "This operation is unknown; refresh before explicitly starting another.");

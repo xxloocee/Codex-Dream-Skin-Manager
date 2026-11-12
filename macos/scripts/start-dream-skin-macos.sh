@@ -61,6 +61,7 @@ FOREGROUND_INJECTOR="false"
 THEME_STAGED="false"
 MANAGER_PRECONDITION=""
 MANAGER_APPLICATION_ROOT=""
+MANAGER_VERIFICATION_PATH=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --port) PORT="${2:-}"; PORT_EXPLICIT="true"; shift 2 ;;
@@ -70,6 +71,7 @@ while [ "$#" -gt 0 ]; do
     --theme-staged) THEME_STAGED="true"; shift ;;
     --manager-precondition) MANAGER_PRECONDITION="${2:-}"; shift 2 ;;
     --manager-application-root) MANAGER_APPLICATION_ROOT="${2:-}"; shift 2 ;;
+    --manager-verification-path) MANAGER_VERIFICATION_PATH="${2:-}"; shift 2 ;;
     *) fail "Unknown start argument: $1" ;;
   esac
 done
@@ -80,6 +82,10 @@ discover_codex_app
 require_signed_node_runtime
 assert_codex_process_environment || exit 1
 ensure_state_root
+if [ -n "$MANAGER_VERIFICATION_PATH" ]; then
+  [ -n "$MANAGER_APPLICATION_ROOT" ] && [ -n "$MANAGER_PRECONDITION" ] || fail "Verification output requires a manager start plan."
+  assert_manager_verification_path "$MANAGER_VERIFICATION_PATH" || fail "Invalid manager verification output."
+fi
 if [ "$FOREGROUND_INJECTOR" != "true" ]; then
   OPERATION_TOKEN="$(new_operation_token)"
   write_operation_state applying "$(dreamskin_text applying_skin)" "$OPERATION_TOKEN" \
@@ -214,13 +220,9 @@ if [ "$verify_code" -ne 0 ]; then
   # A slow App startup may register its reopen handler after CDP. Activate the
   # exact bundle once more before the final force-inject and verification pass.
   activate_codex_window
-  if [ -n "$OPERATION_TOKEN" ]; then
-    "$NODE" "$INJECTOR" --once --port "$PORT" --theme-dir "$THEME_DIR" --timeout-ms 15000 \
-      --operation-token "$OPERATION_TOKEN" >/dev/null 2>&1 || true
-  else
-    "$NODE" "$INJECTOR" --once --port "$PORT" --theme-dir "$THEME_DIR" --timeout-ms 15000 >/dev/null 2>&1 || true
-  fi
-  if "$NODE" "$INJECTOR" --verify --port "$PORT" --theme-dir "$THEME_DIR" --timeout-ms 12000 >"$VERIFY_OUTPUT" 2>/dev/null; then
+  retry_args=(--once --port "$PORT" --theme-dir "$THEME_DIR" --timeout-ms 15000)
+  [ -z "$OPERATION_TOKEN" ] || retry_args+=(--operation-token "$OPERATION_TOKEN")
+  if "$NODE" "$INJECTOR" "${retry_args[@]}" >"$VERIFY_OUTPUT" 2>/dev/null; then
     verify_code=0
   else
     verify_code=$?
@@ -236,6 +238,9 @@ if [ "$verify_code" -ne 0 ]; then
   mark_state_stale || true
   cleanup_verify_output
   fail "Injection verification failed. The injector was stopped; see $INJECTOR_ERROR_LOG"
+fi
+if [ -n "$MANAGER_VERIFICATION_PATH" ]; then
+  /bin/cat "$VERIFY_OUTPUT" >"$MANAGER_VERIFICATION_PATH"
 fi
 cleanup_verify_output
 

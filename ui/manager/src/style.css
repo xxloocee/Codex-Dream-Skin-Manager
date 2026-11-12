@@ -78,6 +78,11 @@ main { height: 100%; max-width: 1440px; margin: 0 auto; padding: 22px 24px 12px;
 .preview-code-label { font-family: Consolas, monospace; font-size: 10px; opacity: .7; }
 .preview-application-claude .preview-composer { border-color: #9d8a7955; border-radius: 10px; }
 .preview-application-claude .preview-bubble { min-height: 24px; border-radius: 8px 8px 2px 8px; }
+.preview-application-dsh.full-preview .preview-workspace { grid-template-columns: 24% minmax(0, 1fr); border-radius: 5px; }
+.preview-application-dsh .preview-sidebar { border-right: 1px solid #8996a62e; background: var(--preview-surface); }
+.preview-application-dsh .preview-sidebar b { display: block; margin-bottom: 14px; font-size: 11px; font-weight: 600; letter-spacing: .04em; }
+.preview-application-dsh .preview-composer { min-height: 44px; border: 1px solid #8996a64d; border-radius: 9px; }
+
 @media (max-width: 1060px) {
   .saved-editor { grid-template-columns: minmax(0, 1fr); }
 }
@@ -216,6 +221,7 @@ main { height: 100%; max-width: 1440px; margin: 0 auto; padding: 22px 24px 12px;
 .message-bar button { padding: 2px 6px; white-space: nowrap; font-size: 11px; }
 .utility-panel, .confirmation-dialog { width: min(640px, calc(100vw - 40px)); max-height: calc(100dvh - 60px); overflow: auto; border: 1px solid #d9dee5; border-radius: 8px; padding: 24px; color: #20242a; background: #f4f6f8; }
 .confirmation-dialog { width: min(520px, calc(100vw - 40px)); }
+.confirmation-dialog--nonmodal { position: fixed; top: 50%; left: 50%; margin: 0; transform: translate(-50%, -50%); z-index: 10; }
 .confirmation-dialog > .editor-actions { justify-content: flex-end; }
 .utility-panel::backdrop, .confirmation-dialog::backdrop { background: #20242a55; }
 .utility-close { display: block; margin: 0 0 12px auto; }

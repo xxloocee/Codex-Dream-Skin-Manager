@@ -37,7 +37,7 @@ export function ImportPanel({ client, hello, busy, visible, canApply, operation,
     const current = submission.current;
     if (!current || current.id !== value.id || !["succeeded", "failed", "cancelled"].includes(value.state)) return false;
     attempted.current = false; setSubmitted(false);
-    if (value.state === "succeeded" && current.application === "claude" && !parametersSaved) {
+    if (value.state === "succeeded" && current.application !== "codex" && !parametersSaved) {
       if (!current.created) { current.created = value; onSaved(); }
       setParametersPending(true);
       return false;
@@ -50,7 +50,7 @@ export function ImportPanel({ client, hello, busy, visible, canApply, operation,
     }
     return true;
   }
-  const initialParameters = application === "claude" ? emptyParameters : importParameters;
+  const initialParameters = application !== "codex" ? emptyParameters : importParameters;
   const theme = useMemo<ThemeDetails>(() => ({ ref: { source: "saved", id: "draft" }, name: source ? sourceName(source) : "",
     storageCategory: "custom", displayCategories: ["art"], tags: [], mediaKind: source?.extension === ".mp4" ? "video" : source && [".gif", ".apng"].includes(source.extension) ? "animatedImage" : "image",
     catalogOrder: 0, addedAt: null, modifiedAt: null, revision: source?.handle ?? "empty", storedParameters: initialParameters, previewParameters: previewParameters(initialParameters),
@@ -80,12 +80,12 @@ export function ImportPanel({ client, hello, busy, visible, canApply, operation,
     try {
       const name = patch.name ?? sourceName(source), next = { ...patch, parameters: { ...initialParameters, ...patch.parameters } }; delete next.name;
       const targetParameters = next.parameters;
-      if (targetApplication === "claude") next.parameters = { ...importParameters };
+      if (targetApplication !== "codex") next.parameters = { ...importParameters };
       let result = submission.current?.created;
       if (!result) {
         const id = rememberImport(hello.backendSessionId, name); attempted.current = true; setSubmitted(true);
         submission.current = { id, source, application: targetApplication };
-        if (targetApplication === "claude") setParametersPending(true);
+        if (targetApplication !== "codex") setParametersPending(true);
         let initial: OperationSnapshot;
         try { initial = await client.call("themes.create", { operationId: id, handle: source.handle, name, patch: next }); }
         catch (error) { if (importRefused(error)) { submission.current = null; attempted.current = false; setSubmitted(false); setParametersPending(false); } throw error; }
@@ -96,7 +96,7 @@ export function ImportPanel({ client, hello, busy, visible, canApply, operation,
           throw new UiMessageError(result.error ? diagnosticMessage(result.error) : uiMessage("导入结果尚未确认。"));
         }
       }
-      if (targetApplication === "claude") {
+      if (targetApplication !== "codex") {
         if (!result.resultTheme || !result.resultRevision) throw new UiMessageError(uiMessage("已保存主题或应用能力尚未确认，未继续应用。"));
         await onSaveParameters({ ref: result.resultTheme, revision: result.resultRevision }, targetParameters);
         settle(result, true);
@@ -104,7 +104,7 @@ export function ImportPanel({ client, hello, busy, visible, canApply, operation,
       if (applyAfter) {
         try { await onSavedTheme(result, targetApplication, targetParameters, applyAfter); }
         catch (error) { if (alive.current) onNotice(uiMessage("主题已保存，应用未能继续：", undefined, { after: errorMessage(error, "请刷新状态后再操作。") })); }
-      } else if (targetApplication !== "claude") onNotice(uiMessage(result.disposition === "duplicate" ? "素材与渲染参数已存在，返回已有主题。" : "主题已保存。"));
+      } else if (targetApplication === "codex") onNotice(uiMessage(result.disposition === "duplicate" ? "素材与渲染参数已存在，返回已有主题。" : "主题已保存。"));
     } finally { working.current = false; if (alive.current) { setRunning(false); onBusy(false); } }
   }
   return <section className="media-import" aria-label={tr("素材导入")}>

@@ -10,7 +10,6 @@ export const MAX_MEDIA_BYTES = 128 * 1024 * 1024;
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const normalized = (value: string): string => process.platform === "win32" ? value.toLowerCase() : value;
 const missing = (error: unknown): boolean => record(error) && error.code === "ENOENT";
-const originalDigests = new Map<string, { stamp: string; digest: Uint8Array }>();
 
 export async function fileStamp(file: string, root: string): Promise<string[]> {
   await safePath(file, root);
@@ -18,22 +17,6 @@ export async function fileStamp(file: string, root: string): Promise<string[]> {
   if (!value.isFile()) throw new ContractError("THEME_INVALID", "Invalid theme dependency type.");
   return [file, String(value.dev), String(value.ino), String(value.size), String(value.mtimeNs), String(value.ctimeNs)];
 }
-async function originalDigest(file: string, root: string): Promise<Uint8Array> {
-  const stamp = JSON.stringify(await fileStamp(file, root)), cached = originalDigests.get(file);
-  if (cached?.stamp === stamp) {
-    originalDigests.delete(file); originalDigests.set(file, cached);
-    return cached.digest;
-  }
-  const digest = new TextEncoder().encode(sha256([await fileBytes(file, root, MAX_MEDIA_BYTES)]));
-  if (JSON.stringify(await fileStamp(file, root)) !== stamp) throw new ContractError("THEME_CHANGED", "The original media changed during reading.", true);
-  originalDigests.delete(file);
-  // Cover both existing 10,000-entry library roots on Windows, so a stable
-  // inventory cannot evict itself on every page. Entries retain hashes only.
-  if (originalDigests.size >= 20000) originalDigests.delete(originalDigests.keys().next().value!);
-  originalDigests.set(file, { stamp, digest });
-  return digest;
-}
-
 export async function safePath(file: string, root: string): Promise<void> {
   const absolute = path.resolve(file), base = path.resolve(root);
   const relative = path.relative(base, absolute);
@@ -125,19 +108,11 @@ export async function readLocalTheme(directory: string, source: "preset" | "save
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(id) || config.schemaVersion !== 1 || config.id !== id) {
     throw new ContractError("THEME_INVALID", "Invalid theme identity or schema.");
   }
-  const licenseFile = path.join(directory, "LICENSE.txt"), license = await optionalBytes(licenseFile, directory, 65536);
-  const originalFile = config.originalImage === undefined ? null : path.join(directory, leaf(config.originalImage));
-  if (originalFile && ["theme.json", "theme.css", "license.txt", path.basename(String(config.image)).toLowerCase()].includes(path.basename(originalFile).toLowerCase())) {
-    throw new ContractError("THEME_INVALID", "The original media name conflicts with a theme resource.");
-  }
-  // Keep only the original-file hash in an inventory; retaining every converted
-  // theme's 128 MiB source would accumulate the whole library in memory.
-  const original = originalFile ? await originalDigest(originalFile, directory) : null;
+  // Rendering needs the config and rendered media. Operations that copy or
+  // export attachments capture and verify those files when they use them.
   return {
-    ref: { source, id }, config, revisionInputs: [bytes, new TextEncoder().encode(JSON.stringify({ license: license !== null, original: original !== null })),
-      license ?? new Uint8Array(), original ?? new Uint8Array()], mediaRoot: directory,
-    revisionFiles: [{ file: configFile, root: directory, bytes }, { file: licenseFile, root: directory, bytes: license, maximum: 65536 },
-      ...(originalFile ? [{ file: originalFile, root: directory, bytes: original, maximum: MAX_MEDIA_BYTES, digest: true }] : [])],
+    ref: { source, id }, config, revisionInputs: [bytes], mediaRoot: directory,
+    revisionFiles: [{ file: configFile, root: directory, bytes }],
     mediaPath: path.join(directory, allowNested ? relativeMedia(config.image) : leaf(config.image)), cssPath: path.join(directory, "theme.css"),
     catalogOrder: order, modifiedAt: (await lstat(path.join(directory, "theme.json"))).mtime.toISOString(),
   };

@@ -1,6 +1,6 @@
 # Codex Dream Skin Manager
 
-为 Codex 桌面客户端更换背景、管理主题和调整界面外观，Windows 版同时支持 Claude Desktop 的 Code 页面。Windows 和 macOS 共用管理界面、业务核心和 Codex 换肤运行时，由各自的原生窗口承载。
+为 Codex 桌面客户端更换背景、管理主题和调整界面外观，Windows 版同时支持 Claude Desktop 的 Code 页面及 DSH（DeepSeek Harness）。Windows 和 macOS 共用管理界面、业务核心和 Codex 换肤运行时，由各自的原生窗口承载。
 
 ## 下载与安装
 
@@ -13,7 +13,7 @@
 | macOS Intel | macOS 13+ | `CodexDreamSkinManager-v3.2.0-macos-x64.dmg` |
 | macOS Apple Silicon | macOS 13+ | `CodexDreamSkinManager-v3.2.0-macos-arm64.dmg` |
 
-请先安装所需的 Codex 或 Claude Desktop 客户端。发布包已内置 Node.js，无需单独配置运行环境；Windows 便携版须完整解压，不能只复制 EXE。`SHA256SUMS.txt` 提供下载包校验值。
+请先安装所需的 Codex、Claude Desktop 或 DSH 客户端。发布包已内置 Node.js，无需单独配置运行环境；Windows 便携版须完整解压，不能只复制 EXE。`SHA256SUMS.txt` 提供下载包校验值。
 
 ## 主要功能
 
@@ -31,6 +31,8 @@ Windows 与 macOS 的 Codex 管理共用以下主要功能，系统差异由平�
 **macOS**：使用相同的管理页面，另外适配菜单栏、ZIP 导入、原生媒体转换和应用更新。发布者配置签名密钥后，正式版支持应用内下载并重启更新，保留旧应用供恢复。尚未启用该通道的旧版需先手动安装一次；未配置签名通道的源码构建仍提供手动下载。详见 [GUI 使用说明](macos/GUI使用说明.md) 和 [更新服务部署](macos/UPDATER.md)。
 
 **Claude Desktop（Windows）**：左侧图标切换应用，主题与素材共用，皮肤参数、当前状态及启动动画分别保存；支持图片、动图、MP4、暂停/继续、重置与恢复。使用前在 Claude 的 `Developer → Enable Main Process Debugger` 手动开启原生连接入口，并打开 Code 页面。macOS 暂不支持 Claude，Codex 专用 CSS 和消息气泡透明度不套用到 Claude。Claude 进程退出后需重新连接应用。
+
+**DSH（Windows，源码新增）**：左侧 DeepSeek 鲸鱼图标选择 DSH，与 Codex、Claude 共用主题和素材，分别保存皮肤参数、当前状态及启动动画。点击应用、重置或继续时，管理器优先复用已连接的 DSH；未启动时自动启动，缺少主进程调试入口时正常重启，并传入 `--inspect=127.0.0.1:0`，无需手动设置启动参数。重启会退出当前 DSH，请先处理正在进行的任务；退出被拒绝、超时或进程身份变化时会停止操作。状态刷新、参数保存和启动动画设置不会触发自动重启。支持图片、动图、MP4 与暂停、继续、重置、恢复；macOS 暂不支持。DSH 的真实重启、程序注入、动态媒体及新文档恢复尚待实机验收，当前发布包不包含本次源码改动。
 
 ## 快速上手
 

@@ -19,11 +19,11 @@ export function claudeBackgroundLayout(image, viewport, parameters) {
 // video URLs. No media URL or application content policy is changed.
 export async function loadClaudeVideo(payload, signal, options = {}) {
   const track = payload.videoTrack;
-  if (!globalThis.VideoDecoder || !globalThis.EncodedVideoChunk) throw new Error('Claude video requires WebCodecs support.');
+  if (!globalThis.VideoDecoder || !globalThis.EncodedVideoChunk) throw new Error('Desktop video requires WebCodecs support.');
   const config = { ...track.config, description: new Uint8Array(track.config.description) };
   const support = await VideoDecoder.isConfigSupported(config);
-  if (!support.supported) throw new Error(`Claude video codec is not supported: ${config.codec}.`);
-  if (signal.aborted) throw new Error('Claude media request was superseded.');
+  if (!support.supported) throw new Error(`Desktop video codec is not supported: ${config.codec}.`);
+  if (signal.aborted) throw new Error('Desktop media request was superseded.');
   const bytes = Uint8Array.from(atob(payload.mediaBase64), character => character.charCodeAt(0));
   const element = document.createElement('canvas');
   const rotate = track.rotate ?? 0;
@@ -31,7 +31,7 @@ export async function loadClaudeVideo(payload, signal, options = {}) {
   element.width = swapped ? track.height : track.width;
   element.height = swapped ? track.width : track.height;
   const context = element.getContext('2d');
-  if (!context) throw new Error('Claude video canvas could not be created.');
+  if (!context) throw new Error('Desktop video canvas could not be created.');
   const rate = payload.parameters.playbackRate ?? 1;
   let decoder, disposed = false, failure = null, frames = [], index = 0;
   let animation = 0, cycle = 0, flushing = false, drained = false, startedAt = null, firstDrawn = false;
@@ -50,12 +50,12 @@ export async function loadClaudeVideo(payload, signal, options = {}) {
   };
   const failed = error => {
     if (disposed) return;
-    failure = new Error(`Claude video decode/playback failed (${config.codec}): ${error?.message ?? error}`);
+    failure = new Error(`Desktop video decode/playback failed (${config.codec}): ${error?.message ?? error}`);
     if (!firstDrawn) rejectFirst(failure);
     dispose();
     options.onError?.(failure);
   };
-  const aborted = () => failed(new Error('Claude media request was superseded.'));
+  const aborted = () => failed(new Error('Desktop media request was superseded.'));
   const timer = setTimeout(() => failed(new Error('first frame deadline exceeded')), 6000);
   signal.addEventListener('abort', aborted, { once: true });
   const drawFrame = frame => {
@@ -172,9 +172,9 @@ export async function loadClaudeMedia(payload, signal, loadVideo = loadClaudeVid
         element.removeEventListener('error', failed);
         if (error) reject(error); else resolve();
       };
-      const aborted = () => { finish(new Error('Claude media request was superseded.')); dispose(); };
-      const failed = () => finish(new Error('Claude media decode failed or was blocked by the application content policy.'));
-      const timer = setTimeout(() => finish(new Error('Claude media decode/play deadline exceeded.')), 6000);
+      const aborted = () => { finish(new Error('Desktop media request was superseded.')); dispose(); };
+      const failed = () => finish(new Error('Desktop media decode failed or was blocked by the application content policy.'));
+      const timer = setTimeout(() => finish(new Error('Desktop media decode/play deadline exceeded.')), 6000);
       signal.addEventListener('abort', aborted, { once: true });
       element.addEventListener('error', failed, { once: true });
       if (signal.aborted) { aborted(); return; }
@@ -188,17 +188,20 @@ export async function loadClaudeMedia(payload, signal, loadVideo = loadClaudeVid
   } catch (error) { dispose(); throw error; }
 }
 
-export async function claudeRendererOperation(action, payload, layout, loadMedia, loadVideo) {
-  const key = '__dreamskinClaudeRuntimeV1';
-  const pendingKey = '__dreamskinClaudePendingV1';
-  const readyKey = '__dreamskinClaudeReadyV1';
-  const startupKey = '__dreamskinClaudeStartupV1';
-  const marker = 'data-dreamskin-claude-v1';
-  const validBoundary = () => location.protocol === 'app:' && location.hostname === 'localhost' &&
+export async function claudeRendererOperation(action, payload, layout, loadMedia, loadVideo, target = 'claude') {
+  const namespace = target === 'dsh' ? 'Dsh' : 'Claude';
+  const key = `__dreamskin${namespace}RuntimeV1`;
+  const pendingKey = `__dreamskin${namespace}PendingV1`;
+  const readyKey = `__dreamskin${namespace}ReadyV1`;
+  const startupKey = `__dreamskin${namespace}StartupV1`;
+  const marker = `data-dreamskin-${target}-v1`;
+  const validBoundary = () => (target === 'dsh'
+    ? location.protocol === 'dsh-app:' && location.hostname === 'app' && location.pathname === '/'
+    : location.protocol === 'app:' && location.hostname === 'localhost' &&
     (location.pathname === '/epitaxy' || location.pathname.startsWith('/epitaxy/')) &&
-    [...document.querySelectorAll('iframe,webview')].every(frame => window[startupKey]?.frames.has(frame));
-  const validPage = () => validBoundary() && !!document.querySelector('main.dframe-content') &&
-    !!document.querySelector('aside.dframe-sidebar') && !!document.querySelector('.dframe-root');
+    [...document.querySelectorAll('iframe,webview')].every(frame => window[startupKey]?.frames.has(frame))) && window.top === window;
+  const validPage = () => validBoundary() && (target === 'dsh' ? !!document.querySelector('#root')?.firstElementChild
+    : !!document.querySelector('main.dframe-content') && !!document.querySelector('aside.dframe-sidebar') && !!document.querySelector('.dframe-root'));
   const removeStartup = () => window[startupKey]?.remove();
   const cancelReady = () => { window[readyKey]?.abort(); delete window[readyKey]; };
   if (action === 'cancelReady' || action === 'removeStartup') {
@@ -241,7 +244,7 @@ export async function claudeRendererOperation(action, payload, layout, loadMedia
     const startup = window[startupKey];
     const startupStatus = startup?.api.status();
     return { renderer: applied ? 'applied' : current ? 'unknown' : 'removed', revision: applied ? current.revision : null,
-      error: startupStatus && ['failed', 'timeout'].includes(startupStatus.phase) ? `Claude startup animation ${startupStatus.phase}.` : null };
+      error: startupStatus && ['failed', 'timeout'].includes(startupStatus.phase) ? `${namespace === 'Dsh' ? 'DSH' : 'Claude'} startup animation ${startupStatus.phase}.` : null };
   }
   let media;
   let installed = false;
@@ -269,9 +272,17 @@ export async function claudeRendererOperation(action, payload, layout, loadMedia
       Object.assign(media.element.style, { width: `${box.width}px`, height: `${box.height}px`, left: `${box.x}px`, top: `${box.y}px` });
       background.style.background = `rgb(${color})`;
       mask.style.background = `rgba(${color},${shell})`;
-      style.textContent = `
-html[${marker}="active"] { background: transparent !important; isolation: isolate; }
-html[${marker}="active"] > div[${marker}="background"] { position: fixed !important; inset: 0 !important; overflow: hidden !important; pointer-events: none !important; z-index: -1 !important; }
+      const surfaces = target === 'dsh' ? `
+html[${marker}="active"] body,
+html[${marker}="active"] #root { background: transparent !important; }
+html[${marker}="active"] body,
+html[${marker}="active"] #root,
+html[${marker}="active"] #root * {
+  --dsw-alias-bg-base: transparent !important;
+  --dsw-specific-sidebar-fill: rgba(${color},${surface * .5}) !important;
+  --dsw-specific-input-major: rgba(${color},${surface}) !important;
+}
+` : `
 html[${marker}="active"] body,
 html[${marker}="active"] #root,
 html[${marker}="active"] .dframe-root,
@@ -288,6 +299,11 @@ html[${marker}="active"] .epitaxy-chat-panel .scroll-fade-strip-top { background
 html[${marker}="active"] .epitaxy-chat-panel .epitaxy-prompt .rounded-composer,
 html[${marker}="active"] .epitaxy-chat-panel .epitaxy-summary-card-control-text,
 html[${marker}="active"] .epitaxy-chat-panel .epitaxy-codeblock .epitaxy-fence { background: rgba(${color},${surface}) !important; }
+`;
+      style.textContent = `
+html[${marker}="active"] { background: transparent !important; isolation: isolate; }
+html[${marker}="active"] > div[${marker}="background"] { position: fixed !important; inset: 0 !important; overflow: hidden !important; pointer-events: none !important; z-index: -1 !important; }
+${surfaces}
 `;
     };
     draw();
@@ -329,13 +345,13 @@ function prepareClaudePayload(payload) {
   if (payload?.mediaKind !== 'video') return payload;
   const bytes = Uint8Array.from(atob(payload.mediaBase64), character => character.charCodeAt(0));
   const videoTrack = readMp4VideoTrack(bytes);
-  if (!videoTrack) throw new Error('Claude MP4 video track could not be prepared for playback.');
+  if (!videoTrack) throw new Error('Desktop MP4 video track could not be prepared for playback.');
   return { ...payload, videoTrack };
 }
 
-export function buildClaudeRendererSource(action, payload = null) {
+export function buildClaudeRendererSource(action, payload = null, target = 'claude') {
   if (!['inspect', 'apply', 'remove', 'removeStartup', 'ready', 'cancelReady'].includes(action)) throw new Error('Unsupported Claude renderer operation.');
-  return `(${claudeRendererOperation.toString()})(${JSON.stringify(action)},${JSON.stringify(prepareClaudePayload(payload))},${claudeBackgroundLayout.toString()},${loadClaudeMedia.toString()},${loadClaudeVideo.toString()})`;
+  return `(${claudeRendererOperation.toString()})(${JSON.stringify(action)},${JSON.stringify(prepareClaudePayload(payload))},${claudeBackgroundLayout.toString()},${loadClaudeMedia.toString()},${loadClaudeVideo.toString()},${JSON.stringify(target)})`;
 }
 
 function installClaudeStartupVideo(payload, loadVideo) {
@@ -387,20 +403,20 @@ function installClaudeStartupVideo(payload, loadVideo) {
   return { installed: true };
 }
 
-export function buildClaudeStartupVideoSource(video) {
+export function buildClaudeStartupVideoSource(video, target = 'claude') {
   const payload = prepareClaudePayload({ ...video, mediaKind: 'video', parameters: { playbackRate: 1 } });
-  return buildClaudeStartupSource(`(${installClaudeStartupVideo.toString()})(${JSON.stringify(payload)},${loadClaudeVideo.toString()})`);
+  return buildClaudeStartupSource(`(${installClaudeStartupVideo.toString()})(${JSON.stringify(payload)},${loadClaudeVideo.toString()})`, target);
 }
 
-export function buildClaudeStartupSource(source) {
+export function buildClaudeStartupSource(source, target = 'claude') {
   return `(()=>{
-    const key='__dreamskinClaudeStartupV1';
+    const key=${JSON.stringify(target === 'dsh' ? '__dreamskinDshStartupV1' : '__dreamskinClaudeStartupV1')};
     const owned=window[key];
     if(owned)return {installed:true,alreadyActive:true};
     if(window.__aemeathExtension)throw new Error('Another startup animation already owns this page.');
     const before=new Set(document.querySelectorAll('iframe,webview'));
     const result=${source};
-    if(!result?.installed)throw new Error('Claude startup animation was not installed.');
+    if(!result?.installed)throw new Error('Desktop startup animation was not installed.');
     const api=window.__aemeathExtension;
     const state={api,frames:new Set([...document.querySelectorAll('iframe')].filter(frame=>!before.has(frame))),remove(){
       const other=window.__aemeathExtension;
@@ -415,14 +431,20 @@ export function buildClaudeStartupSource(source) {
 
 // Lives in Claude's main process so closing the manager transport does not
 // disable a user's selected appearance. All listeners and sources are owned.
-export function installClaudeMainController(electron, rendererSource) {
-  const key = '__dreamskinClaudeControllerV1';
+export function installClaudeMainController(electron, rendererSource, target = 'claude') {
+  const namespace = target === 'dsh' ? 'Dsh' : 'Claude';
+  const key = `__dreamskin${namespace}ControllerV1`;
+  const dispatchKey = `__dreamskin${namespace}DispatchV1`;
   if (globalThis[key]) return globalThis[key];
   const records = new Map();
   let desired = null, startupSource = null, epoch = 0, disposed = false, commanding = false;
   const eligible = (page, anyRoute = false) => {
     if (page.isDestroyed() || page.getType() !== 'window') return false;
-    try { const url = new URL(page.getURL()); return url.protocol === 'app:' && url.hostname === 'localhost' && (anyRoute || url.pathname === '/epitaxy' || url.pathname.startsWith('/epitaxy/')); }
+    try {
+      const url = new URL(page.getURL());
+      return target === 'dsh' ? url.protocol === 'dsh-app:' && url.hostname === 'app' && url.pathname === '/'
+        : url.protocol === 'app:' && url.hostname === 'localhost' && (anyRoute || url.pathname === '/epitaxy' || url.pathname.startsWith('/epitaxy/'));
+    }
     catch { return false; }
   };
   const run = async record => {
@@ -436,7 +458,7 @@ export function installClaudeMainController(electron, rendererSource) {
       if (desired) {
         const result = await record.page.executeJavaScript(rendererSource('apply', desired));
         if (disposed || globalThis[key] !== controller || epoch !== generation || record.document !== document) return;
-        if (result?.renderer !== 'applied' || result.revision !== desired.revision) throw new Error('Claude background could not be reapplied to the new document.');
+        if (result?.renderer !== 'applied' || result.revision !== desired.revision) throw new Error('Desktop background could not be reapplied to the new document.');
       }
       if (startupSource && !record.started) {
         record.started = true;
@@ -478,7 +500,7 @@ export function installClaudeMainController(electron, rendererSource) {
       }
       const generation = ++epoch;
       const dispatch = {};
-      globalThis.__dreamskinClaudeDispatchV1 = dispatch;
+      globalThis[dispatchKey] = dispatch;
       commanding = true;
       if (action === 'remove') {
         disposed = true; desired = null; startupSource = null;
@@ -499,7 +521,7 @@ export function installClaudeMainController(electron, rendererSource) {
       const results = [];
       try {
         for (const page of electron.webContents.getAllWebContents().filter(page => eligible(page, action !== 'apply'))) {
-          if (epoch !== generation || globalThis.__dreamskinClaudeDispatchV1 !== dispatch) return { supported: true, results, cancelled: true };
+          if (epoch !== generation || globalThis[dispatchKey] !== dispatch) return { supported: true, results, cancelled: true };
           try {
             const result = await page.executeJavaScript(rendererSource(action === 'configureStartup' ? (source ? 'cancelReady' : 'removeStartup') : action, payload));
             results.push(result);
@@ -509,7 +531,7 @@ export function installClaudeMainController(electron, rendererSource) {
             }
           } catch (error) { results.push({ renderer: 'unknown', failed: true, error: String(error?.message ?? error) }); }
         }
-        if (epoch !== generation || globalThis.__dreamskinClaudeDispatchV1 !== dispatch) return { supported: true, results, cancelled: true };
+        if (epoch !== generation || globalThis[dispatchKey] !== dispatch) return { supported: true, results, cancelled: true };
         if (action === 'apply' && (!results.length || results.some(row => row.renderer !== 'applied' || row.revision !== payload.revision))) desired = previous;
         return { supported: true, results };
       } finally {
@@ -524,55 +546,64 @@ export function installClaudeMainController(electron, rendererSource) {
   return controller;
 }
 
-export function buildClaudeMainSource(action, payload = null, startupSource = null) {
+export function buildClaudeMainSource(action, payload = null, startupSource = null, target = 'claude') {
   payload = prepareClaudePayload(payload);
-  const factory = `function(action,payload){return '('+${JSON.stringify(claudeRendererOperation.toString())}+')('+JSON.stringify(action)+','+JSON.stringify(payload ?? null)+','+${JSON.stringify(claudeBackgroundLayout.toString())}+','+${JSON.stringify(loadClaudeMedia.toString())}+','+${JSON.stringify(loadClaudeVideo.toString())}+')';}`;
+  const namespace = target === 'dsh' ? 'Dsh' : 'Claude';
+  const controllerKey = JSON.stringify(`__dreamskin${namespace}ControllerV1`);
+  const dispatchKey = JSON.stringify(`__dreamskin${namespace}DispatchV1`);
+  const factory = `function(action,payload){return '('+${JSON.stringify(claudeRendererOperation.toString())}+')('+JSON.stringify(action)+','+JSON.stringify(payload ?? null)+','+${JSON.stringify(claudeBackgroundLayout.toString())}+','+${JSON.stringify(loadClaudeMedia.toString())}+','+${JSON.stringify(loadClaudeVideo.toString())}+','+${JSON.stringify(JSON.stringify(target))}+')';}`;
   return `(async()=>{
-    const electron=typeof require==='function'?require('electron'):process.mainModule?.require('electron');
+    let electron;
+    if(typeof require==='function')electron=require('electron');
+    else if(process.mainModule?.require)electron=process.mainModule.require('electron');
+    else {
+      const nodeModule=process.getBuiltinModule?.('module')??await import('node:module');
+      electron=nodeModule.createRequire(process.execPath)('electron');
+    }
     if(!electron?.webContents||!electron.app)return {supported:false};
     const rendererSource=${factory};
-    let controller=globalThis.__dreamskinClaudeControllerV1;
+    let controller=globalThis[${controllerKey}];
     ${action === 'apply' ? `let savedStartupSource;
     if(controller&&controller.rendererSourceKey!==rendererSource.toString()){
       const previous=controller;
       savedStartupSource=previous.configuredStartupSource??null;
       const removed=await previous.command('remove',null);
       if(removed.cancelled)return removed;
-      const active=globalThis.__dreamskinClaudeControllerV1;
+      const active=globalThis[${controllerKey}];
       if(active&&active!==previous)return {...removed,cancelled:true};
-      if(active===previous)delete globalThis.__dreamskinClaudeControllerV1;
+      if(active===previous)delete globalThis[${controllerKey}];
       controller=null;
     }` : ''}
-    ${action === 'inspect' || action === 'remove' ? '' : `controller??=(${installClaudeMainController.toString()})(electron,rendererSource);`}
+    ${action === 'inspect' || action === 'remove' ? '' : `controller??=(${installClaudeMainController.toString()})(electron,rendererSource,${JSON.stringify(target)});`}
     ${action === 'apply' ? `if(savedStartupSource!==undefined){
       const configuring=controller.command('configureStartup',null,savedStartupSource);
-      const dispatch=globalThis.__dreamskinClaudeDispatchV1;
+      const dispatch=globalThis[${dispatchKey}];
       const configured=await configuring;
       if(configured.cancelled||configured.results.some(row=>row.failed||row.renderer!=='removed'))return configured;
-      if(globalThis.__dreamskinClaudeControllerV1!==controller||globalThis.__dreamskinClaudeDispatchV1!==dispatch)return {...configured,cancelled:true};
+      if(globalThis[${controllerKey}]!==controller||globalThis[${dispatchKey}]!==dispatch)return {...configured,cancelled:true};
     }` : ''}
     if(controller){
       ${action === 'configureStartup' ? `const source=${JSON.stringify(startupSource)};
       const configuring=controller.command('configureStartup',null,source);
-      const dispatch=globalThis.__dreamskinClaudeDispatchV1;
+      const dispatch=globalThis[${dispatchKey}];
       const result=await configuring;
       if(result.cancelled)return result;
-      if(globalThis.__dreamskinClaudeControllerV1!==controller||globalThis.__dreamskinClaudeDispatchV1!==dispatch)return {...result,cancelled:true};
+      if(globalThis[${controllerKey}]!==controller||globalThis[${dispatchKey}]!==dispatch)return {...result,cancelled:true};
       if(!result.results.some(row=>row.failed||row.renderer!=='removed'))controller.configuredStartupSource=source;
       return result;` : `return controller.command(${JSON.stringify(action)},${JSON.stringify(payload)},${JSON.stringify(startupSource)});`}
     }
     const dispatch=${action === 'inspect' ? 'null' : '{}'};
-    if(dispatch)globalThis.__dreamskinClaudeDispatchV1=dispatch;
+    if(dispatch)globalThis[${dispatchKey}]=dispatch;
     const results=[];
     for(const page of electron.webContents.getAllWebContents()){
       if(page.isDestroyed()||page.getType()!=='window')continue;
       let url;try{url=new URL(page.getURL());}catch{continue;}
-      if(url.protocol!=='app:'||url.hostname!=='localhost'||(${JSON.stringify(action)}!=='remove'&&url.pathname!=='/epitaxy'&&!url.pathname.startsWith('/epitaxy/')))continue;
-      if(dispatch&&globalThis.__dreamskinClaudeDispatchV1!==dispatch)return {supported:true,results,cancelled:true};
+      ${target === 'dsh' ? "if(url.protocol!=='dsh-app:'||url.hostname!=='app'||url.pathname!=='/')continue;" : `if(url.protocol!=='app:'||url.hostname!=='localhost'||(${JSON.stringify(action)}!=='remove'&&url.pathname!=='/epitaxy'&&!url.pathname.startsWith('/epitaxy/')))continue;`}
+      if(dispatch&&globalThis[${dispatchKey}]!==dispatch)return {supported:true,results,cancelled:true};
       try{results.push(await page.executeJavaScript(rendererSource(${JSON.stringify(action)},null)));}
       catch(error){results.push({renderer:'unknown',failed:true,error:String(error?.message??error)});}
     }
-    if(dispatch&&globalThis.__dreamskinClaudeDispatchV1!==dispatch)return {supported:true,results,cancelled:true};
+    if(dispatch&&globalThis[${dispatchKey}]!==dispatch)return {supported:true,results,cancelled:true};
     return {supported:true,results};
   })()`;
 }

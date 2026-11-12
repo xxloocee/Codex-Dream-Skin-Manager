@@ -1,6 +1,15 @@
 // Application UI copy only. Backend diagnostics use diagnostic-copy.ts;
 // theme names, licenses and other user data retain their original spelling.
 export const messages: Readonly<Record<string, string>> = {
+  "DSH 当前皮肤": "Current DSH skin",
+  "DSH 参数已保存。": "DSH settings saved.",
+  "DSH 参数已保存，当前显示更新失败。": "DSH settings saved, but the current appearance could not be refreshed.",
+  "DSH 操作已完成。": "DSH action completed.",
+  "DSH 换肤目前仅支持 Windows，macOS 暂不支持。": "DSH skins currently require Windows. macOS is not supported yet.",
+  "应用到 DSH": "Apply to DSH",
+  "DSH 显示与取景": "DSH display and framing",
+  "恢复 DSH 原始外观，保留主题与已保存参数。": "Restore the original DSH appearance, keeping themes and saved settings.",
+  "启动动画设置已保存，DSH 连接更新失败。": "Startup animation settings were saved, but the DSH connection could not be updated.",
   "Claude Desktop 当前皮肤": "Current Claude Desktop skin",
   "Claude Desktop 参数已保存。": "Claude Desktop settings saved.",
   "Claude Desktop 操作已完成。": "Claude Desktop action completed.",

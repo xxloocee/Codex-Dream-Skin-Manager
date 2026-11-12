@@ -880,6 +880,16 @@ ensure_node_runtime() {
   require_signed_node_runtime
 }
 
+assert_manager_verification_path() {
+  [ "${CODEX_MANAGER_RUNTIME_INTERNAL:-}" = 1 ] || fail "Verification output is internal to the shared manager."
+  "$NODE" - "$STATE_ROOT" "$1" <<'NODE'
+const fs = require("node:fs"), path = require("node:path");
+const root = path.join(process.argv[2], "manager-operations", "requests"), file = process.argv[3];
+if (path.dirname(file) !== root || !/^[a-f0-9-]{36}\.json\.verify\.[A-Za-z0-9-]{6,36}$/.test(path.basename(file)) ||
+    fs.realpathSync(root) !== path.resolve(root) || fs.lstatSync(file).isSymbolicLink() || !fs.statSync(file).isFile()) process.exit(1);
+NODE
+}
+
 run_injector_with_diagnostics() {
   local phase="$1"
   shift
@@ -937,6 +947,8 @@ child.stderr.on("data", bytes => errors.append(bytes));
 child.once("error", () => { launchFailed = true; });
 child.once("close", (code, signal) => {
   const exitCode = Number.isInteger(code) && code >= 0 ? code : signal ? 128 + (constants.signals[signal] || 1) : 127;
+  const completedOutput = output.result();
+  if (!completedOutput.truncated) process.stdout.write(completedOutput.text);
   let temporary;
   try {
     const stdout = output.result(), stderr = errors.result();
@@ -988,6 +1000,7 @@ hot_reapply_theme() {
   local timeout_ms="${2:-8000}"
   local operation_token="${3:-}"
   local opacity_only="${4:-false}"
+  local verification_path="${5:-/dev/null}"
   local operation_args=()
   local inj_pid=""
   local injector_protocol=""
@@ -1013,7 +1026,7 @@ hot_reapply_theme() {
     ')"
   fi
   if ! run_injector_with_diagnostics apply --once --port "$port" --theme-dir "$THEME_DIR" \
-    --timeout-ms "$timeout_ms" "${operation_args[@]}"; then
+    --timeout-ms "$timeout_ms" "${operation_args[@]}" >"$verification_path"; then
     return 1
   fi
 

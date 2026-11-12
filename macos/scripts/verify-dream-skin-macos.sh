@@ -7,11 +7,13 @@ PORT=9341
 PORT_EXPLICIT="false"
 SCREENSHOT=""
 RELOAD="false"
+VISUAL="false"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --port) PORT="${2:-}"; PORT_EXPLICIT="true"; shift 2 ;;
     --screenshot) SCREENSHOT="${2:-}"; shift 2 ;;
     --reload) RELOAD="true"; shift ;;
+    --visual) VISUAL="true"; shift ;;
     *) fail "Unknown verify argument: $1" ;;
   esac
 done
@@ -24,6 +26,7 @@ fi
 verified_cdp_endpoint "$PORT" || fail "Port $PORT is not a verified Codex loopback CDP endpoint."
 
 ARGS=("$INJECTOR" --verify --port "$PORT" --theme-dir "$THEME_DIR" --timeout-ms 30000)
+[ "$VISUAL" != "true" ] && [ -z "$SCREENSHOT" ] || ARGS+=(--verify-visual)
 [ -n "$SCREENSHOT" ] && ARGS+=(--screenshot "$SCREENSHOT")
 [ "$RELOAD" = "true" ] && ARGS+=(--reload)
 exec "$NODE" "${ARGS[@]}"

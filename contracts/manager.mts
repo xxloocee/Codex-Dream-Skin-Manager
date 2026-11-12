@@ -18,9 +18,10 @@ export const RECOVERY_METHODS = ["themes.delete", "library.recovery.list", "libr
 export const RUNTIME_METHODS = ["skin.pause", "skin.resume", "skin.reset", "skin.restore", "runtime.repair", "runtime.upgrade"] as const;
 export const STARTUP_METHODS = ["startup.get", "startup.update"] as const;
 export const CLAUDE_METHODS = ["claude.status", "claude.apply", "claude.pause", "claude.resume", "claude.reset", "claude.restore", "claude.operations.get", "claude.parameters.get", "claude.parameters.update", "claude.startup.get", "claude.startup.update"] as const;
+export const DSH_METHODS = ["dsh.status", "dsh.apply", "dsh.pause", "dsh.resume", "dsh.reset", "dsh.restore", "dsh.operations.get", "dsh.parameters.get", "dsh.parameters.update", "dsh.startup.get", "dsh.startup.update"] as const;
 export type RuntimeMethod = typeof RUNTIME_METHODS[number];
 export type RuntimeCommand = { method: RuntimeMethod; params: { operationId: string; expectedRuntimeRevision: string } };
-export type ManagerMethod = ReadMethod | typeof SESSION_METHODS[number] | typeof MEDIA_METHOD | typeof OPERATION_METHODS[number] | ThemeEditMethod | typeof SOURCE_METHODS[number] | typeof PACKAGE_METHODS[number] | typeof COMMUNITY_METHODS[number] | typeof UPDATE_METHODS[number] | typeof DESKTOP_METHODS[number] | typeof MAINTENANCE_METHODS[number] | typeof RECOVERY_METHODS[number] | RuntimeMethod | typeof STARTUP_METHODS[number] | typeof CLAUDE_METHODS[number];
+export type ManagerMethod = ReadMethod | typeof SESSION_METHODS[number] | typeof MEDIA_METHOD | typeof OPERATION_METHODS[number] | ThemeEditMethod | typeof SOURCE_METHODS[number] | typeof PACKAGE_METHODS[number] | typeof COMMUNITY_METHODS[number] | typeof UPDATE_METHODS[number] | typeof DESKTOP_METHODS[number] | typeof MAINTENANCE_METHODS[number] | typeof RECOVERY_METHODS[number] | RuntimeMethod | typeof STARTUP_METHODS[number] | typeof CLAUDE_METHODS[number] | typeof DSH_METHODS[number];
 export const ERROR_CODES = [
   "PROTOCOL_UNSUPPORTED", "INVALID_REQUEST", "METHOD_UNSUPPORTED", "BACKEND_UNAVAILABLE",
   "THEME_NOT_FOUND", "THEME_INVALID", "THEME_CHANGED", "CATALOG_CHANGED", "MEDIA_UNSUPPORTED",
@@ -58,20 +59,26 @@ export interface ThemeParameters {
   shellOpacity: number | null;
   accent: string | null;
 }
-export type ClaudeParameters = Pick<ThemeParameters, "appearance" | "focusX" | "focusY" | "positionX" | "positionY" | "zoom" | "playbackRate" | "positionMode" | "framingEnabled" | "shellOpacity" | "bubbleOpacity" | "surfaceOpacity">;
-export const CLAUDE_PARAMETER_KEYS = ["appearance", "focusX", "focusY", "positionX", "positionY", "zoom", "playbackRate", "positionMode", "framingEnabled", "shellOpacity", "bubbleOpacity", "surfaceOpacity"] as const;
-export interface ClaudeSnapshot {
-  target: "claude"; supported: boolean;
+export type AppearanceTarget = "claude" | "dsh";
+export type AppearanceParameters = Pick<ThemeParameters, "appearance" | "focusX" | "focusY" | "positionX" | "positionY" | "zoom" | "playbackRate" | "positionMode" | "framingEnabled" | "shellOpacity" | "bubbleOpacity" | "surfaceOpacity">;
+export const APPEARANCE_PARAMETER_KEYS = ["appearance", "focusX", "focusY", "positionX", "positionY", "zoom", "playbackRate", "positionMode", "framingEnabled", "shellOpacity", "bubbleOpacity", "surfaceOpacity"] as const;
+export interface AppearanceSnapshot<T extends AppearanceTarget = AppearanceTarget> {
+  target: T; supported: boolean;
   connection: "connected" | "awaiting-debugger" | "unavailable";
-  theme: ThemeRef | null; themeRevision: string | null; parameters: ClaudeParameters | null;
+  theme: ThemeRef | null; themeRevision: string | null; parameters: AppearanceParameters | null;
   paused: boolean; renderer: "applied" | "removed" | "unknown" | "unavailable"; diagnostics: Diagnostic[];
 }
-export type ClaudeMutationMethod = "claude.apply" | "claude.pause" | "claude.resume" | "claude.reset" | "claude.restore";
-export interface ClaudeOperation {
-  id: string; target: "claude"; method: ClaudeMutationMethod;
+export type AppearanceMutationMethod<T extends AppearanceTarget = AppearanceTarget> = `${T}.${"apply" | "pause" | "resume" | "reset" | "restore"}`;
+export interface AppearanceOperation<T extends AppearanceTarget = AppearanceTarget> {
+  id: string; target: T; method: AppearanceMutationMethod<T>;
   state: "running" | "succeeded" | "failed" | "indeterminate";
-  snapshot: ClaudeSnapshot; error: ManagerError | null;
+  snapshot: AppearanceSnapshot<T>; error: ManagerError | null;
 }
+export type ClaudeParameters = AppearanceParameters;
+export const CLAUDE_PARAMETER_KEYS = APPEARANCE_PARAMETER_KEYS;
+export type ClaudeSnapshot = AppearanceSnapshot<"claude">;
+export type ClaudeMutationMethod = AppearanceMutationMethod<"claude">;
+export type ClaudeOperation = AppearanceOperation<"claude">;
 export interface ThemeSummary {
   ref: ThemeRef;
   name: string;
@@ -229,6 +236,17 @@ export interface MethodMap {
   "claude.parameters.update": { params: { theme: ThemeRef; expectedRevision: string; parameters: Partial<ClaudeParameters> }; result: { parameters: Partial<ClaudeParameters>; snapshot: ClaudeSnapshot | null; refreshError: ManagerError | null } };
   "claude.startup.get": { params: Record<string, never>; result: StartupAnimationSettings };
   "claude.startup.update": { params: StartupAnimationUpdate; result: StartupAnimationSettings };
+  "dsh.status": { params: Record<string, never>; result: AppearanceSnapshot<"dsh"> };
+  "dsh.apply": { params: { operationId: string; theme: ThemeRef; expectedRevision: string; parameters?: Partial<AppearanceParameters> }; result: AppearanceOperation<"dsh"> };
+  "dsh.pause": { params: { operationId: string }; result: AppearanceOperation<"dsh"> };
+  "dsh.resume": { params: { operationId: string }; result: AppearanceOperation<"dsh"> };
+  "dsh.reset": { params: { operationId: string }; result: AppearanceOperation<"dsh"> };
+  "dsh.restore": { params: { operationId: string }; result: AppearanceOperation<"dsh"> };
+  "dsh.operations.get": { params: { operationId: string }; result: AppearanceOperation<"dsh"> };
+  "dsh.parameters.get": { params: { theme: ThemeRef }; result: { parameters: Partial<AppearanceParameters> } };
+  "dsh.parameters.update": { params: { theme: ThemeRef; expectedRevision: string; parameters: Partial<AppearanceParameters> }; result: { parameters: Partial<AppearanceParameters>; snapshot: AppearanceSnapshot<"dsh"> | null; refreshError: ManagerError | null } };
+  "dsh.startup.get": { params: Record<string, never>; result: StartupAnimationSettings };
+  "dsh.startup.update": { params: StartupAnimationUpdate; result: StartupAnimationSettings };
   "startup.get": { params: Record<string, never>; result: StartupAnimationSettings };
   "startup.update": { params: StartupAnimationUpdate; result: StartupAnimationSettings };
   "desktop.get": { params: Record<string, never>; result: DesktopInfo };
@@ -345,12 +363,13 @@ export function parseThemePatch(value: unknown): ThemePatch {
   }
   return value as ThemePatch;
 }
-export function parseClaudeParameters(value: unknown): Partial<ClaudeParameters> {
-  if (!record(value)) throw new ContractError("INVALID_REQUEST", "Invalid Claude Desktop parameters.");
-  fields(value, CLAUDE_PARAMETER_KEYS);
+export function parseAppearanceParameters(value: unknown): Partial<AppearanceParameters> {
+  if (!record(value)) throw new ContractError("INVALID_REQUEST", "Invalid appearance parameters.");
+  fields(value, APPEARANCE_PARAMETER_KEYS);
   parseThemePatch({ parameters: value });
-  return value as Partial<ClaudeParameters>;
+  return value as Partial<AppearanceParameters>;
 }
+export const parseClaudeParameters = parseAppearanceParameters;
 export function parseCommunityQuery(value: unknown): CommunityQuery {
   if (!record(value)) throw new ContractError("INVALID_REQUEST", "Invalid community query.");
   fields(value, ["limit", "offset", "sort", "query", "appearance"]);
@@ -396,26 +415,27 @@ export function parseRequest(value: unknown): ManagerRequest {
   if (value.kind !== "request" || responseId(value) === null || !boundedText(value.method, 80) || !record(value.params)) {
     throw new ContractError("INVALID_REQUEST", "Invalid request envelope.");
   }
-  if (!([...READ_METHODS, ...SESSION_METHODS, MEDIA_METHOD, ...OPERATION_METHODS, ...LIBRARY_METHODS, ...SOURCE_METHODS, ...PACKAGE_METHODS, ...COMMUNITY_METHODS, ...UPDATE_METHODS, ...DESKTOP_METHODS, ...MAINTENANCE_METHODS, ...RECOVERY_METHODS, ...RUNTIME_METHODS, ...STARTUP_METHODS, ...CLAUDE_METHODS] as readonly string[]).includes(value.method)) {
+  if (!([...READ_METHODS, ...SESSION_METHODS, MEDIA_METHOD, ...OPERATION_METHODS, ...LIBRARY_METHODS, ...SOURCE_METHODS, ...PACKAGE_METHODS, ...COMMUNITY_METHODS, ...UPDATE_METHODS, ...DESKTOP_METHODS, ...MAINTENANCE_METHODS, ...RECOVERY_METHODS, ...RUNTIME_METHODS, ...STARTUP_METHODS, ...CLAUDE_METHODS, ...DSH_METHODS] as readonly string[]).includes(value.method)) {
     throw new ContractError("METHOD_UNSUPPORTED", "This method is not implemented by this backend.");
   }
   const params = value.params;
   switch (value.method) {
-    case "claude.status": fields(params, []); break;
+    case "claude.status": case "dsh.status": fields(params, []); break;
     case "claude.pause": case "claude.resume": case "claude.reset": case "claude.restore": case "claude.operations.get":
+    case "dsh.pause": case "dsh.resume": case "dsh.reset": case "dsh.restore": case "dsh.operations.get":
       fields(params, ["operationId"]);
-      if (!validOperationId(params.operationId)) throw new ContractError("INVALID_REQUEST", "Invalid Claude Desktop operation identity.");
+      if (!validOperationId(params.operationId)) throw new ContractError("INVALID_REQUEST", "Invalid appearance operation identity.");
       break;
-    case "claude.parameters.get": fields(params, ["theme"]); parseThemeRef(params.theme); break;
-    case "claude.apply": case "claude.parameters.update":
-      fields(params, ["theme", "expectedRevision", "parameters", ...(value.method === "claude.apply" ? ["operationId"] : [])]);
+    case "claude.parameters.get": case "dsh.parameters.get": fields(params, ["theme"]); parseThemeRef(params.theme); break;
+    case "claude.apply": case "claude.parameters.update": case "dsh.apply": case "dsh.parameters.update":
+      fields(params, ["theme", "expectedRevision", "parameters", ...((value.method === "claude.apply" || value.method === "dsh.apply") ? ["operationId"] : [])]);
       parseThemeRef(params.theme);
       if (typeof params.expectedRevision !== "string" || !/^[a-f0-9]{64}$/.test(params.expectedRevision) ||
-          (value.method === "claude.apply" && !validOperationId(params.operationId))) throw new ContractError("INVALID_REQUEST", "Invalid Claude Desktop theme revision or operation identity.");
-      if (value.method === "claude.parameters.update" || params.parameters !== undefined) parseClaudeParameters(params.parameters);
+          ((value.method === "claude.apply" || value.method === "dsh.apply") && !validOperationId(params.operationId))) throw new ContractError("INVALID_REQUEST", "Invalid appearance theme revision or operation identity.");
+      if ((value.method === "claude.parameters.update" || value.method === "dsh.parameters.update") || params.parameters !== undefined) parseAppearanceParameters(params.parameters);
       break;
-    case "startup.get": case "claude.startup.get": fields(params, []); break;
-    case "startup.update": case "claude.startup.update":
+    case "startup.get": case "claude.startup.get": case "dsh.startup.get": fields(params, []); break;
+    case "startup.update": case "claude.startup.update": case "dsh.startup.update":
       fields(params, ["enabled", "theme", "expectedRevision"]);
       if ((!Object.hasOwn(params, "enabled") && !Object.hasOwn(params, "theme")) ||
           (Object.hasOwn(params, "enabled") && typeof params.enabled !== "boolean")) throw new ContractError("INVALID_REQUEST", "Invalid startup animation settings.");

@@ -17,6 +17,7 @@ param(
   # Shared manager restart consent is checked against the current session.
   [ValidatePattern('^[a-f0-9]{64}$')][string]$ManagerPrecondition,
   [string]$ManagerApplicationRoot,
+  [switch]$ManagerReconnectOnly,
   [ref]$ManagerVerification,
   [ref]$ManagerRestarted
 )
@@ -207,6 +208,16 @@ try {
   # Existing sessions need explicit restart consent; a cold start launches once.
   if (($applyingSelectedTheme -and -not $ManagerApplicationRoot) -or $RequireFreshSession) { $cdpIdentity = $null }
   $debugReady = $null -ne $cdpIdentity
+  if ($ManagerReconnectOnly) {
+    if ($env:CODEX_MANAGER_RUNTIME_INTERNAL -ne '1' -or -not $ManagerApplicationRoot -or -not $ManagerPrecondition -or -not $debugReady -or $RequireFreshSession -or $RestartExisting -or $PromptRestart) {
+      throw 'DREAM_SKIN_RESTART_REQUIRED: The verified manager connection changed; request a new start plan.'
+    }
+    $reconnectProbe = & (Join-Path $PSScriptRoot 'manager-platform.ps1') -Action Probe -ApplicationRoot $ManagerApplicationRoot
+    $reconnectProbe = ($reconnectProbe -join "`n") | ConvertFrom-Json -ErrorAction Stop
+    if ("$($reconnectProbe.fingerprint)" -cne $ManagerPrecondition -or $reconnectProbe.startRequired) {
+      throw 'DREAM_SKIN_RESTART_REQUIRED: The verified manager session changed before reconnecting.'
+    }
+  }
   $codexProcesses = if (Test-DreamSkinPathEqual -Left $codexToStop.Executable -Right $currentCodex.Executable) {
     $currentProcesses
   } else {
@@ -275,6 +286,9 @@ try {
       }
     }
     $startupIdentity = Get-DreamSkinVerifiedCdpIdentity -Port $Port -Codex $codex
+    if ($ManagerReconnectOnly -and ($null -eq $startupIdentity -or "$($startupIdentity.BrowserId)" -cne "$($cdpIdentity.BrowserId)")) {
+      throw 'DREAM_SKIN_RESTART_REQUIRED: The verified connection ended before reconnecting; request a new start plan.'
+    }
     if ($applyingSelectedTheme -and $null -ne $startupIdentity -and -not $ManagerApplicationRoot) {
       throw 'DREAM_SKIN_RESTART_REQUIRED: A Codex session appeared after startup consent was checked. Retry to confirm its restart before applying the selected theme.'
     }
@@ -329,7 +343,11 @@ try {
     $startFailureCategory = 'cdp-endpoint-unavailable'
     $deadline = (Get-Date).AddSeconds(45)
     $cdpIdentity = Get-DreamSkinVerifiedCdpIdentity -Port $Port -Codex $codex
-    while ($null -eq $cdpIdentity) {
+    if ($ManagerReconnectOnly -and ($null -eq $cdpIdentity -or "$($cdpIdentity.BrowserId)" -cne "$($startupIdentity.BrowserId)")) {
+      throw 'DREAM_SKIN_RESTART_REQUIRED: The verified connection changed during reconnecting; request a new start plan.'
+    }
+    # Metadata reconciliation never waits for a replacement browser to appear.
+    while (-not $ManagerReconnectOnly -and $null -eq $cdpIdentity) {
       $argumentStatus = Get-DreamSkinCodexDebugArgumentStatus `
         -Processes @(Get-DreamSkinCodexProcesses -Codex $codex) -Port $Port
       if ($argumentStatus -eq 'protocol-redirected') {

@@ -16,7 +16,7 @@ const size = (bytes: number) => bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(
 export function CommunityLibrary({ client, visible, busy, canApply, platform, engineVersion, downloadUpdate, onAction, onDelete, application = "codex", activeThemes }: {
   client: ManagerClient; visible: boolean; busy: boolean; canApply: boolean; downloadUpdate: CommunityDownloadUpdate | null;
   platform: HelloResult["platform"]; engineVersion: string | null;
-  application?: "codex" | "claude";
+  application?: "codex" | "claude" | "dsh";
   activeThemes: (ThemeRef | null)[];
   onAction(theme: CommunityTheme, action: CommunityActionRequest["action"]): void;
   onDelete(local: NonNullable<CommunityTheme["downloaded"]>): void;
@@ -85,7 +85,7 @@ export function CommunityLibrary({ client, visible, busy, canApply, platform, en
     <aside className="inspector dashboard-inspector community-inspector" aria-label={tr("社区主题详情")}>
       {theme ? <>
         <MediaPreview key={theme.id} client={client} target={{ kind: "community", version: theme.id, variant: "preview" }} name={theme.name}
-          parameters={previewParameters(emptyParameters, { appearance: application === "claude" ? "auto" : theme.appearance ?? "auto" })} application={application} visible={visible} />
+          parameters={previewParameters(emptyParameters, { appearance: application !== "codex" ? "auto" : theme.appearance ?? "auto" })} application={application} visible={visible} />
         <div className="detail-body"><p className="eyebrow">{tr("社区主题")}</p><h2>{theme.name}</h2>
           <dl className="community-metadata"><dt>{tr("作者")}</dt><dd>{theme.authorDisplayName}</dd><dt>{tr("版本")}</dt><dd>{theme.version}</dd>
             <dt>{tr("许可")}</dt><dd>{theme.license}</dd><dt>{tr("大小")}</dt><dd>{size(theme.packageBytes)}</dd>

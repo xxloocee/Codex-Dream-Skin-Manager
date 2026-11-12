@@ -57,9 +57,9 @@ function Get-ManagerPlatformProbe {
   [pscustomobject]@{
     fingerprint = Get-ManagerPlatformDigest ([ordered]@{ runtime = $runtime; paused = $paused })
     runtimeSessionId = if ($identity) { Get-ManagerPlatformDigest $runtime } else { $null }
-    # A stale saved browser must be reconnected once before helpers can use it.
-    # Watcher/PID observations themselves never prevent a live skin switch.
-    startRequired = [bool]($null -eq $identity -or -not $state -or -not $state.port -or "$($state.browserId)" -cne $browser)
+    startRequired = [bool]($null -eq $identity)
+    # A live verified browser needs only metadata/watcher reconciliation.
+    reconnectRequired = [bool]($identity -and (-not $state -or -not $state.port -or "$($state.browserId)" -cne $browser))
     recoveryRequired = $false
     watcherVerified = $watcherVerified
     processRunning = [bool]($processes.Count -gt 0)
@@ -180,13 +180,15 @@ try {
     # From this boundary the old flow may already have changed the renderer,
     # even when its process later reports failure. Only verify can claim true.
     $effects.rendererApplied = $null
-    if ($upgrade -or $before.startRequired -or ($recoverSession -and $before.recoveryRequired)) {
+    if ($upgrade -or $before.startRequired -or $before.reconnectRequired -or ($recoverSession -and $before.recoveryRequired)) {
       if ($upgrade) { $effects.runtimeUpgraded = $null }
       $effects.codexRestarted = if ($before.processRunning) { $null } else { $false }
       $effects.themeCommitted = $null
       $restarted = $false
+      $metadataReconnect = [bool]($before.reconnectRequired -and -not $upgrade -and -not ($recoverSession -and $before.recoveryRequired))
       $startArguments = @{
-        RestartExisting = [bool]$request.confirmed
+        RestartExisting = [bool]($request.confirmed -and -not $metadataReconnect)
+        ManagerReconnectOnly = $metadataReconnect
         RequestedThemeAppearance = "$($snapshot.appearance)"
         ThemeApplyArguments = @($applyArguments + '-DeferLiveApply')
         ManagerPrecondition = "$($before.fingerprint)"
@@ -195,6 +197,7 @@ try {
         ManagerVerification = [ref]$verifyOutput
         ManagerRestarted = [ref]$restarted
       }
+      if ($metadataReconnect) { $startArguments.Port = [int]$before.port }
       $null = & (Join-Path $PSScriptRoot 'start-dream-skin.ps1') @startArguments
       $effects.codexRestarted = [bool]$restarted
       $effects.themeCommitted = $true

@@ -18,6 +18,7 @@ import { CommunityApply } from "../platforms/community-apply.mjs";
 import { PlatformUpdates } from "../platforms/updates.mjs";
 import { PlatformMaintenance } from "../platforms/maintenance.mjs";
 import { WindowsClaudeRuntime } from "../platforms/windows/claude-runtime.mjs";
+import { WindowsDshRuntime } from "../platforms/windows/dsh-runtime.mjs";
 import { defaultRuntimeTheme } from "./runtime-targets.mjs";
 
 try {
@@ -50,7 +51,8 @@ try {
     manager && directory ? new PlatformUpdates(root, state) : undefined,
     manager && directory && platform.name === "macos" ? new PlatformMaintenance(root, state) : undefined,
     manager && platform.name === "windows" ? new WindowsClaudeRuntime(root) : undefined,
-    () => defaultRuntimeTheme(root), mediaMetadataInspector(root, platform.name));
+    () => defaultRuntimeTheme(root), mediaMetadataInspector(root, platform.name),
+    manager && platform.name === "windows" ? new WindowsDshRuntime(root) : undefined);
   // Stop input first; serve finishes its current request before close drains jobs.
   const shutdown = () => { service.stopAccepting(); process.stdin.destroy(); };
   process.stdout.on("error", shutdown);
