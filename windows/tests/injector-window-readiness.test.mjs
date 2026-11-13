@@ -126,7 +126,10 @@ function makeDomFixture({
       if (selector === selectors.settings || selector === selectors.themePreview) return settings;
       return null;
     },
-    querySelectorAll: () => [],
+    querySelectorAll(selector) {
+      const node = this.querySelector(selector);
+      return node ? [node] : [];
+    },
     getElementById: (id) => id === "codex-dream-skin-style" ? styleNode : null,
   };
   const window = {
@@ -233,6 +236,7 @@ test("visible settings is the only L0 structure exception", async () => {
 
   const fallbackHome = makeHome({ rect: makeRect(900, 650, 20, 20) });
   const lateHomeIconSignal = {
+    ...makeElement(),
     closest: (selector) => selector === '[role="main"]' ? fallbackHome : null,
   };
   const lateHomeIcon = await verify({
@@ -298,8 +302,8 @@ test("visible settings is the only L0 structure exception", async () => {
     }),
   });
   assert.equal(falseHome.result.homePresent, false);
-  assert.equal(falseHome.result.pass, false,
-    "A renderer that claims Home must expose a real Home identity signal.");
+  assert.equal(falseHome.result.pass, true,
+    "A cached Home scope must not reject a visible L1 thread with its main and composer.");
 });
 
 test("home verification matches macOS and does not require a fixed suggestion-card count", async () => {
