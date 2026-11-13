@@ -1,3 +1,4 @@
+import { applicationNames, type ApplicationTarget } from "./ApplicationTarget";
 import { useMessage } from "./desktop";
 import { errorMessage, uiMessage } from "./ui-message";
 import type { UiMessage } from "./ui-message";
@@ -13,7 +14,7 @@ import type { PreviewTarget } from "./preview-resources";
 
 export function MediaPreview({ client, target, name, parameters = null, visible, thumbnail = false, refresh = 0, application = "codex" }: {
   client: ManagerClient; target: PreviewTarget; name: string; parameters?: ThemeParameters | null; mediaKind?: ThemeSummary["mediaKind"] | "unknown";
-  visible: boolean; thumbnail?: boolean; refresh?: number; application?: "codex" | "claude" | "dsh";
+  visible: boolean; thumbnail?: boolean; refresh?: number; application?: ApplicationTarget;
 }) {
   const tr = useText(), msg = useMessage();
   const container = useRef<HTMLDivElement>(null);
@@ -109,8 +110,8 @@ export function MediaPreview({ client, target, name, parameters = null, visible,
         <div className="placeholder" title={error ? msg(error) : undefined}><span>{error ? thumbnail ? tr("预览不可用") : msg(error) : active ? tr("正在准备预览…") : tr("等待预览")}</span>
           {error && !thumbnail && <button type="button" onClick={() => retry(value => value + 1)}>{tr("重试预览")}</button>}</div>}
       {resource && !error && !thumbnail && <><div className="preview-shell" aria-hidden="true" /><div className="preview-workspace" aria-hidden="true">
-        <div className="preview-sidebar">{application !== "codex" && <b>{application === "dsh" ? "DSH" : "Claude"}</b>}<span /><span /><span /></div>
-        <div className="preview-conversation">{application === "claude" && <span className="preview-code-label">Code</span>}{application !== "dsh" && <div className="preview-bubble" />}<div className="preview-composer" /></div>
+        <div className="preview-sidebar">{application !== "codex" && <b>{application === "claude" ? "Claude" : applicationNames[application]}</b>}<span /><span /><span /></div>
+        <div className="preview-conversation">{application === "claude" && <span className="preview-code-label">Code</span>}{(application === "codex" || application === "claude") && <div className="preview-bubble" />}<div className="preview-composer" /></div>
       </div></>}
     </div>
   </div>;

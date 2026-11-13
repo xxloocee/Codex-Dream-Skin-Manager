@@ -16,7 +16,6 @@ export class Operations {
   private readonly jobs = new Set<Promise<void>>();
   private readonly confirmedLibrary = new Map<string, { command: ConfirmedLibraryCommand; fingerprint: string }>();
   private readonly runtimeCommands = new Map<string, RuntimeCommand>();
-  private readonly applyPorts = new Map<string, ApplyPort>();
   private activeId: string | null = null;
   onChanged: ((operation: OperationSnapshot) => void) | undefined;
   constructor(private readonly session: string, private readonly store: OperationStore, private readonly port: ApplyPort,
@@ -132,8 +131,8 @@ export class Operations {
       try { await this.update(value, changes); } catch { value.operation = { ...value.operation, ...changes, state: "indeterminate", stage: "journalUnavailable" }; }
     } finally { if (value.operation.state !== "awaitingConfirmation") { if (this.activeId === value.operation.id) this.activeId = null; this.runtimeCommands.delete(value.operation.id); } }
   }
-  async apply(params: MethodMap["skin.apply"]["params"], override?: { context: string; port: ApplyPort }): Promise<OperationSnapshot> {
-    const requestDigest = createHash("sha256").update(JSON.stringify([params.theme.source, params.theme.id, params.expectedRevision, ...(override ? [override.context] : []), ...(params.refresh ? [canonicalJson(params.refresh)] : [])])).digest("hex");
+  async apply(params: MethodMap["skin.apply"]["params"]): Promise<OperationSnapshot> {
+    const requestDigest = createHash("sha256").update(JSON.stringify([params.theme.source, params.theme.id, params.expectedRevision, ...(params.refresh ? [canonicalJson(params.refresh)] : [])])).digest("hex");
     const known = this.live.get(params.operationId) ?? await this.store.read(params.operationId);
     if (known) {
       if (known.requestDigest !== requestDigest) throw new ContractError("OPERATION_CONFLICT", "This operation identity was already used for another request.");
@@ -152,7 +151,6 @@ export class Operations {
         startedAt: now, updatedAt: now, confirmation: null, effects: { themeCommitted: false, rendererApplied: false, codexRestarted: false }, error: null, snapshot: null } };
     await this.store.create(value);
     this.live.set(params.operationId, value); this.activeId = params.operationId;
-    if (override) this.applyPorts.set(params.operationId, override.port);
     this.start(value, false);
     return structuredClone(value.operation);
   }
@@ -312,7 +310,7 @@ export class Operations {
     let executing = false;
     try {
       const current = value.operation;
-      const port = this.applyPorts.get(current.id) ?? this.port;
+      const port = this.port;
       const refresh = value.refresh;
       const preflight = await port.preflight(current.theme, current.expectedRevision, refresh);
       if (refresh && preflight.requiresConfirmation) throw new ContractError("RUNTIME_UNAVAILABLE", "Hot refresh cannot start or restart Codex.");
@@ -338,7 +336,7 @@ export class Operations {
       catch { value.operation = { ...value.operation, state: "indeterminate", stage: "journalUnavailable", confirmation: null,
         effects: executing ? { themeCommitted: null, rendererApplied: null, codexRestarted: null } : value.operation.effects,
         error: { code: "IO_ERROR", message: "The operation journal could not be updated. Inspect current state; no automatic replay will occur.", retryable: false } }; }
-    } finally { if (value.operation.state !== "awaitingConfirmation") { if (this.activeId === value.operation.id) this.activeId = null; this.applyPorts.delete(value.operation.id); } }
+    } finally { if (value.operation.state !== "awaitingConfirmation") { if (this.activeId === value.operation.id) this.activeId = null; } }
   }
   async list(params: MethodMap["operations.list"]["params"]): Promise<MethodMap["operations.list"]["result"]> {
     const inventory = await this.store.records();
@@ -372,7 +370,6 @@ export class Operations {
     await cancel();
     this.confirmedLibrary.clear();
     this.runtimeCommands.clear();
-    this.applyPorts.clear();
   }
   async drain(): Promise<void> { await Promise.allSettled([...this.jobs]); }
 }

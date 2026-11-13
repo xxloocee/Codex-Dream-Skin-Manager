@@ -189,18 +189,18 @@ export async function loadClaudeMedia(payload, signal, loadVideo = loadClaudeVid
 }
 
 export async function claudeRendererOperation(action, payload, layout, loadMedia, loadVideo, target = 'claude') {
-  const namespace = target === 'dsh' ? 'Dsh' : 'Claude';
+  const namespace = target === 'dsh-next' ? 'DshNext' : target === 'dsh' ? 'Dsh' : 'Claude';
   const key = `__dreamskin${namespace}RuntimeV1`;
   const pendingKey = `__dreamskin${namespace}PendingV1`;
   const readyKey = `__dreamskin${namespace}ReadyV1`;
   const startupKey = `__dreamskin${namespace}StartupV1`;
   const marker = `data-dreamskin-${target}-v1`;
-  const validBoundary = () => (target === 'dsh'
+  const validBoundary = () => ((target === 'dsh' || target === 'dsh-next')
     ? location.protocol === 'dsh-app:' && location.hostname === 'app' && location.pathname === '/'
     : location.protocol === 'app:' && location.hostname === 'localhost' &&
     (location.pathname === '/epitaxy' || location.pathname.startsWith('/epitaxy/')) &&
     [...document.querySelectorAll('iframe,webview')].every(frame => window[startupKey]?.frames.has(frame))) && window.top === window;
-  const validPage = () => validBoundary() && (target === 'dsh' ? !!document.querySelector('#root')?.firstElementChild
+  const validPage = () => validBoundary() && ((target === 'dsh' || target === 'dsh-next') ? !!document.querySelector('#root')?.firstElementChild
     : !!document.querySelector('main.dframe-content') && !!document.querySelector('aside.dframe-sidebar') && !!document.querySelector('.dframe-root'));
   const removeStartup = () => window[startupKey]?.remove();
   const cancelReady = () => { window[readyKey]?.abort(); delete window[readyKey]; };
@@ -244,7 +244,7 @@ export async function claudeRendererOperation(action, payload, layout, loadMedia
     const startup = window[startupKey];
     const startupStatus = startup?.api.status();
     return { renderer: applied ? 'applied' : current ? 'unknown' : 'removed', revision: applied ? current.revision : null,
-      error: startupStatus && ['failed', 'timeout'].includes(startupStatus.phase) ? `${namespace === 'Dsh' ? 'DSH' : 'Claude'} startup animation ${startupStatus.phase}.` : null };
+      error: startupStatus && ['failed', 'timeout'].includes(startupStatus.phase) ? `${target === 'dsh-next' ? 'DSH Next' : namespace === 'Dsh' ? 'DSH rc' : 'Claude'} startup animation ${startupStatus.phase}.` : null };
   }
   let media;
   let installed = false;
@@ -272,7 +272,7 @@ export async function claudeRendererOperation(action, payload, layout, loadMedia
       Object.assign(media.element.style, { width: `${box.width}px`, height: `${box.height}px`, left: `${box.x}px`, top: `${box.y}px` });
       background.style.background = `rgb(${color})`;
       mask.style.background = `rgba(${color},${shell})`;
-      const surfaces = target === 'dsh' ? `
+      const surfaces = (target === 'dsh' || target === 'dsh-next') ? `
 html[${marker}="active"] body,
 html[${marker}="active"] #root { background: transparent !important; }
 html[${marker}="active"] body,
@@ -410,7 +410,7 @@ export function buildClaudeStartupVideoSource(video, target = 'claude') {
 
 export function buildClaudeStartupSource(source, target = 'claude') {
   return `(()=>{
-    const key=${JSON.stringify(target === 'dsh' ? '__dreamskinDshStartupV1' : '__dreamskinClaudeStartupV1')};
+    const key=${JSON.stringify(target === 'dsh-next' ? '__dreamskinDshNextStartupV1' : target === 'dsh' ? '__dreamskinDshStartupV1' : '__dreamskinClaudeStartupV1')};
     const owned=window[key];
     if(owned)return {installed:true,alreadyActive:true};
     if(window.__aemeathExtension)throw new Error('Another startup animation already owns this page.');
@@ -432,7 +432,7 @@ export function buildClaudeStartupSource(source, target = 'claude') {
 // Lives in Claude's main process so closing the manager transport does not
 // disable a user's selected appearance. All listeners and sources are owned.
 export function installClaudeMainController(electron, rendererSource, target = 'claude') {
-  const namespace = target === 'dsh' ? 'Dsh' : 'Claude';
+  const namespace = target === 'dsh-next' ? 'DshNext' : target === 'dsh' ? 'Dsh' : 'Claude';
   const key = `__dreamskin${namespace}ControllerV1`;
   const dispatchKey = `__dreamskin${namespace}DispatchV1`;
   if (globalThis[key]) return globalThis[key];
@@ -442,7 +442,7 @@ export function installClaudeMainController(electron, rendererSource, target = '
     if (page.isDestroyed() || page.getType() !== 'window') return false;
     try {
       const url = new URL(page.getURL());
-      return target === 'dsh' ? url.protocol === 'dsh-app:' && url.hostname === 'app' && url.pathname === '/'
+      return (target === 'dsh' || target === 'dsh-next') ? url.protocol === 'dsh-app:' && url.hostname === 'app' && url.pathname === '/'
         : url.protocol === 'app:' && url.hostname === 'localhost' && (anyRoute || url.pathname === '/epitaxy' || url.pathname.startsWith('/epitaxy/'));
     }
     catch { return false; }
@@ -548,7 +548,7 @@ export function installClaudeMainController(electron, rendererSource, target = '
 
 export function buildClaudeMainSource(action, payload = null, startupSource = null, target = 'claude') {
   payload = prepareClaudePayload(payload);
-  const namespace = target === 'dsh' ? 'Dsh' : 'Claude';
+  const namespace = target === 'dsh-next' ? 'DshNext' : target === 'dsh' ? 'Dsh' : 'Claude';
   const controllerKey = JSON.stringify(`__dreamskin${namespace}ControllerV1`);
   const dispatchKey = JSON.stringify(`__dreamskin${namespace}DispatchV1`);
   const factory = `function(action,payload){return '('+${JSON.stringify(claudeRendererOperation.toString())}+')('+JSON.stringify(action)+','+JSON.stringify(payload ?? null)+','+${JSON.stringify(claudeBackgroundLayout.toString())}+','+${JSON.stringify(loadClaudeMedia.toString())}+','+${JSON.stringify(loadClaudeVideo.toString())}+','+${JSON.stringify(JSON.stringify(target))}+')';}`;
@@ -598,7 +598,7 @@ export function buildClaudeMainSource(action, payload = null, startupSource = nu
     for(const page of electron.webContents.getAllWebContents()){
       if(page.isDestroyed()||page.getType()!=='window')continue;
       let url;try{url=new URL(page.getURL());}catch{continue;}
-      ${target === 'dsh' ? "if(url.protocol!=='dsh-app:'||url.hostname!=='app'||url.pathname!=='/')continue;" : `if(url.protocol!=='app:'||url.hostname!=='localhost'||(${JSON.stringify(action)}!=='remove'&&url.pathname!=='/epitaxy'&&!url.pathname.startsWith('/epitaxy/')))continue;`}
+      ${(target === 'dsh' || target === 'dsh-next') ? "if(url.protocol!=='dsh-app:'||url.hostname!=='app'||url.pathname!=='/')continue;" : `if(url.protocol!=='app:'||url.hostname!=='localhost'||(${JSON.stringify(action)}!=='remove'&&url.pathname!=='/epitaxy'&&!url.pathname.startsWith('/epitaxy/')))continue;`}
       if(dispatch&&globalThis[${dispatchKey}]!==dispatch)return {supported:true,results,cancelled:true};
       try{results.push(await page.executeJavaScript(rendererSource(${JSON.stringify(action)},null)));}
       catch(error){results.push({renderer:'unknown',failed:true,error:String(error?.message??error)});}

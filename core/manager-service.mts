@@ -34,7 +34,7 @@ import type { MaintenancePort } from "./maintenance.mjs";
 import { STARTUP_METHODS } from "../contracts/manager.mjs";
 import { startupAnimationSettings, saveStartupAnimationSettings } from "./startup-animation.mjs";
 import { communityCompatibility, communityOrigin } from "./community-origin.mjs";
-import { CLAUDE_METHODS, DSH_METHODS } from "../contracts/manager.mjs";
+import { CLAUDE_METHODS, DSH_METHODS, DSH_NEXT_METHODS } from "../contracts/manager.mjs";
 import { AppearanceService } from "./claude-service.mjs";
 import type { AppearanceMediaInspector, AppearanceRuntimePort } from "./ports/claude.mjs";
 
@@ -51,6 +51,7 @@ export class ManagerService {
   private readonly maintenance: Maintenance | undefined;
   private readonly claude: AppearanceService<"claude"> | undefined;
   private readonly dsh: AppearanceService<"dsh"> | undefined;
+  private readonly dshNext: AppearanceService<"dsh-next"> | undefined;
   private libraryAdmissions = 0;
   private readonly events = new SessionEvents(this.sessionId, () => this.snapshot(), () => !!this.operations?.activeIds.length);
   private closing = false;
@@ -67,11 +68,13 @@ export class ManagerService {
     private readonly applyPort?: ApplyPort, private readonly stateRoot?: string, private readonly library?: LibraryPort,
     private readonly sources?: SourceSnapshots, private readonly nativeFiles?: NativeFiles,
     private readonly packages?: PackageSources, private readonly packageValidation?: PackageValidation, private readonly runtimePort?: RuntimePort,
-    communityHTTP?: CommunityHTTP, private readonly communityApply?: ApplyPort, updatePort?: UpdatePort, maintenancePort?: MaintenancePort,
-    private readonly claudeRuntime?: AppearanceRuntimePort, appearanceDefaultTheme?: () => Promise<LocalTheme | null>, appearanceMediaInspector?: AppearanceMediaInspector, private readonly dshRuntime?: AppearanceRuntimePort) {
+    communityHTTP?: CommunityHTTP, updatePort?: UpdatePort, maintenancePort?: MaintenancePort,
+    private readonly claudeRuntime?: AppearanceRuntimePort, appearanceDefaultTheme?: () => Promise<LocalTheme | null>, appearanceMediaInspector?: AppearanceMediaInspector, private readonly dshRuntime?: AppearanceRuntimePort, private readonly dshNextRuntime?: AppearanceRuntimePort) {
     if (stateRoot) this.claude = new AppearanceService("claude", stateRoot, this.sessionId, theme => this.find(theme), claudeRuntime,
       () => this.libraryAdmissions > 0 || !!this.operations?.libraryBusy, appearanceDefaultTheme, appearanceMediaInspector);
     if (stateRoot) this.dsh = new AppearanceService("dsh", stateRoot, this.sessionId, theme => this.find(theme), dshRuntime,
+      () => this.libraryAdmissions > 0 || !!this.operations?.libraryBusy, appearanceDefaultTheme, appearanceMediaInspector);
+    if (stateRoot) this.dshNext = new AppearanceService("dsh-next", stateRoot, this.sessionId, theme => this.find(theme), dshNextRuntime,
       () => this.libraryAdmissions > 0 || !!this.operations?.libraryBusy, appearanceDefaultTheme, appearanceMediaInspector);
     if (applyPort && stateRoot) this.operations = new Operations(this.sessionId, new OperationStore(stateRoot), applyPort, () => this.snapshot(), async (theme, revision) => {
       if ((await themeDetails(await this.find(theme))).revision !== revision) {
@@ -100,7 +103,7 @@ export class ManagerService {
         void this.packages?.finish(operation.id).catch(() => {});
       }
     };
-    if (this.operations && library && packages && communityHTTP && communityApply) this.community = new Community(communityHTTP, packages);
+    if (this.operations && library && packages && communityHTTP) this.community = new Community(communityHTTP, packages);
     if (this.operations && stateRoot && updatePort) this.updates = new Updates(this.sessionId, stateRoot, updatePort, () => !!this.operations?.activeIds.length || !!this.maintenance?.busy);
     if (this.operations && stateRoot && maintenancePort) this.maintenance = new Maintenance(this.sessionId, stateRoot, maintenancePort, () => !!this.operations?.activeIds.length || !!this.updates?.busy);
   }
@@ -114,7 +117,7 @@ export class ManagerService {
       writer = operation.method === "themes.delete" || operation.method === "library.recover";
     }
     if (!writer) return this.executeRequest(request);
-    if (this.claude?.capturing || this.dsh?.capturing) throw new ContractError("BUSY", "An application background snapshot is being captured.", true);
+    if (this.claude?.capturing || this.dsh?.capturing || this.dshNext?.capturing) throw new ContractError("BUSY", "An application background snapshot is being captured.", true);
     // Reserve before asynchronous library preflight; libraryBusy takes over
     // once Operations queues its writer. Awaiting confirmation holds no source.
     this.libraryAdmissions++;
@@ -123,7 +126,7 @@ export class ManagerService {
   }
   private async executeRequest(request: ManagerRequest): Promise<MethodMap[typeof request.method]["result"]> {
     if (this.closing) throw new ContractError("BACKEND_UNAVAILABLE", "This manager session is closing; accepted operations will finish without replay.");
-    if ((this.updates?.busy || this.maintenance?.busy) && ["skin.apply", ...RUNTIME_METHODS, ...LIBRARY_METHODS, "themes.create", "themes.importPackage", "themes.delete", "library.recover", "community.import", "community.apply"].includes(request.method)) throw new ContractError("BUSY", "更新或维护正在准备，暂时不能修改主题或运行时。");
+    if ((this.updates?.busy || this.maintenance?.busy) && ["skin.apply", ...RUNTIME_METHODS, ...LIBRARY_METHODS, "themes.create", "themes.importPackage", "themes.delete", "library.recover", "community.import"].includes(request.method)) throw new ContractError("BUSY", "更新或维护正在准备，暂时不能修改主题或运行时。");
     switch (request.method) {
       case "claude.status":
         if (!this.claude) throw new ContractError("METHOD_UNSUPPORTED", "Claude Desktop status is unavailable.");
@@ -147,26 +150,47 @@ export class ManagerService {
         if (!this.claude) throw new ContractError("METHOD_UNSUPPORTED", "Claude Desktop controls are unavailable.");
         return this.claude.command(request.method, request.params);
       case "dsh.status":
-        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH status is unavailable.");
+        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH rc status is unavailable.");
         return this.dsh.status();
       case "dsh.parameters.get":
-        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH parameters are unavailable.");
+        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH rc parameters are unavailable.");
         return this.dsh.parameters(request.params.theme);
       case "dsh.parameters.update":
-        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH parameters are unavailable.");
+        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH rc parameters are unavailable.");
         return this.dsh.updateParameters(request.params);
       case "dsh.startup.get":
-        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH startup settings are unavailable.");
+        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH rc startup settings are unavailable.");
         return this.dsh.startupSettings();
       case "dsh.startup.update":
-        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH startup settings are unavailable.");
+        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH rc startup settings are unavailable.");
         return this.dsh.updateStartup(request.params);
       case "dsh.operations.get":
-        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH operations are unavailable.");
+        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH rc operations are unavailable.");
         return this.dsh.get(request.params.operationId);
       case "dsh.apply": case "dsh.pause": case "dsh.resume": case "dsh.reset": case "dsh.restore":
-        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH controls are unavailable.");
+        if (!this.dsh) throw new ContractError("METHOD_UNSUPPORTED", "DSH rc controls are unavailable.");
         return this.dsh.command(request.method, request.params);
+      case "dsh-next.status":
+        if (!this.dshNext) throw new ContractError("METHOD_UNSUPPORTED", "DSH Next status is unavailable.");
+        return this.dshNext.status();
+      case "dsh-next.parameters.get":
+        if (!this.dshNext) throw new ContractError("METHOD_UNSUPPORTED", "DSH Next parameters are unavailable.");
+        return this.dshNext.parameters(request.params.theme);
+      case "dsh-next.parameters.update":
+        if (!this.dshNext) throw new ContractError("METHOD_UNSUPPORTED", "DSH Next parameters are unavailable.");
+        return this.dshNext.updateParameters(request.params);
+      case "dsh-next.startup.get":
+        if (!this.dshNext) throw new ContractError("METHOD_UNSUPPORTED", "DSH Next startup settings are unavailable.");
+        return this.dshNext.startupSettings();
+      case "dsh-next.startup.update":
+        if (!this.dshNext) throw new ContractError("METHOD_UNSUPPORTED", "DSH Next startup settings are unavailable.");
+        return this.dshNext.updateStartup(request.params);
+      case "dsh-next.operations.get":
+        if (!this.dshNext) throw new ContractError("METHOD_UNSUPPORTED", "DSH Next operations are unavailable.");
+        return this.dshNext.get(request.params.operationId);
+      case "dsh-next.apply": case "dsh-next.pause": case "dsh-next.resume": case "dsh-next.reset": case "dsh-next.restore":
+        if (!this.dshNext) throw new ContractError("METHOD_UNSUPPORTED", "DSH Next controls are unavailable.");
+        return this.dshNext.command(request.method, request.params);
       case "startup.get":
         if (!this.stateRoot) throw new ContractError("METHOD_UNSUPPORTED", "Startup animation settings are unavailable.");
         return startupAnimationSettings(this.stateRoot);
@@ -256,13 +280,6 @@ export class ManagerService {
           if (!source.fileName.endsWith(".community.zip")) throw new ContractError("INVALID_REQUEST", "A verified community download is required.");
           await this.packages!.decode(source); return { source, revision: this.packages!.revision(source) };
         }, () => this.packages!.pin(request.params.handle, request.params.operationId), () => this.packages!.finish(request.params.operationId));
-      case "community.apply": {
-        if (!this.community || !this.operations || !this.communityApply) throw new ContractError("METHOD_UNSUPPORTED", "Community application is unavailable.");
-        const imported = await this.operations.get(request.params.importOperationId);
-        if (imported.method !== "themes.importPackage" || imported.state !== "succeeded" || !imported.resultTheme || !imported.resultRevision) throw new ContractError("OPERATION_UNKNOWN", "先核对已成功的主题包导入记录，再明确应用。");
-        return this.operations.apply({ operationId: request.params.operationId, theme: imported.resultTheme, expectedRevision: imported.resultRevision },
-          { context: "community:" + imported.id, port: this.communityApply });
-      }
       case "packages.release": {
         if (!this.packages) throw new ContractError("METHOD_UNSUPPORTED", "Package authorization is unavailable.");
         return { released: await this.packages.release(request.params.handles) };
@@ -348,6 +365,7 @@ export class ManagerService {
         ...(this.operations && this.runtimePort ? RUNTIME_METHODS : []), ...(this.stateRoot && this.operations ? STARTUP_METHODS : []),
         ...(this.claudeRuntime ? CLAUDE_METHODS : this.claude ? ["claude.status" as const] : []),
         ...(this.dshRuntime ? DSH_METHODS : this.dsh ? ["dsh.status" as const] : []),
+        ...(this.dshNextRuntime ? DSH_NEXT_METHODS : this.dshNext ? ["dsh-next.status" as const] : []),
         ...(this.operations && this.library ? [...LIBRARY_METHODS, ...RECOVERY_METHODS] : []), ...(this.sources && this.nativeFiles && this.resources && this.operations && this.library ? SOURCE_METHODS : []),
         ...(this.packages && this.packageValidation && this.nativeFiles && this.resources && this.operations && this.library ? PACKAGE_METHODS : []),
         ...(this.community ? COMMUNITY_METHODS : []), ...(this.updates && this.nativeFiles ? UPDATE_METHODS : []),
@@ -506,7 +524,7 @@ export class ManagerService {
   private async get(ref: MethodMap["themes.get"]["params"]["theme"]): Promise<ThemeDetails> {
     const details = await themeDetails(await this.find(ref));
     const writerBusy = !!this.operations?.activeIds.length || !!this.updates?.busy || !!this.maintenance?.busy;
-    const libraryBusy = writerBusy || !!this.claude?.capturing || !!this.dsh?.capturing;
+    const libraryBusy = writerBusy || !!this.claude?.capturing || !!this.dsh?.capturing || !!this.dshNext?.capturing;
     details.availability.apply = { allowed: !!this.operations && !writerBusy, reasonCode: !this.operations ? "METHOD_UNSUPPORTED" : writerBusy ? "BUSY" : null };
     details.availability.update = details.availability.copy = { allowed: !!this.operations && !!this.library && !libraryBusy,
       reasonCode: !this.operations || !this.library ? "METHOD_UNSUPPORTED" : libraryBusy ? "BUSY" : null };
@@ -543,7 +561,7 @@ export class ManagerService {
     this.closing = true;
     return this.closeJob ??= (async () => {
       const events = this.events.close();
-      try { await this.community?.close(); await this.maintenance?.close(); await this.updates?.close(); await this.operations?.close(); await this.claude?.close(); await this.dsh?.close(); }
+      try { await this.community?.close(); await this.maintenance?.close(); await this.updates?.close(); await this.operations?.close(); await this.claude?.close(); await this.dsh?.close(); await this.dshNext?.close(); }
       finally { await events; await this.nativeFiles?.close(); await this.sources?.close(); await this.packages?.close(); }
     })();
   }

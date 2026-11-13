@@ -9,25 +9,25 @@ const messages: Readonly<Record<string, string>> = {
   "Desktop MP4 video track could not be prepared for playback.": "未能准备 MP4 视频轨道。",
   "Desktop startup animation was not installed.": "启动动画未能安装。",
   "Desktop background could not be reapplied to the new document.": "未能为新页面重新应用背景。",
-  "Apply a skin to start DSH with its main process debugger.": "应用皮肤时会自动启动 DSH。",
-  "Apply a skin to restart DSH with its main process debugger.": "应用皮肤时会按需正常重启 DSH。",
-  "No verified DSH Main Process Debugger is available. Apply a skin to restart DSH with its main process debugger.": "尚未连接 DSH，应用皮肤时会按需正常重启 DSH。",
-  "DSH process preparation did not complete.": "未能完成 DSH 启动准备。",
-  "DSH preparation timed out; no further launch was attempted.": "DSH 启动准备超时，未继续启动。",
-  "DSH preparation timed out; retry applying the skin.": "DSH 启动准备超时，请重新应用皮肤。",
-  "DSH process changed before preparation; retry applying the skin.": "DSH 进程已变化，请重新应用皮肤。",
-  "Expected one registered DSH installation before starting it.": "无法确认唯一的已安装 DSH，未能启动。",
-  "DSH main process debugger is unavailable.": "无法连接 DSH 主进程。",
-  "DSH started, but its main process debugger did not become ready.": "DSH 已启动，但主进程连接尚未就绪。",
-  "DSH started, but its main application page did not become ready.": "DSH 已启动，但主应用页面尚未就绪。",
-  "DSH process changed during discovery; retry applying the skin.": "查找期间 DSH 进程已变化，请重新应用皮肤。",
-  "DSH executable is not a registered installation.": "DSH 程序不属于已登记的安装。",
-  "Expected one registered DSH desktop main process before restarting it.": "无法确认唯一的已安装 DSH 主进程，未能重启。",
-  "DSH normal shutdown did not identify only its registered main process.": "无法确认 DSH 正常退出操作只涉及其已安装的主进程。",
-  "DSH normal shutdown target changed; no restart was attempted.": "DSH 正常退出目标已变化，未尝试重启。",
-  "DSH did not close normally within 15 seconds; no restart was attempted.": "DSH 未在 15 秒内正常退出，未尝试重启。",
-  "DSH installation or process changed before launch; no restart was attempted.": "启动前 DSH 安装或进程已变化，未尝试重启。",
-  "Open the main DSH application page (dsh-app://app/).": "请打开 DSH 主应用页面（dsh-app://app/）。",
+  "Apply a skin to start DSH with its main process debugger.": "应用皮肤时会自动启动 DSH rc。",
+  "Apply a skin to restart DSH with its main process debugger.": "应用皮肤时会按需正常重启 DSH rc。",
+  "No verified DSH Main Process Debugger is available. Apply a skin to restart DSH with its main process debugger.": "尚未连接 DSH rc，应用皮肤时会按需正常重启 DSH rc。",
+  "DSH process preparation did not complete.": "未能完成 DSH rc 启动准备。",
+  "DSH preparation timed out; no further launch was attempted.": "DSH rc 启动准备超时，未继续启动。",
+  "DSH preparation timed out; retry applying the skin.": "DSH rc 启动准备超时，请重新应用皮肤。",
+  "DSH process changed before preparation; retry applying the skin.": "DSH rc 进程已变化，请重新应用皮肤。",
+  "Expected one registered DSH installation before starting it.": "无法确认唯一的已安装 DSH rc，未能启动。",
+  "DSH main process debugger is unavailable.": "无法连接 DSH rc 主进程。",
+  "DSH started, but its main process debugger did not become ready.": "DSH rc 已启动，但主进程连接尚未就绪。",
+  "DSH started, but its main application page did not become ready.": "DSH rc 已启动，但主应用页面尚未就绪。",
+  "DSH process changed during discovery; retry applying the skin.": "查找期间 DSH rc 进程已变化，请重新应用皮肤。",
+  "DSH executable is not a registered installation.": "DSH rc 程序不属于已登记的安装。",
+  "Expected one registered DSH desktop main process before restarting it.": "无法确认唯一的已安装 DSH rc 主进程，未能重启。",
+  "DSH normal shutdown did not identify only its registered main process.": "无法确认 DSH rc 正常退出操作只涉及其已安装的主进程。",
+  "DSH normal shutdown target changed; no restart was attempted.": "DSH rc 正常退出目标已变化，未尝试重启。",
+  "DSH did not close normally within 15 seconds; no restart was attempted.": "DSH rc 未在 15 秒内正常退出，未尝试重启。",
+  "DSH installation or process changed before launch; no restart was attempted.": "启动前 DSH rc 安装或进程已变化，未尝试重启。",
+  "Open the main DSH application page (dsh-app://app/).": "请打开 DSH rc 主应用页面（dsh-app://app/）。",
   "An application background snapshot is being written.": "正在保存应用背景，请等待当前操作结束。",
   "Start the registered Claude Desktop application and open its Code page.": "请启动 Claude Desktop 并打开 Code 页面。",
   "In Claude, enable Developer → Enable Main Process Debugger manually, then retry.": "请在 Claude Desktop 的 Developer 菜单开启 Enable Main Process Debugger，然后刷新。",
@@ -455,9 +455,9 @@ const invalidSubjects: Readonly<Record<string, string>> = {
 };
 
 const packageRules: readonly [RegExp, (...parts: string[]) => string][] = [
-  [/^DSH normal shutdown could not start \(Windows error (\d+)\)\.$/, code => `无法开始正常退出 DSH（Windows 错误 ${code}）。`],
-  [/^DSH normal shutdown registration failed \(Windows error (\d+)\)\.$/, code => `DSH 正常退出注册失败（Windows 错误 ${code}）。`],
-  [/^DSH did not accept normal shutdown \(Windows error (\d+)\); no restart was attempted\.$/, code => `DSH 未接受正常退出请求（Windows 错误 ${code}），未尝试重启。`],
+  [/^(DSH(?: rc| Next)?) normal shutdown could not start \(Windows error (\d+)\)\.$/, (application, code) => `无法开始正常退出 ${application === "DSH" ? "DSH rc" : application}（Windows 错误 ${code}）。`],
+  [/^(DSH(?: rc| Next)?) normal shutdown registration failed \(Windows error (\d+)\)\.$/, (application, code) => `${application === "DSH" ? "DSH rc" : application} 正常退出注册失败（Windows 错误 ${code}）。`],
+  [/^(DSH(?: rc| Next)?) did not accept normal shutdown \(Windows error (\d+)\); no restart was attempted\.$/, (application, code) => `${application === "DSH" ? "DSH rc" : application} 未接受正常退出请求（Windows 错误 ${code}），未尝试重启。`],
   [/^Desktop video codec is not supported: (.+)\.$/, codec => `不支持桌面视频编码：${codec}。`],
   [/^Desktop video decode\/playback failed \((.+)\): (.+)$/, (codec, reason) => `桌面视频解码或播放失败（${codec}）：${reason}`],
   [/^(\d+) journal entries could not be read safely\.$/, count => `${count} 条操作记录无法安全读取。`],
@@ -580,13 +580,36 @@ const fileActions: Readonly<Record<string, string>> = {
   copyfile: "复制文件", access: "访问", realpath: "解析路径",
 };
 
+// Expand only developer-owned templates; incoming diagnostics and user data are
+// matched exactly and never have their application-like substrings rewritten.
+const diagnosticApplications = [
+  ["DSH", "DSH rc"], ["DSH rc", "DSH rc"], ["DSH Next", "DSH Next"],
+  ["Claude", "Claude Desktop"], ["Claude Desktop", "Claude Desktop"],
+] as const;
+const applicationDiagnostics = new Map<string, { english: string; chinese: string }>();
+for (const [template, translated] of Object.entries(appearanceMessages)) {
+  for (const [backendName, displayName] of diagnosticApplications) {
+    applicationDiagnostics.set(template.replaceAll("{application}", backendName), {
+      english: template.replaceAll("{application}", backendName === "DSH" ? "DSH rc" : backendName),
+      chinese: translated.replaceAll("{application}", displayName),
+    });
+  }
+}
+for (const [message, translated] of Object.entries(messages)) {
+  if (!message.includes("DSH")) continue;
+  for (const [backendName, displayName] of diagnosticApplications.slice(0, 3)) {
+    applicationDiagnostics.set(message.replaceAll("DSH", backendName), {
+      english: message.replaceAll("DSH", displayName),
+      chinese: translated.replaceAll("DSH rc", displayName),
+    });
+  }
+}
+
 export function diagnosticText(language: "zh-CN" | "en-US", value: string): string {
+  const applicationMessage = applicationDiagnostics.get(value);
+  if (applicationMessage) return language === "en-US" ? applicationMessage.english : applicationMessage.chinese;
   if (language === "en-US" || !value) return value;
   if (Object.hasOwn(messages, value)) return messages[value]!;
-  for (const application of ["DSH", "Claude Desktop", "Claude"]) {
-    const template = value.replaceAll(application, "{application}");
-    if (Object.hasOwn(appearanceMessages, template)) return appearanceMessages[template]!.replaceAll("{application}", application === "Claude" ? "Claude Desktop" : application);
-  }
   const invalid = /^Invalid (.+?)\.?$/.exec(value);
   if (invalid && Object.hasOwn(invalidSubjects, invalid[1]!)) return `${invalidSubjects[invalid[1]!]!}无效。`;
   const prefix = "主题包校验失败：";

@@ -10,7 +10,7 @@ type Endpoint = { address: string; port: number };
 type Application = { pid: number; executable: string; startTime?: string; listeners: Endpoint[] };
 type Payload = Parameters<ClaudeRuntimePort["apply"]>[0];
 type StartupPayload = Parameters<ClaudeRuntimePort["configureStartup"]>[0];
-type Target = "claude" | "dsh";
+type Target = "claude" | "dsh" | "dsh-next";
 type RendererModule = {
   buildClaudeMainSource(action: string, payload?: Payload | null, startupSource?: string | null, target?: Target): string;
   buildClaudeStartupSource(source: string, target?: Target): string;
@@ -45,17 +45,21 @@ const targets = {
     notRunning: "Start the registered Claude Desktop application and open its Code page.",
     debuggerRequired: "In Claude, enable Developer → Enable Main Process Debugger manually, then retry.",
     pageRequired: "Open the Code page in Claude Desktop with its main area and sidebar visible, without embedded frames." },
-  dsh: { label: "DSH", prefix: "DSH", inventory: "",
-    notRunning: "Apply a skin to start DSH with its main process debugger.",
-    debuggerRequired: "Apply a skin to restart DSH with its main process debugger.",
-    pageRequired: "Open the main DSH application page (dsh-app://app/)." },
+  dsh: { label: "DSH rc", prefix: "DSH", inventory: "",
+    notRunning: "Apply a skin to start DSH rc with its main process debugger.",
+    debuggerRequired: "Apply a skin to restart DSH rc with its main process debugger.",
+    pageRequired: "Open the main DSH rc application page (dsh-app://app/)." },
+  "dsh-next": { label: "DSH Next", prefix: "DSH_NEXT", inventory: "",
+    notRunning: "Apply a skin to start DSH Next with its main process debugger.",
+    debuggerRequired: "Apply a skin to restart DSH Next with its main process debugger.",
+    pageRequired: "Open the main DSH Next application page (dsh-app://app/)." },
 };
 type TargetConfig = typeof targets[Target];
 
 async function inventory(target: TargetConfig, root: string): Promise<Application | null> {
   const systemRoot = process.env.SystemRoot;
   if (!systemRoot || !path.win32.isAbsolute(systemRoot)) throw new ContractError("RUNTIME_UNAVAILABLE", "Windows system directory is unavailable.");
-  const output = target.prefix === "DSH" ? JSON.stringify((await dshProcess(root, "inventory")).applications) : await new Promise<string>((resolve, reject) => {
+  const output = target.prefix !== "CLAUDE" ? JSON.stringify((await dshProcess(root, "inventory", undefined, 15000, target.prefix === "DSH_NEXT" ? "dsh-next" : "dsh")).applications) : await new Promise<string>((resolve, reject) => {
     execFile(path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
       ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(target.inventory, "utf16le").toString("base64")],
       { encoding: "utf8", windowsHide: true, timeout: 15000, maxBuffer: 262144 }, (error, stdout) => {
@@ -112,7 +116,7 @@ async function targetUrl(endpoint: Endpoint, target: TargetConfig): Promise<stri
   catch { throw new ContractError("RUNTIME_UNAVAILABLE", `${target.label} Inspector endpoint is invalid.`); }
   if (url.protocol !== "ws:" || url.hostname !== (endpoint.address === "::1" ? "[::1]" : endpoint.address) || Number(url.port) !== endpoint.port ||
     url.username || url.password || url.search || url.hash || !/^\/[a-f0-9-]{36}$/i.test(url.pathname)) {
-    throw new ContractError(target.prefix === "DSH" ? "RUNTIME_CHANGED" : "RUNTIME_UNAVAILABLE", `Rejected ${target.label} Inspector endpoint.`);
+    throw new ContractError(target.prefix !== "CLAUDE" ? "RUNTIME_CHANGED" : "RUNTIME_UNAVAILABLE", `Rejected ${target.label} Inspector endpoint.`);
   }
   return url.href;
 }
@@ -230,17 +234,17 @@ export class WindowsElectronRuntime implements ClaudeRuntimePort {
         await candidate.open();
         const identity = await candidate.evaluate(IDENTITY) as { pid?: number; executable?: string; electron?: string } | null;
         if (!identity || identity.pid !== app.pid || typeof identity.executable !== "string" || !samePath(identity.executable, app.executable) || typeof identity.electron !== "string") {
-          throw new ContractError(this.target === "dsh" ? "RUNTIME_CHANGED" : "RUNTIME_UNAVAILABLE", `Inspector identity does not match registered ${this.config.label}.`);
+          throw new ContractError(this.target !== "claude" ? "RUNTIME_CHANGED" : "RUNTIME_UNAVAILABLE", `Inspector identity does not match registered ${this.config.label}.`);
         }
         await verifyOwner(app, endpoint, this.config, this.root);
         this.session = candidate;
         return null;
       } catch (error) {
         if (candidate) await candidate.close();
-        if (this.target === "dsh" && error instanceof ContractError && error.code === "RUNTIME_CHANGED") throw error;
+        if (this.target !== "claude" && error instanceof ContractError && error.code === "RUNTIME_CHANGED") throw error;
         // Finding a Node Inspector and then failing its connection/evaluation
         // does not prove that restarting the application is necessary.
-        if (this.target === "dsh" && candidate) throw error;
+        if (this.target !== "claude" && candidate) throw error;
         if (error instanceof ContractError && error.code === "TIMEOUT") timeout = error;
       }
     }
@@ -283,15 +287,15 @@ export class WindowsElectronRuntime implements ClaudeRuntimePort {
     }
     if (!result?.supported || !results?.length) {
       if (action !== "inspect") throw new ContractError("RENDERER_UNVERIFIED", `No supported ${this.config.label} page was found.`, true);
-      return { connection: "connected", renderer: "unavailable", revision: null, diagnostics: [{ code: this.target === "claude" ? "CLAUDE_CODE_REQUIRED" : "DSH_PAGE_REQUIRED", message: this.config.pageRequired }] };
+      return { connection: "connected", renderer: "unavailable", revision: null, diagnostics: [{ code: this.target === "claude" ? "CLAUDE_CODE_REQUIRED" : `${this.config.prefix}_PAGE_REQUIRED`, message: this.config.pageRequired }] };
     }
     // A DSH window can reach its URL before React mounts. Keep real window
     // failures and inconsistent ready windows distinct from that loading state.
-    if (action === "inspect" && this.target === "dsh" && results.some(row => row.renderer === "unavailable")) {
+    if (action === "inspect" && this.target !== "claude" && results.some(row => row.renderer === "unavailable")) {
       const ready = results.filter(row => row.renderer !== "unavailable");
       if (results.every(row => !row.failed && !row.error) && (ready.every(row => row.renderer === "removed") ||
           ready.every(row => row.renderer === "applied" && typeof row.revision === "string" && !!row.revision && row.revision === ready[0]?.revision))) {
-        return { connection: "connected", renderer: "unavailable", revision: null, diagnostics: [{ code: "DSH_PAGE_REQUIRED", message: this.config.pageRequired }] };
+        return { connection: "connected", renderer: "unavailable", revision: null, diagnostics: [{ code: `${this.config.prefix}_PAGE_REQUIRED`, message: this.config.pageRequired }] };
       }
     }
     const expected = action === "apply" ? "applied" : "removed";

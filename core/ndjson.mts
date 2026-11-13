@@ -53,7 +53,7 @@ export async function serve(input: Readable, output: Writable, service: ManagerS
       if (!greeted && request.method !== "system.hello") throw new ContractError("INVALID_REQUEST", "system.hello must precede other methods.");
       // Independent probes must not hold up theme operations while waiting for
       // the runtime or network. Mutations keep their serial admission order.
-      if (["status.get", "claude.status", "dsh.status", "updates.check", "community.inspect", "community.list", "community.preview"].includes(request.method)) {
+      if (["status.get", "claude.status", "dsh.status", "dsh-next.status", "updates.check", "community.inspect", "community.list", "community.preview"].includes(request.method)) {
         // Only the runtime probes are single-flight; community reads are independent.
         const community = request.method.startsWith("community.");
         const readKey = community ? `${request.method}:${request.requestId}` : request.method;

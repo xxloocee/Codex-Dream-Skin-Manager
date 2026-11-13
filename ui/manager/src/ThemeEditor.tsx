@@ -1,3 +1,4 @@
+import { applicationNames, type ApplicationTarget } from "./ApplicationTarget";
 import { useMessage, useText } from "./desktop";
 import { Select } from "./Select";
 import { errorMessage, uiMessage, UiMessageError } from "./ui-message";
@@ -17,7 +18,7 @@ interface Props {
   onSave(patch: ThemePatch, copyName: string | null, applyAfter: boolean): Promise<void>;
   onNotice(value: UiMessage): void;
   preview?: ReactNode; sourcePicker?: ReactNode; readyToSave?: boolean;
-  application?: "codex" | "claude" | "dsh";
+  application?: ApplicationTarget;
   client?: ManagerClient | null; visible?: boolean;
 }
 const ranges = {
@@ -100,7 +101,7 @@ export function ThemeEditor({ theme, busy, canApply, mode = "edit", allowCopy = 
       target={{ kind: "theme", theme: theme.ref, revision: theme.revision, variant: "preview" }} name={theme.name}
       application={application} parameters={display} visible={visible} /></div>}
     <div className="editor-form">
-      {mode === "edit" && <h3>{tr(application === "dsh" ? "DSH 显示与取景" : application === "claude" ? "Claude Desktop 显示与取景" : "Codex 显示与取景")}</h3>}
+      {mode === "edit" && <h3>{tr(`${applicationNames[application]} 显示与取景`)}</h3>}
       <fieldset disabled={busy || application === "codex" && !theme.availability.update.allowed}>
         {mode === "create" && <div className="editor-fields"><label>{tr("主题名称")}<input maxLength={80} value={patch.name ?? theme.name} onChange={event => setPatch(previous => ({ ...previous, name: event.target.value }))} /></label>{sourcePicker}</div>}
         <div className="editor-fields">{choiceControl("appearance")}</div>

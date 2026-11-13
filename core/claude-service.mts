@@ -40,10 +40,10 @@ export class AppearanceService<T extends AppearanceTarget> {
   constructor(private readonly target: T, root: string, private readonly session: string, private readonly find: (theme: ThemeRef) => Promise<LocalTheme>,
     private readonly runtime?: AppearanceRuntimePort, private readonly libraryBusy: () => boolean = () => false,
     private readonly defaultTheme?: () => Promise<LocalTheme | null>, private readonly inspectMedia?: AppearanceMediaInspector) {
-    this.directory = path.join(root, target === "claude" ? "claude-desktop" : "dsh");
+    this.directory = path.join(root, target === "claude" ? "claude-desktop" : target);
   }
-  private get label(): string { return this.target === "claude" ? "Claude Desktop" : "DSH"; }
-  private get diagnosticPrefix(): string { return this.target === "claude" ? "CLAUDE" : "DSH"; }
+  private get label(): string { return this.target === "claude" ? "Claude Desktop" : this.target === "dsh" ? "DSH rc" : "DSH Next"; }
+  private get diagnosticPrefix(): string { return this.target === "claude" ? "CLAUDE" : this.target === "dsh" ? "DSH" : "DSH_NEXT"; }
   get busy(): boolean { return this.locked; }
   get capturing(): boolean { return this.capturingSource; }
   private async capture<R>(action: () => Promise<R>): Promise<R> {

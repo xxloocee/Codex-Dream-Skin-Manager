@@ -4,14 +4,12 @@
     "windows": {
       "files": [
         "VERSION",
-        "scripts/apply-community-theme.ps1",
         "scripts/check-update.ps1",
         "scripts/common-windows.ps1",
         "scripts/config-utf8.ps1",
         "scripts/dsh-runtime.ps1",
         "scripts/injector.mjs",
         "scripts/localization-windows.ps1",
-        "scripts/manager-community.ps1",
         "scripts/manager-library.ps1",
         "scripts/manager-platform.ps1",
         "scripts/manager-trash.ps1",
@@ -28,7 +26,6 @@
     "macos": {
       "files": [
         "VERSION",
-        "scripts/apply-community-theme-macos.sh",
         "scripts/check-update-macos.sh",
         "scripts/common-macos.sh",
         "scripts/doctor-macos.sh",
@@ -40,7 +37,6 @@
         "scripts/launch-environment-macos.mjs",
         "scripts/list-manager-themes-macos.mjs",
         "scripts/localization-macos.sh",
-        "scripts/manager-community.sh",
         "scripts/manager-library.sh",
         "scripts/manager-maintenance.sh",
         "scripts/manager-platform.sh",

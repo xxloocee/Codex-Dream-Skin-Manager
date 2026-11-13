@@ -78,8 +78,9 @@ export async function prepareRecovery(journals: LibraryTransactions, adapter: Pl
   const value = await journals.read(command.params.transactionId); if (!value) throw new ContractError("OPERATION_UNKNOWN", "The recovery transaction is unknown.");
   const item = await recoveryEntry(journals, value);
   if (!item || item.revision !== command.params.expectedRevision || !item.actions.includes(command.params.action)) throw new ContractError("RECOVERY_CHANGED", "Refresh the recovery list; this transaction no longer matches the selected action.");
-  const context = await deletionContext(journals.state, adapter, command.params.operationId, await adapter.inventory(), journals, value.operationId);
-  if (value.theme && (command.params.action !== "reconcile" || value.deletion)) assertDeletionAllowed(value.theme, context, !!value.deletion);
+  const context = command.params.action === "reconcile" && !value.deletion ? null
+    : await deletionContext(journals.state, adapter, command.params.operationId, await adapter.inventory(), journals, value.operationId);
+  if (value.theme && context) assertDeletionAllowed(value.theme, context, !!value.deletion);
   const fingerprint = sha256([Buffer.from(canonicalJson({ item, action: command.params.action, context }))]);
   const impact: Record<RecoveryAction, string> = { reconcile: "仅核对已发布内容并记录可确认结果，不重放原操作。", finishImport: "重新校验完整暂存后发布到主题库；不会应用或启动 Codex。", discardStage: "永久删除这一事务保留的暂存素材，不修改已发布主题。", cleanupDeleted: value.theme?.source === "preset" ? "完成已移除内置主题的系统回收站或废纸篓处理。" : "永久清理这一已移除主题的隔离素材。" };
   const challenge: LibraryChallenge = { fingerprint, theme: value.theme ?? { source: "saved", id: "recovery-" + command.params.transactionId.split(":")[1] }, revision: item.revision,

@@ -7,7 +7,7 @@ import { MediaPreview } from "./MediaPreview";
 import { previewParameters } from "./preview-model";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 import { StartupAnimationControls } from "./StartupAnimationControls";
-import type { ApplicationTarget } from "./ApplicationTarget";
+import { applicationNames, type ApplicationTarget } from "./ApplicationTarget";
 
 export interface TargetSkinControls {
   application: ApplicationTarget;
@@ -45,8 +45,8 @@ export function ThemeDetailsPanel({ client, hello, theme, selectedPreview = null
       name={shown.name} parameters={theme ? previewParameters(theme.storedParameters) : application !== "codex" ? selectedTheme ? null : targetControls?.activeParameters ?? null : selectedTheme ? null : activeTheme ? previewParameters(activeTheme.storedParameters) : null} application={application} mediaKind={shown.mediaKind} visible={visible} />
       : <div className="preview placeholder">{loading ? tr("正在读取详情…") : tr("尚无可预览的当前皮肤")}</div>}
     <div className="detail-body"><p className="eyebrow">{tr("选中主题")}</p><h2>{shown?.name ?? tr("尚未选择主题")}</h2>
-      <div className="target-runtime-summary"><span>{tr(application === "dsh" ? "DSH 当前皮肤" : application === "claude" ? "Claude Desktop 当前皮肤" : "Codex 当前皮肤")}</span><strong>{targetControls?.currentName ?? activeTheme?.name ?? tr(snapshot?.desired.theme ? "状态暂不可用" : "未运行")}</strong></div>
-      <button className="primary" disabled={busy || loading || (selectedTheme ? !theme || !canApply : !runtimeAllowed("resume"))} onClick={onApply}>{tr(application === "dsh" ? "应用到 DSH" : application === "claude" ? "应用到 Claude Desktop" : "应用到 Codex")}</button>
+      <div className="target-runtime-summary"><span>{tr(`${applicationNames[application]} 当前皮肤`)}</span><strong>{targetControls?.currentName ?? activeTheme?.name ?? tr(snapshot?.desired.theme ? "状态暂不可用" : "未运行")}</strong></div>
+      <button className="primary" disabled={busy || loading || (selectedTheme ? !theme || !canApply : !runtimeAllowed("resume"))} onClick={onApply}>{tr(`应用到 ${applicationNames[application]}`)}</button>
       <div className="dashboard-actions">
         <button disabled={busy || !theme || !hello?.capabilities.methods.includes("files.saveOriginal")} onClick={() => onOriginal("files.saveOriginal")}>{tr("下载素材")}</button>
         <button disabled={busy || !theme} onClick={onEdit}>{tr("编辑参数")}</button>

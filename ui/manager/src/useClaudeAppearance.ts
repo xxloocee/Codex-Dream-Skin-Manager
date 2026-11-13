@@ -1,3 +1,4 @@
+import { applicationNames } from "./ApplicationTarget";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppearanceOperation, AppearanceParameters, AppearanceSnapshot, AppearanceTarget, HelloResult, ThemeDetails, ThemeParameters, ThemeRef } from "../../../contracts/manager.mjs";
 import { BridgeError, ManagerClient } from "./client";
@@ -104,7 +105,7 @@ export function useAppearance(target: AppearanceTarget, client: ManagerClient | 
     if (operationError) onNotice(operationError);
     else if (operation?.error) onNotice(diagnosticMessage(operation.error));
     else if (operation?.state === "indeterminate") onNotice(uiMessage("结果暂不确定，请刷新状态后核对；不会重复执行。"));
-    else if (operation?.state === "succeeded") onNotice(uiMessage(operation.snapshot.renderer === "unknown" || operation.snapshot.renderer === "unavailable" ? "操作已完成，请刷新确认当前外观。" : target === "dsh" ? "DSH 操作已完成。" : "Claude Desktop 操作已完成。"));
+    else if (operation?.state === "succeeded") onNotice(uiMessage(operation.snapshot.renderer === "unknown" || operation.snapshot.renderer === "unavailable" ? "操作已完成，请刷新确认当前外观。" : `${applicationNames[target]} 操作已完成。`));
     else if (operation?.state === "failed") onNotice(uiMessage("操作未完成"));
   }, [operation, operationError, onNotice, target]);
 
@@ -149,7 +150,7 @@ export function useAppearance(target: AppearanceTarget, client: ManagerClient | 
       const value = await client.call(`${target}.parameters.update`, { theme: selectedTheme.ref, expectedRevision: selectedTheme.revision, parameters: appearanceParametersOnly(parameters) });
       if (selected && currentThemeKey.current === identity(selectedTheme)) { parameterEpoch.current++; setSaved({ key: identity(selectedTheme), parameters: value.parameters }); setParametersError(""); }
       if (value.snapshot) { setSnapshot(value.snapshot); setStatusError(""); }
-      onNotice(value.refreshError ? joinMessages([uiMessage(target === "dsh" ? "DSH 参数已保存，当前显示更新失败。" : "Claude Desktop 参数已保存，当前显示更新失败。"), diagnosticMessage(value.refreshError)], " ") : uiMessage(target === "dsh" ? "DSH 参数已保存。" : "Claude Desktop 参数已保存。"));
+      onNotice(value.refreshError ? joinMessages([uiMessage(`${applicationNames[target]} 参数已保存，当前显示更新失败。`), diagnosticMessage(value.refreshError)], " ") : uiMessage(`${applicationNames[target]} 参数已保存。`));
     } finally { statusEpoch.current++; mutating.current = false; setSaving(false); }
   };
   return { supported, snapshot, statusError, operation, operationError, parametersError, theme, parametersReady,

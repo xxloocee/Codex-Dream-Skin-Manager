@@ -10,7 +10,7 @@ export const LIBRARY_METHODS = ["themes.update", "themes.copy"] as const;
 export type ThemeEditMethod = typeof LIBRARY_METHODS[number];
 export const SOURCE_METHODS = ["files.select", "sources.preview", "sources.release", "themes.create", "files.saveOriginal", "files.playOriginal"] as const;
 export const PACKAGE_METHODS = ["files.selectPackages", "packages.inspect", "packages.preview", "packages.release", "themes.importPackage", "files.exportPackage"] as const;
-export const COMMUNITY_METHODS = ["community.list", "community.local", "community.preview", "community.inspect", "community.download", "community.import", "community.apply"] as const;
+export const COMMUNITY_METHODS = ["community.list", "community.local", "community.preview", "community.inspect", "community.download", "community.import"] as const;
 export const UPDATE_METHODS = ["updates.check", "updates.install", "updates.get", "updates.openRelease", "updates.quit"] as const;
 export const DESKTOP_METHODS = ["desktop.get", "desktop.open", "desktop.language", "desktop.login", "desktop.intents", "desktop.notifyUpdate"] as const;
 export const MAINTENANCE_METHODS = ["maintenance.inspect", "maintenance.prepare", "maintenance.execute", "maintenance.get"] as const;
@@ -19,9 +19,10 @@ export const RUNTIME_METHODS = ["skin.pause", "skin.resume", "skin.reset", "skin
 export const STARTUP_METHODS = ["startup.get", "startup.update"] as const;
 export const CLAUDE_METHODS = ["claude.status", "claude.apply", "claude.pause", "claude.resume", "claude.reset", "claude.restore", "claude.operations.get", "claude.parameters.get", "claude.parameters.update", "claude.startup.get", "claude.startup.update"] as const;
 export const DSH_METHODS = ["dsh.status", "dsh.apply", "dsh.pause", "dsh.resume", "dsh.reset", "dsh.restore", "dsh.operations.get", "dsh.parameters.get", "dsh.parameters.update", "dsh.startup.get", "dsh.startup.update"] as const;
+export const DSH_NEXT_METHODS = ["dsh-next.status", "dsh-next.apply", "dsh-next.pause", "dsh-next.resume", "dsh-next.reset", "dsh-next.restore", "dsh-next.operations.get", "dsh-next.parameters.get", "dsh-next.parameters.update", "dsh-next.startup.get", "dsh-next.startup.update"] as const;
 export type RuntimeMethod = typeof RUNTIME_METHODS[number];
 export type RuntimeCommand = { method: RuntimeMethod; params: { operationId: string; expectedRuntimeRevision: string } };
-export type ManagerMethod = ReadMethod | typeof SESSION_METHODS[number] | typeof MEDIA_METHOD | typeof OPERATION_METHODS[number] | ThemeEditMethod | typeof SOURCE_METHODS[number] | typeof PACKAGE_METHODS[number] | typeof COMMUNITY_METHODS[number] | typeof UPDATE_METHODS[number] | typeof DESKTOP_METHODS[number] | typeof MAINTENANCE_METHODS[number] | typeof RECOVERY_METHODS[number] | RuntimeMethod | typeof STARTUP_METHODS[number] | typeof CLAUDE_METHODS[number] | typeof DSH_METHODS[number];
+export type ManagerMethod = ReadMethod | typeof SESSION_METHODS[number] | typeof MEDIA_METHOD | typeof OPERATION_METHODS[number] | ThemeEditMethod | typeof SOURCE_METHODS[number] | typeof PACKAGE_METHODS[number] | typeof COMMUNITY_METHODS[number] | typeof UPDATE_METHODS[number] | typeof DESKTOP_METHODS[number] | typeof MAINTENANCE_METHODS[number] | typeof RECOVERY_METHODS[number] | RuntimeMethod | typeof STARTUP_METHODS[number] | typeof CLAUDE_METHODS[number] | typeof DSH_METHODS[number] | typeof DSH_NEXT_METHODS[number];
 export const ERROR_CODES = [
   "PROTOCOL_UNSUPPORTED", "INVALID_REQUEST", "METHOD_UNSUPPORTED", "BACKEND_UNAVAILABLE",
   "THEME_NOT_FOUND", "THEME_INVALID", "THEME_CHANGED", "CATALOG_CHANGED", "MEDIA_UNSUPPORTED",
@@ -59,7 +60,7 @@ export interface ThemeParameters {
   shellOpacity: number | null;
   accent: string | null;
 }
-export type AppearanceTarget = "claude" | "dsh";
+export type AppearanceTarget = "claude" | "dsh" | "dsh-next";
 export type AppearanceParameters = Pick<ThemeParameters, "appearance" | "focusX" | "focusY" | "positionX" | "positionY" | "zoom" | "playbackRate" | "positionMode" | "framingEnabled" | "shellOpacity" | "bubbleOpacity" | "surfaceOpacity">;
 export const APPEARANCE_PARAMETER_KEYS = ["appearance", "focusX", "focusY", "positionX", "positionY", "zoom", "playbackRate", "positionMode", "framingEnabled", "shellOpacity", "bubbleOpacity", "surfaceOpacity"] as const;
 export interface AppearanceSnapshot<T extends AppearanceTarget = AppearanceTarget> {
@@ -247,6 +248,17 @@ export interface MethodMap {
   "dsh.parameters.update": { params: { theme: ThemeRef; expectedRevision: string; parameters: Partial<AppearanceParameters> }; result: { parameters: Partial<AppearanceParameters>; snapshot: AppearanceSnapshot<"dsh"> | null; refreshError: ManagerError | null } };
   "dsh.startup.get": { params: Record<string, never>; result: StartupAnimationSettings };
   "dsh.startup.update": { params: StartupAnimationUpdate; result: StartupAnimationSettings };
+  "dsh-next.status": { params: Record<string, never>; result: AppearanceSnapshot<"dsh-next"> };
+  "dsh-next.apply": { params: { operationId: string; theme: ThemeRef; expectedRevision: string; parameters?: Partial<AppearanceParameters> }; result: AppearanceOperation<"dsh-next"> };
+  "dsh-next.pause": { params: { operationId: string }; result: AppearanceOperation<"dsh-next"> };
+  "dsh-next.resume": { params: { operationId: string }; result: AppearanceOperation<"dsh-next"> };
+  "dsh-next.reset": { params: { operationId: string }; result: AppearanceOperation<"dsh-next"> };
+  "dsh-next.restore": { params: { operationId: string }; result: AppearanceOperation<"dsh-next"> };
+  "dsh-next.operations.get": { params: { operationId: string }; result: AppearanceOperation<"dsh-next"> };
+  "dsh-next.parameters.get": { params: { theme: ThemeRef }; result: { parameters: Partial<AppearanceParameters> } };
+  "dsh-next.parameters.update": { params: { theme: ThemeRef; expectedRevision: string; parameters: Partial<AppearanceParameters> }; result: { parameters: Partial<AppearanceParameters>; snapshot: AppearanceSnapshot<"dsh-next"> | null; refreshError: ManagerError | null } };
+  "dsh-next.startup.get": { params: Record<string, never>; result: StartupAnimationSettings };
+  "dsh-next.startup.update": { params: StartupAnimationUpdate; result: StartupAnimationSettings };
   "startup.get": { params: Record<string, never>; result: StartupAnimationSettings };
   "startup.update": { params: StartupAnimationUpdate; result: StartupAnimationSettings };
   "desktop.get": { params: Record<string, never>; result: DesktopInfo };
@@ -270,7 +282,6 @@ export interface MethodMap {
   "community.inspect": { params: { link: string }; result: CommunityProposal };
   "community.download": { params: { handle: string; accepted: true }; result: CommunityDownload };
   "community.import": { params: { operationId: string; handle: string }; result: OperationSnapshot };
-  "community.apply": { params: { operationId: string; importOperationId: string }; result: OperationSnapshot };
   "events.subscribe": { params: Record<string, never>; result: { backendSessionId: string; subscribed: boolean } };
   "events.unsubscribe": { params: Record<string, never>; result: { backendSessionId: string; subscribed: boolean } };
   "session.close": { params: Record<string, never>; result: { backendSessionId: string; closing: true } };
@@ -415,27 +426,28 @@ export function parseRequest(value: unknown): ManagerRequest {
   if (value.kind !== "request" || responseId(value) === null || !boundedText(value.method, 80) || !record(value.params)) {
     throw new ContractError("INVALID_REQUEST", "Invalid request envelope.");
   }
-  if (!([...READ_METHODS, ...SESSION_METHODS, MEDIA_METHOD, ...OPERATION_METHODS, ...LIBRARY_METHODS, ...SOURCE_METHODS, ...PACKAGE_METHODS, ...COMMUNITY_METHODS, ...UPDATE_METHODS, ...DESKTOP_METHODS, ...MAINTENANCE_METHODS, ...RECOVERY_METHODS, ...RUNTIME_METHODS, ...STARTUP_METHODS, ...CLAUDE_METHODS, ...DSH_METHODS] as readonly string[]).includes(value.method)) {
+  if (!([...READ_METHODS, ...SESSION_METHODS, MEDIA_METHOD, ...OPERATION_METHODS, ...LIBRARY_METHODS, ...SOURCE_METHODS, ...PACKAGE_METHODS, ...COMMUNITY_METHODS, ...UPDATE_METHODS, ...DESKTOP_METHODS, ...MAINTENANCE_METHODS, ...RECOVERY_METHODS, ...RUNTIME_METHODS, ...STARTUP_METHODS, ...CLAUDE_METHODS, ...DSH_METHODS, ...DSH_NEXT_METHODS] as readonly string[]).includes(value.method)) {
     throw new ContractError("METHOD_UNSUPPORTED", "This method is not implemented by this backend.");
   }
   const params = value.params;
   switch (value.method) {
-    case "claude.status": case "dsh.status": fields(params, []); break;
+    case "claude.status": case "dsh.status": case "dsh-next.status": fields(params, []); break;
     case "claude.pause": case "claude.resume": case "claude.reset": case "claude.restore": case "claude.operations.get":
     case "dsh.pause": case "dsh.resume": case "dsh.reset": case "dsh.restore": case "dsh.operations.get":
+    case "dsh-next.pause": case "dsh-next.resume": case "dsh-next.reset": case "dsh-next.restore": case "dsh-next.operations.get":
       fields(params, ["operationId"]);
       if (!validOperationId(params.operationId)) throw new ContractError("INVALID_REQUEST", "Invalid appearance operation identity.");
       break;
-    case "claude.parameters.get": case "dsh.parameters.get": fields(params, ["theme"]); parseThemeRef(params.theme); break;
-    case "claude.apply": case "claude.parameters.update": case "dsh.apply": case "dsh.parameters.update":
-      fields(params, ["theme", "expectedRevision", "parameters", ...((value.method === "claude.apply" || value.method === "dsh.apply") ? ["operationId"] : [])]);
+    case "claude.parameters.get": case "dsh.parameters.get": case "dsh-next.parameters.get": fields(params, ["theme"]); parseThemeRef(params.theme); break;
+    case "claude.apply": case "claude.parameters.update": case "dsh.apply": case "dsh.parameters.update": case "dsh-next.apply": case "dsh-next.parameters.update":
+      fields(params, ["theme", "expectedRevision", "parameters", ...((value.method === "claude.apply" || value.method === "dsh.apply" || value.method === "dsh-next.apply") ? ["operationId"] : [])]);
       parseThemeRef(params.theme);
       if (typeof params.expectedRevision !== "string" || !/^[a-f0-9]{64}$/.test(params.expectedRevision) ||
-          ((value.method === "claude.apply" || value.method === "dsh.apply") && !validOperationId(params.operationId))) throw new ContractError("INVALID_REQUEST", "Invalid appearance theme revision or operation identity.");
-      if ((value.method === "claude.parameters.update" || value.method === "dsh.parameters.update") || params.parameters !== undefined) parseAppearanceParameters(params.parameters);
+          ((value.method === "claude.apply" || value.method === "dsh.apply" || value.method === "dsh-next.apply") && !validOperationId(params.operationId))) throw new ContractError("INVALID_REQUEST", "Invalid appearance theme revision or operation identity.");
+      if ((value.method === "claude.parameters.update" || value.method === "dsh.parameters.update" || value.method === "dsh-next.parameters.update") || params.parameters !== undefined) parseAppearanceParameters(params.parameters);
       break;
-    case "startup.get": case "claude.startup.get": case "dsh.startup.get": fields(params, []); break;
-    case "startup.update": case "claude.startup.update": case "dsh.startup.update":
+    case "startup.get": case "claude.startup.get": case "dsh.startup.get": case "dsh-next.startup.get": fields(params, []); break;
+    case "startup.update": case "claude.startup.update": case "dsh.startup.update": case "dsh-next.startup.update":
       fields(params, ["enabled", "theme", "expectedRevision"]);
       if ((!Object.hasOwn(params, "enabled") && !Object.hasOwn(params, "theme")) ||
           (Object.hasOwn(params, "enabled") && typeof params.enabled !== "boolean")) throw new ContractError("INVALID_REQUEST", "Invalid startup animation settings.");
@@ -483,10 +495,6 @@ export function parseRequest(value: unknown): ManagerRequest {
     case "community.download":
       fields(params, ["handle", "accepted"]);
       if (typeof params.handle !== "string" || !/^[a-f0-9]{48}$/.test(params.handle) || params.accepted !== true) throw new ContractError("INVALID_REQUEST", "Explicit community download approval is required.");
-      break;
-    case "community.apply":
-      fields(params, ["operationId", "importOperationId"]);
-      if (!validOperationId(params.operationId) || !validOperationId(params.importOperationId) || params.operationId === params.importOperationId) throw new ContractError("INVALID_REQUEST", "Invalid community application identity.");
       break;
     case "skin.pause": case "skin.resume": case "skin.reset": case "skin.restore": case "runtime.repair": case "runtime.upgrade":
       fields(params, ["operationId", "expectedRuntimeRevision"]);

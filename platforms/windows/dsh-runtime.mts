@@ -1,13 +1,15 @@
 import { WindowsElectronRuntime } from "./claude-runtime.mjs";
 import { ContractError } from "../../contracts/manager.mjs";
 import type { ClaudeRuntimeObservation, ClaudeRuntimePort } from "../../core/ports/claude.mjs";
-import { dshProcess } from "./dsh-process.mjs";
+import { dshProcess, type DshTarget } from "./dsh-process.mjs";
 
 export class WindowsDshRuntime extends WindowsElectronRuntime {
   private preparing: Promise<boolean> | null = null;
   private waitForPage = false;
   private readinessDeadline = 0;
-  constructor(root: string) { super(root, "dsh"); }
+  constructor(root: string, private readonly dshTarget: DshTarget = "dsh") { super(root, dshTarget); }
+  private get dshLabel(): string { return this.dshTarget === "dsh-next" ? "DSH Next" : "DSH rc"; }
+  private get dshPrefix(): string { return this.dshTarget === "dsh-next" ? "DSH_NEXT" : "DSH"; }
 
   protected override async connect(): Promise<ClaudeRuntimeObservation | null> {
     // A status probe must join preparation rather than connect to the process
@@ -30,30 +32,30 @@ export class WindowsDshRuntime extends WindowsElectronRuntime {
     this.readinessDeadline = Date.now() + 35000;
     const connection = await this.beforeDeadline(super.connect());
     if (!connection) return false;
-    if (!connection.diagnostics.some(item => ["DSH_NOT_RUNNING", "DSH_DEBUGGER_REQUIRED", "DSH_DEBUGGER_UNVERIFIED"].includes(item.code))) {
-      throw new ContractError("RUNTIME_UNAVAILABLE", connection.diagnostics[0]?.message ?? "DSH main process debugger is unavailable.", true);
+    if (!connection.diagnostics.some(item => [`${this.dshPrefix}_NOT_RUNNING`, `${this.dshPrefix}_DEBUGGER_REQUIRED`, `${this.dshPrefix}_DEBUGGER_UNVERIFIED`].includes(item.code))) {
+      throw new ContractError("RUNTIME_UNAVAILABLE", connection.diagnostics[0]?.message ?? `${this.dshLabel} main process debugger is unavailable.`, true);
     }
     const app = this.application;
     let executable = app?.executable;
     if (!app) {
-      const fresh = await dshProcess(this.root, "inventory", undefined, this.readinessDeadline - Date.now());
-      if (fresh.applications.length) throw new ContractError("RUNTIME_CHANGED", "DSH process changed before preparation; retry applying the skin.", true);
-      if (fresh.installations.length !== 1) throw new ContractError("RUNTIME_UNAVAILABLE", "Expected one registered DSH installation before starting it.");
+      const fresh = await dshProcess(this.root, "inventory", undefined, this.readinessDeadline - Date.now(), this.dshTarget);
+      if (fresh.applications.length) throw new ContractError("RUNTIME_CHANGED", `${this.dshLabel} process changed before preparation; retry applying the skin.`, true);
+      if (fresh.installations.length !== 1) throw new ContractError("RUNTIME_UNAVAILABLE", `Expected one registered ${this.dshLabel} installation before starting it.`);
       executable = fresh.installations[0]!;
     }
-    await dshProcess(this.root, "prepare", { executable: executable!, pid: app?.pid ?? 0, startTime: app?.startTime ?? "0" }, this.readinessDeadline - Date.now());
+    await dshProcess(this.root, "prepare", { executable: executable!, pid: app?.pid ?? 0, startTime: app?.startTime ?? "0" }, this.readinessDeadline - Date.now(), this.dshTarget);
     this.waitForPage = true;
     while (Date.now() < this.readinessDeadline) {
       const pending = await this.beforeDeadline(super.connect());
       if (!pending) return true;
       await new Promise(resolve => setTimeout(resolve, 250));
     }
-    throw new ContractError("TIMEOUT", "DSH started, but its main process debugger did not become ready.", true);
+    throw new ContractError("TIMEOUT", `${this.dshLabel} started, but its main process debugger did not become ready.`, true);
   }
 
   private beforeDeadline<T>(job: Promise<T>): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new ContractError("TIMEOUT", "DSH preparation timed out; retry applying the skin.", true)), Math.max(0, this.readinessDeadline - Date.now()));
+      const timer = setTimeout(() => reject(new ContractError("TIMEOUT", `${this.dshLabel} preparation timed out; retry applying the skin.`, true)), Math.max(0, this.readinessDeadline - Date.now()));
       job.then(value => { clearTimeout(timer); resolve(value); }, error => { clearTimeout(timer); reject(error); });
     });
   }
@@ -63,12 +65,12 @@ export class WindowsDshRuntime extends WindowsElectronRuntime {
     if (this.waitForPage) {
       while (true) {
         const observed = await this.beforeDeadline(super.inspect());
-        if (!observed.diagnostics.some(item => item.code === "DSH_PAGE_REQUIRED")) {
-          if (observed.connection !== "connected") throw new ContractError("RUNTIME_UNAVAILABLE", observed.diagnostics[0]?.message ?? "DSH main process debugger is unavailable.", true);
+        if (!observed.diagnostics.some(item => item.code === `${this.dshPrefix}_PAGE_REQUIRED`)) {
+          if (observed.connection !== "connected") throw new ContractError("RUNTIME_UNAVAILABLE", observed.diagnostics[0]?.message ?? `${this.dshLabel} main process debugger is unavailable.`, true);
           this.waitForPage = false;
           break;
         }
-        if (Date.now() >= this.readinessDeadline) throw new ContractError("TIMEOUT", "DSH started, but its main application page did not become ready.", true);
+        if (Date.now() >= this.readinessDeadline) throw new ContractError("TIMEOUT", `${this.dshLabel} started, but its main application page did not become ready.`, true);
         await new Promise(resolve => setTimeout(resolve, 250));
       }
     }

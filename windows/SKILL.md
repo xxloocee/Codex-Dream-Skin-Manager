@@ -58,7 +58,7 @@ node --check assets\renderer-inject.js
 - `assets/dream-reference.jpg`: UI-free default wallpaper for this package. Source and redistributable builds may use different reviewed artwork, while Arina Hashimoto remains available as a manager catalog preset.
 - `assets/theme.json`: shared adaptive theme contract for the seeded preset.
 - `scripts/theme-windows.ps1`: active-theme initialization/publication, media validation, pause state, and runtime verification; library editing and ZIP import belong to the shared core.
-- `scripts/apply-community-theme.ps1`: internal snapshot publication, child-start verification, and rollback primitives used by `manager-community.ps1`; it has no download/import or user entry point.
+- `scripts/apply-community-theme.ps1`: legacy transaction helpers retained in source for isolated regression fixtures; not packaged or called by the shared manager.
 - `references/qa-inventory.md`: required functional and visual signoff coverage.
 - `references/runtime-notes.md`: troubleshooting and update behavior.
 - `tests/run-tests.ps1`: managed runtime, configuration, state, recovery, payload, and CDP validation regression checks. Use `-EngineOnly` for the source-independence contract.

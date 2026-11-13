@@ -14,7 +14,6 @@ import { PackageSources } from "./package-sources.mjs";
 import { packageValidation } from "../platforms/package-validation.mjs";
 import { PlatformRuntime } from "../platforms/runtime.mjs";
 import { FixedCommunityHTTP } from "../platforms/community-http.mjs";
-import { CommunityApply } from "../platforms/community-apply.mjs";
 import { PlatformUpdates } from "../platforms/updates.mjs";
 import { PlatformMaintenance } from "../platforms/maintenance.mjs";
 import { WindowsClaudeRuntime } from "../platforms/windows/claude-runtime.mjs";
@@ -47,12 +46,13 @@ try {
     manager && directory ? new SourceSnapshots(state, platform.name, mediaInspector(root, platform.name), sourceConverter(platform.name)) : undefined,
     manager && directory ? new NativeFiles(directory) : undefined,
     manager && directory ? new PackageSources(state, packages) : undefined, manager && directory ? packages : undefined, manager ? new PlatformRuntime(root, state) : undefined,
-    manager && directory ? new FixedCommunityHTTP() : undefined, manager && directory ? new CommunityApply(root, state) : undefined,
+    manager && directory ? new FixedCommunityHTTP() : undefined,
     manager && directory ? new PlatformUpdates(root, state) : undefined,
     manager && directory && platform.name === "macos" ? new PlatformMaintenance(root, state) : undefined,
     manager && platform.name === "windows" ? new WindowsClaudeRuntime(root) : undefined,
     () => defaultRuntimeTheme(root), mediaMetadataInspector(root, platform.name),
-    manager && platform.name === "windows" ? new WindowsDshRuntime(root) : undefined);
+    manager && platform.name === "windows" ? new WindowsDshRuntime(root) : undefined,
+    manager && platform.name === "windows" ? new WindowsDshRuntime(root, "dsh-next") : undefined);
   // Stop input first; serve finishes its current request before close drains jobs.
   const shutdown = () => { service.stopAccepting(); process.stdin.destroy(); };
   process.stdout.on("error", shutdown);

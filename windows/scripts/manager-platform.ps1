@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory = $true)][ValidateSet('Probe','Apply','Inspect','RuntimeProbe','Pause','Restore','CommitCommunity')][string]$Action,
+  [Parameter(Mandatory = $true)][ValidateSet('Probe','Apply','Inspect','RuntimeProbe','Pause','Restore')][string]$Action,
   [Parameter(Mandatory = $true)][string]$ApplicationRoot,
   [string]$RequestPath,
   [switch]$FunctionsOnly
@@ -235,10 +235,9 @@ try {
     $effects.runtimeUpgraded = [bool]$launchProof.runtimeUpgraded
   }
   if ($null -ne $request.runtimeCommand) { $effects.pausedCommitted = -not [bool]$after.paused }
-  if ($Action -in @('Inspect','CommitCommunity')) { $effects.themeCommitted = $true }
-  if ($Action -eq 'CommitCommunity') { $effects.codexRestarted = $true }
+  if ($Action -eq 'Inspect') { $effects.themeCommitted = $true }
   $result = [ordered]@{ effects = $effects; committedRevision = "$($mapped.committedRevision)"; verifiedRendererRevision = "$($mapped.verifiedRendererRevision)"; runtimeSessionId = "$($after.runtimeSessionId)" } | ConvertTo-Json -Compress
-  if ($Action -in @('Apply','CommitCommunity')) {
+  if ($Action -eq 'Apply') {
     $encodedResult = 'base64:' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($result))
     $null = & $Node $Worker settle $ApplicationRoot $RequestPath $encodedResult
     if ($LASTEXITCODE -ne 0) { throw 'The publication receipt could not be saved.' }

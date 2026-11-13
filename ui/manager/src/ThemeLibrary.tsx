@@ -1,3 +1,4 @@
+import type { ApplicationTarget } from "./ApplicationTarget";
 import { LanguageContext, useText } from "./desktop";
 import { useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -12,7 +13,7 @@ const modified = (theme: ThemeSummary) => { const time = Date.parse(theme.modifi
 
 export function ThemeLibrary({ client, platform, application = "codex", visible: pageVisible, themes, selected, busy, loading, onChoose, commands }: {
   client: ManagerClient | null; platform?: HelloResult["platform"] | undefined; visible: boolean;
-  application?: "codex" | "claude" | "dsh";
+  application?: ApplicationTarget;
   themes: ThemeSummary[]; selected: string; busy: boolean; loading: boolean;
   onChoose(theme: ThemeSummary): void; commands: ReactNode;
 }) {

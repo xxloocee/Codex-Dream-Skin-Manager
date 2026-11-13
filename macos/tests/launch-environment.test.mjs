@@ -140,7 +140,7 @@ try {
     await writeFile(path.join(scripts, "common-macos.sh"), commonSource.replaceAll("/usr/bin/dscl", `"${dscl}"`));
     const entryNames = ["start-dream-skin-macos.sh", "restore-dream-skin-macos.sh", "switch-theme-macos.sh",
       "pause-dream-skin-macos.sh", "install-dream-skin-macos.sh", "apply-community-theme-macos.sh",
-      "manager-community.sh", "manager-maintenance.sh", "manager-platform.sh"];
+      "manager-maintenance.sh", "manager-platform.sh"];
     for (const name of ["localization-macos.sh", "process-identity-macos.sh", "theme-switch-lock-macos.sh", ...entryNames]) {
       await writeFile(path.join(scripts, name), await readFile(new URL(name, sourceDirectory)));
     }
@@ -166,9 +166,8 @@ try {
       ["pause-dream-skin-macos.sh", []],
       ["install-dream-skin-macos.sh", ["--no-launch"]],
       ["apply-community-theme-macos.sh", ["--id", "fixture-theme"]],
-      ["manager-community.sh", [application, request]],
       ["manager-maintenance.sh", ["execute", application, request]],
-      ...["apply", "pause", "restore", "commitcommunity"].map(action => ["manager-platform.sh", [action, application, request]]),
+      ...["apply", "pause", "restore"].map(action => ["manager-platform.sh", [action, application, request]]),
     ];
     const environment = { HOME: home, PATH: "/usr/bin:/bin:/usr/sbin:/sbin", LANG: "C", DREAMSKIN_LANG: "en-US",
       CODEX_APP_BUNDLE: fakeApp, FIXTURE_ACCOUNT_HOME: home, FIXTURE_EXECUTION_MARKER: path.join(root, "unexpected-execution") };

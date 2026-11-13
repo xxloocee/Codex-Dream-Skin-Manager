@@ -1,3 +1,4 @@
+import { applicationNames, type ApplicationTarget } from "./ApplicationTarget";
 import { useEffect, useRef, useState } from "react";
 import type { StartupAnimationSettings, StartupAnimationUpdate, ThemeDetails } from "../../../contracts/manager.mjs";
 import type { ManagerClient } from "./client";
@@ -5,7 +6,7 @@ import { useMessage, useText } from "./desktop";
 import { errorMessage, joinMessages, uiMessage } from "./ui-message";
 import type { UiMessage } from "./ui-message";
 
-export function StartupAnimationControls({ client, theme, busy, application = "codex", onBusy }: { client: ManagerClient; theme: ThemeDetails | null; busy: boolean; application?: "codex" | "claude" | "dsh"; onBusy?: ((value: boolean) => void) | undefined }) {
+export function StartupAnimationControls({ client, theme, busy, application = "codex", onBusy }: { client: ManagerClient; theme: ThemeDetails | null; busy: boolean; application?: ApplicationTarget; onBusy?: ((value: boolean) => void) | undefined }) {
   const tr = useText(), msg = useMessage();
   const [settings, setSettings] = useState<StartupAnimationSettings | null>(null);
   const [saving, setSaving] = useState(false), [error, setError] = useState<UiMessage>("");
@@ -33,7 +34,7 @@ export function StartupAnimationControls({ client, theme, busy, application = "c
             (!Object.hasOwn(params, "theme") || (params.theme === null ? saved.theme === null :
               params.theme?.source === saved.theme?.source && params.theme?.id === saved.theme?.id));
           if (current.current.client === client && current.current.application === application) setSettings(saved);
-          if (matches) notice = joinMessages([uiMessage(application === "dsh" ? "启动动画设置已保存，DSH 连接更新失败。" : "启动动画设置已保存，Claude Desktop 连接更新失败。"), notice], " ");
+          if (matches) notice = joinMessages([uiMessage(`启动动画设置已保存，${applicationNames[application]} 连接更新失败。`), notice], " ");
         } catch {
           notice = joinMessages([uiMessage("启动动画设置结果尚未确认；请刷新后核对，不会自动重试。"), notice], " ");
         }

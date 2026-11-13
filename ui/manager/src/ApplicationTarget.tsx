@@ -3,8 +3,10 @@ import { useEffect, useRef } from "react";
 import codexIcon from "./assets/codex.png";
 import claudeIcon from "./assets/claude.png";
 import dshIcon from "./assets/dsh.png";
+import dshNextIcon from "./assets/dsh-next.png";
 
-export type ApplicationTarget = "codex" | "claude" | "dsh";
+export type ApplicationTarget = "codex" | "claude" | "dsh" | "dsh-next";
+export const applicationNames: Record<ApplicationTarget, string> = { codex: "Codex", claude: "Claude Desktop", dsh: "DSH rc", "dsh-next": "DSH Next" };
 
 function ApplicationIcon({ source }: { source: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -27,10 +29,11 @@ export function ApplicationTargets({ value, onChange, disabled }: {
 }) {
   const tr = useText();
   return <div className="application-targets" role="group" aria-label={tr("应用目标")}>
-      {(["codex", "claude", "dsh"] as const).map(target => <button key={target} className={`application-target target-${target}`} aria-pressed={value === target}
-        aria-label={target === "codex" ? "Codex" : target === "dsh" ? "DSH" : "Claude Desktop"} disabled={disabled}
-        title={`${target === "codex" ? "Codex" : target === "dsh" ? "DSH" : "Claude Desktop"}${disabled ? ` · ${tr("请先完成当前操作或保存主题草稿。")}` : ""}`} onClick={() => onChange(target)}>
-        <ApplicationIcon source={target === "codex" ? codexIcon : target === "dsh" ? dshIcon : claudeIcon} />
+      {(["codex", "claude", "dsh", "dsh-next"] as const).map(target => <button key={target} className={`application-target target-${target}`} aria-pressed={value === target}
+        aria-label={applicationNames[target]} disabled={disabled}
+        title={`${applicationNames[target]}${disabled ? ` · ${tr("请先完成当前操作或保存主题草稿。")}` : ""}`} onClick={() => onChange(target)}>
+        <ApplicationIcon source={target === "codex" ? codexIcon : target === "claude" ? claudeIcon : target === "dsh-next" ? dshNextIcon : dshIcon} />
+        {target === "dsh" && <span className="application-variant" aria-hidden="true">rc</span>}
       </button>)}
   </div>;
 }

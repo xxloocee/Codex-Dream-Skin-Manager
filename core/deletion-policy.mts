@@ -1,6 +1,6 @@
 import path from "node:path";
 import { readdir } from "node:fs/promises";
-import { boundedText, ContractError, parseThemeRef, record } from "../contracts/manager.mjs";
+import { boundedText, ContractError, record } from "../contracts/manager.mjs";
 import type { ThemeRef } from "../contracts/manager.mjs";
 import type { PlatformPort, ThemeInventory } from "./ports/platform.mjs";
 import { fileBytes, jsonObject, optionalBytes, safePath } from "./local-files.mjs";
@@ -23,11 +23,6 @@ export async function deletionContext(state: string, adapter: PlatformPort, oper
   for (const name of ["theme/theme.json", "state.json"]) {
     const bytes = await optionalBytes(path.join(state, ...name.split("/")), state, 1024 * 1024); if (!bytes) continue;
     const config = jsonObject(bytes); for (const key of ["id", "themeId", "activeThemeId", "appliedThemeId"]) add(config[key]);
-  }
-  const claudeBytes = await optionalBytes(path.join(state, "claude-desktop", "active.json"), state, 64 * 1024);
-  if (claudeBytes) {
-    const claude = jsonObject(claudeBytes);
-    if (claude.active !== null) add(parseThemeRef(claude.theme).id);
   }
   const ledger = path.join(state, "manager-operations", "ledger"); let names: string[] = [];
   try { await safePath(ledger, state); names = await readdir(ledger); } catch (error) { if (!record(error) || error.code !== "ENOENT") throw error; }

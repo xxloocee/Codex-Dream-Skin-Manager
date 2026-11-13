@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.3.0 — 2026-11-13
+
+- 同步共享界面的流程精简、主题删除策略及操作恢复修复，移除未使用的 community.apply 旧入口。
+- 继续提供 Codex 换肤和 Intel x64、Apple Silicon ARM64 独立安装包；Claude 与 DSH 换肤仍仅适用于 Windows。
+- 下载清单及验证限制见 `.github/release-notes/v3.3.0.md`。
+
 ## 3.2.0 — 2026-11-09
 
 - 同步共享管理界面与 Codex 主题设置实时预览；macOS 暂不支持 Claude Desktop 换肤。

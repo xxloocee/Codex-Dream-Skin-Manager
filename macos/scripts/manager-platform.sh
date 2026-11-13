@@ -6,8 +6,8 @@ set -euo pipefail
 ACTION="${1:-}"
 APPLICATION_ROOT="${2:-}"
 REQUEST_PATH="${3:-}"
-case "$ACTION" in probe|apply|inspect|runtimeprobe|pause|restore|commitcommunity) ;; *) fail "Invalid shared manager action." ;; esac
-case "$ACTION" in apply|pause|restore|commitcommunity) assert_codex_user_environment || exit 1 ;; esac
+case "$ACTION" in probe|apply|inspect|runtimeprobe|pause|restore) ;; *) fail "Invalid shared manager action." ;; esac
+case "$ACTION" in apply|pause|restore) assert_codex_user_environment || exit 1 ;; esac
 [ -n "$APPLICATION_ROOT" ] && [ "${APPLICATION_ROOT:0:1}" = / ] || fail "Missing application root."
 CORE_NODE="$APPLICATION_ROOT/runtime/node/node"
 WORKER="$APPLICATION_ROOT/shared/core/apply-worker.mjs"
@@ -71,7 +71,7 @@ RUNTIME_COMMAND=false
 UPGRADE=false
 UPGRADED=false
 VERIFY_PATH=""
-case "$ACTION" in inspect|commitcommunity) RENDERED=null ;; esac
+case "$ACTION" in inspect) RENDERED=null ;; esac
 cleanup() {
   if [ -n "$VERIFY_PATH" ]; then /bin/rm -f "$VERIFY_PATH"; fi
   release_theme_switch_lock
@@ -181,7 +181,7 @@ transaction() {
   fi
   local completed
   completed="$(result "$(field "$mapped" committedRevision)" "$(field "$mapped" verifiedRendererRevision)" "$(field "$verification_after" runtimeSessionId)")" || return 1
-  if [ "$ACTION" = apply ] || [ "$ACTION" = commitcommunity ]; then
+  if [ "$ACTION" = apply ]; then
     "$CORE_NODE" "$WORKER" settle "$APPLICATION_ROOT" "$REQUEST_PATH" "$completed" >/dev/null || return 1
   fi
   printf '%s\n' "$completed"

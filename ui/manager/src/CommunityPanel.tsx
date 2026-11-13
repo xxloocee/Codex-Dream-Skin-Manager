@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { AppearanceOperation, CommunityCompatibility, CommunityLocalTheme, CommunityProposal, DesktopIntent, HelloResult, OperationSnapshot, ThemeRef } from "../../../contracts/manager.mjs";
-import type { ApplicationTarget } from "./ApplicationTarget";
+import { applicationNames, type ApplicationTarget } from "./ApplicationTarget";
 import type { ManagerClient } from "./client";
 import { useMessage, useText } from "./desktop";
 import { ConfirmationDialog } from "./ConfirmationDialog";
@@ -133,7 +133,7 @@ export function CommunityPanel({ client, hello, busy, canApply, incoming, reques
     {proposal && <><h3>{proposal.metadata.name}</h3><p>{proposal.metadata.authorDisplayName} · {proposal.metadata.version}</p><p>{tr("许可")}：{proposal.metadata.license}</p></>}
     {communityCompatibilityMessages(compatibility, hello.platform, hello.versions.application).map((value, index) => <p className="muted" key={index}>{msg(value)}</p>)}
     <p className="muted">{tr("未下载时会先下载并应用；已下载时直接应用本地副本。")}</p>
-    <div className="editor-actions"><button className="primary" disabled={locked || !canApply || !hello.capabilities.methods.includes(linkApplication === "codex" ? "skin.apply" : `${linkApplication}.apply`) || !version} onClick={() => { if (version) void action(() => install(version, "apply", linkApplication)); }}>{tr("应用主题")}</button>
+    <div className="editor-actions"><button className="primary" disabled={locked || !canApply || !hello.capabilities.methods.includes(linkApplication === "codex" ? "skin.apply" : `${linkApplication}.apply`) || !version} onClick={() => { if (version) void action(() => install(version, "apply", linkApplication)); }}>{tr(`应用到 ${applicationNames[linkApplication]}`)}</button>
       <button disabled={locked || !version} onClick={() => { if (version) void action(() => install(version, "download", linkApplication)); }}>{tr("下载主题")}</button>
       {!running && <button disabled={locked || reading} onClick={() => void inspect()}>{tr("重新读取主题信息")}</button>}</div>
     {notice && <p className="notice" role="status">{msg(notice)}</p>}

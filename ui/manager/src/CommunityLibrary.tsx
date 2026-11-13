@@ -1,3 +1,4 @@
+import { applicationNames, type ApplicationTarget } from "./ApplicationTarget";
 import { useEffect, useRef, useState } from "react";
 import type { CommunityPage, CommunityQuery, CommunityTheme, HelloResult, ThemeRef } from "../../../contracts/manager.mjs";
 import type { ManagerClient } from "./client";
@@ -16,7 +17,7 @@ const size = (bytes: number) => bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(
 export function CommunityLibrary({ client, visible, busy, canApply, platform, engineVersion, downloadUpdate, onAction, onDelete, application = "codex", activeThemes }: {
   client: ManagerClient; visible: boolean; busy: boolean; canApply: boolean; downloadUpdate: CommunityDownloadUpdate | null;
   platform: HelloResult["platform"]; engineVersion: string | null;
-  application?: "codex" | "claude" | "dsh";
+  application?: ApplicationTarget;
   activeThemes: (ThemeRef | null)[];
   onAction(theme: CommunityTheme, action: CommunityActionRequest["action"]): void;
   onDelete(local: NonNullable<CommunityTheme["downloaded"]>): void;
@@ -93,7 +94,7 @@ export function CommunityLibrary({ client, visible, busy, canApply, platform, en
             <dt>{tr("下载")}</dt><dd>{theme.downloadCount}</dd><dt>{tr("收藏")}</dt><dd>{theme.favoriteCount}</dd></dl>
           <p className="muted">{tr("预览展示背景，实际外观以应用结果为准。")}</p>
           {communityCompatibilityMessages(declaration, platform, engineVersion).map((value, index) => <p className="muted" key={index}>{msg(value)}</p>)}
-          <div className="editor-actions"><button className="primary" disabled={busy || !canApply} onClick={() => onAction(theme, "apply")}>{tr("应用主题")}</button>
+          <div className="editor-actions"><button className="primary" disabled={busy || !canApply} onClick={() => onAction(theme, "apply")}>{tr(`应用到 ${applicationNames[application]}`)}</button>
             {theme.downloaded && <button disabled={busy || activeSelection} title={activeSelection ? tr("当前正在使用该主题，请先应用其他主题后再删除。") : undefined} onClick={() => onDelete(theme.downloaded!)}>{tr("删除已下载主题")}</button>}</div>
         </div>
       </> : <p className="muted">{tr("选择社区主题，查看预览与安装信息。")}</p>}

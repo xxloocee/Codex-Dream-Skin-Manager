@@ -1,19 +1,19 @@
 # Codex Dream Skin Manager
 
-为 Codex 桌面客户端更换背景、管理主题和调整界面外观，Windows 版同时支持 Claude Desktop 的 Code 页面及 DSH（DeepSeek Harness）。Windows 和 macOS 共用管理界面、业务核心和 Codex 换肤运行时，由各自的原生窗口承载。
+为 Codex 桌面客户端更换背景、管理主题和调整界面外观，Windows 版同时支持 Claude Desktop 的 Code 页面、DSH rc（社区版 DeepSeek Harness）及 DSH Next。Windows 和 macOS 共用管理界面、业务核心和 Codex 换肤运行时，由各自的原生窗口承载。
 
 ## 下载与安装
 
-当前版本：`3.2.0`。前往 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载对应安装包：
+当前版本：`3.3.0`。前往 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载对应安装包：
 
 | 平台 | 系统要求 | 安装包 |
 | --- | --- | --- |
-| Windows 安装版 | Windows 10/11 x64 | `CodexDreamSkinManager-v3.2.0-windows-x64-setup.exe` |
-| Windows 便携版 | Windows 10/11 x64 | `CodexDreamSkinManager-v3.2.0-windows-x64-portable.zip` |
-| macOS Intel | macOS 13+ | `CodexDreamSkinManager-v3.2.0-macos-x64.dmg` |
-| macOS Apple Silicon | macOS 13+ | `CodexDreamSkinManager-v3.2.0-macos-arm64.dmg` |
+| Windows 安装版 | Windows 10/11 x64 | `CodexDreamSkinManager-v3.3.0-windows-x64-setup.exe` |
+| Windows 便携版 | Windows 10/11 x64 | `CodexDreamSkinManager-v3.3.0-windows-x64-portable.zip` |
+| macOS Intel | macOS 13+ | `CodexDreamSkinManager-v3.3.0-macos-x64.dmg` |
+| macOS Apple Silicon | macOS 13+ | `CodexDreamSkinManager-v3.3.0-macos-arm64.dmg` |
 
-请先安装所需的 Codex、Claude Desktop 或 DSH 客户端。发布包已内置 Node.js，无需单独配置运行环境；Windows 便携版须完整解压，不能只复制 EXE。`SHA256SUMS.txt` 提供下载包校验值。
+请先安装所需的 Codex、Claude Desktop、DSH rc 或 DSH Next 客户端。发布包已内置 Node.js，无需单独配置运行环境；Windows 便携版须完整解压，不能只复制 EXE。`SHA256SUMS.txt` 提供下载包校验值。
 
 ## 主要功能
 
@@ -32,7 +32,7 @@ Windows 与 macOS 的 Codex 管理共用以下主要功能，系统差异由平�
 
 **Claude Desktop（Windows）**：左侧图标切换应用，主题与素材共用，皮肤参数、当前状态及启动动画分别保存；支持图片、动图、MP4、暂停/继续、重置与恢复。使用前在 Claude 的 `Developer → Enable Main Process Debugger` 手动开启原生连接入口，并打开 Code 页面。macOS 暂不支持 Claude，Codex 专用 CSS 和消息气泡透明度不套用到 Claude。Claude 进程退出后需重新连接应用。
 
-**DSH（Windows，源码新增）**：左侧 DeepSeek 鲸鱼图标选择 DSH，与 Codex、Claude 共用主题和素材，分别保存皮肤参数、当前状态及启动动画。点击应用、重置或继续时，管理器优先复用已连接的 DSH；未启动时自动启动，缺少主进程调试入口时正常重启，并传入 `--inspect=127.0.0.1:0`，无需手动设置启动参数。重启会退出当前 DSH，请先处理正在进行的任务；退出被拒绝、超时或进程身份变化时会停止操作。状态刷新、参数保存和启动动画设置不会触发自动重启。支持图片、动图、MP4 与暂停、继续、重置、恢复；macOS 暂不支持。DSH 的真实重启、程序注入、动态媒体及新文档恢复尚待实机验收，当前发布包不包含本次源码改动。
+**DSH rc / DSH Next（Windows）**：左侧 DSH rc 的鲸鱼图标保留 `rc` 标记，DSH Next 使用彩色鲸鱼图标且不叠加文字，排在 rc 下方。两个版本与 Codex、Claude 共用主题和素材，各自保存皮肤参数、当前状态、操作记录及启动动画；社区版沿用原有 DSH 配置。点击应用、重置或继续时，管理器优先复用目标应用的连接；未启动时自动启动，缺少主进程调试入口时正常重启，并自动传入连接参数。两个版本可以同时安装，操作仅作用于所选版本。重启会退出该应用，请先处理正在进行的任务；状态刷新、参数保存和启动动画设置不会触发自动重启。支持图片、动图、MP4 与暂停、继续、重置、恢复；macOS 暂不支持。真实客户端重启、注入、动态媒体及新文档恢复尚待实机验收。
 
 ## 快速上手
 
@@ -45,7 +45,7 @@ Windows 与 macOS 的 Codex 管理共用以下主要功能，系统差异由平�
 ## 使用须知
 
 - **视频与预览**：MP4 支持标准非分片 H.264/AVC、H.265/HEVC，最大 128 MiB、60 秒、60 FPS。导入保存只检查文件格式和媒体限制，无需先使用静态皮肤或连接 Codex；应用时按需建立连接并通过实际解码校验，HEVC 支持取决于设备与客户端。首次启动的解码检查既接受已呈现的视频帧，也接受读取到的实际解码像素，避免因窗口尚未绘制而误报失败。视频主题可设置 0.25×–2× 播放速度，使用单个视频元素原生循环播放；素材首尾画面不连续时，应在视频制作阶段调整衔接。管理器只显示视频封面，动图预览以首帧为主，实际背景在 Codex 中播放。Windows 内置视频随包附带按视频内容匹配的静态封面；导入视频在系统缩略图失败时使用管理器已有的 WebView2 取帧，最后尝试 PATH 中可选的 FFmpeg，不改写原视频。WebView2 不支持的编码仍可能需要 FFmpeg 才能生成封面；取帧失败代码记录在下述缓存目录的 `preview-errors.log`，不记录素材路径或内容。
-- **删除主题**：内置主题素材进入回收站；“我的”主题及其本地图片会永久删除。当前活动主题和默认恢复主题不可删除。
+- **删除主题**：内置主题素材进入回收站；“我的”主题及其本地图片会永久删除。Codex 当前活动主题和默认恢复主题不可删除；仅用于 Claude Desktop、DSH rc 或 DSH Next 的主题源可删除，已应用的背景副本继续保留。若该源也被选为启动动画，后续启动会回退内置动画。
 - **预览缓存（Windows）**：图片、动图首帧和视频封面保存在 `%LOCALAPPDATA%\CodexDreamSkin\preview-cache-v1`，重开管理器继续复用；素材内容或预览尺寸变化、缓存缺失或损坏时才重新生成。先准备可见区域，再以最多 20 个缩略图任务并发准备其余主题，详情预览另留一个请求位，Windows 原生解码最多 20 个并发。缓存上限为 128 MiB／256 张，超过后淘汰较早生成的图片；缓存不可写时仍可预览，但无法持久保存。
 - **兼容性**：Codex 更新可能影响换肤连接。界面仍有皮肤不代表注入器连接正常；提示需要恢复时，可先刷新状态，再重新应用主题。
 - **安装提示**：Windows EXE 和安装包未商业签名，SmartScreen 可能提示未知发布者。
@@ -77,7 +77,7 @@ bash macos/scripts/build-app.sh
 
 公共运行时修改后用 `node tools/sync-runtime-assets.mjs` 生成两端镜像。
 开发说明见 [CONTRIBUTING.md](CONTRIBUTING.md)，打包布局见 [hosts/README.md](hosts/README.md)。
-3.0.0 起已切换到共享管理器入口。当前发布内容、验证范围与已知限制见 [版本说明](.github/release-notes/v3.2.0.md)。
+3.0.0 起已切换到共享管理器入口。当前发布内容、验证范围与已知限制见 [版本说明](.github/release-notes/v3.3.0.md)。
 
 ## 致谢与许可
 

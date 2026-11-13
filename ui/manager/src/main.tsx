@@ -148,12 +148,16 @@ function App() {
   const onDirty = useCallback((value: boolean) => setDraftDirty(value), []);
   const claude = useAppearance("claude", client, hello, details, onNotice);
   const dsh = useAppearance("dsh", client, hello, details, onNotice);
-  const appearance = application === "dsh" ? dsh : claude;
+  const dshNext = useAppearance("dsh-next", client, hello, details, onNotice);
+  const appearances = { claude, dsh, "dsh-next": dshNext };
+  const appearance = appearances[application === "codex" ? "claude" : application];
   const appearanceTheme = appearance.theme;
-  const [startupBusy, setStartupBusy] = useState({ codex: false, claude: false, dsh: false });
+  const [startupBusy, setStartupBusy] = useState({ codex: false, claude: false, dsh: false, "dsh-next": false });
   const onCodexStartupBusy = useCallback((value: boolean) => setStartupBusy(previous => ({ ...previous, codex: value })), []);
   const onClaudeStartupBusy = useCallback((value: boolean) => setStartupBusy(previous => ({ ...previous, claude: value })), []);
   const onDshStartupBusy = useCallback((value: boolean) => setStartupBusy(previous => ({ ...previous, dsh: value })), []);
+  const onDshNextStartupBusy = useCallback((value: boolean) => setStartupBusy(previous => ({ ...previous, "dsh-next": value })), []);
+  const appearanceStartupBusy = { claude: onClaudeStartupBusy, dsh: onDshStartupBusy, "dsh-next": onDshNextStartupBusy };
   const codexBusy = codexOperationBusy || pendingOperation(operation);
   const libraryOperationBusy = pendingOperation(operation) && (operation!.method.startsWith("themes.") || operation!.method === "library.recover");
   const operationBusy = (application === "codex" ? codexBusy : appearance.busy) || startupBusy[application];
@@ -215,7 +219,7 @@ function App() {
           if (sequence === loadSequence.current && selection === selectionSequence.current && applicationContext.current.application === target && !applicationContext.current.draftDirty) {
             setDetails(current);
             setThemes(previous => previous.some(theme => identity(theme) === identity(current)) ? previous : [...previous, current]);
-            if (applicationContext.current.application !== "codex") (applicationContext.current.application === "dsh" ? dsh : claude).refreshParameters();
+            if (applicationContext.current.application !== "codex") appearances[applicationContext.current.application].refreshParameters();
           }
         } catch (error) {
           if (selection === selectionSequence.current && applicationContext.current.application === target && !applicationContext.current.draftDirty) {
@@ -310,7 +314,7 @@ function App() {
   async function applyTarget(theme: ThemeRef, revision: string, target: ApplicationTarget, parameters?: ThemeParameters) {
     if (!mounted.current || !connected.current) throw new UiMessageError(uiMessage("管理器连接已关闭，请重新连接；已接受的操作不会自动重试。"));
     if (target !== "codex") {
-      const result = await (target === "dsh" ? dsh : claude).run(`${target}.apply`, { ref: theme, revision, ...(parameters ? { storedParameters: parameters } : {}) });
+      const result = await appearances[target].run(`${target}.apply`, { ref: theme, revision, ...(parameters ? { storedParameters: parameters } : {}) });
       if (result.state === "failed" || result.state === "indeterminate") throw new UiMessageError(result.error ? diagnosticMessage(result.error) : uiMessage("结果待核对"));
       return result;
     } else return startApply(theme, revision);
@@ -416,7 +420,7 @@ function App() {
     catch (error) { if (mounted.current) { setSnapshot(null); setStatusError(message(error)); } }
   }
   async function controlAppearance(method: AppearanceMutationMethod) {
-    const target = method.startsWith("dsh.") ? "dsh" : "claude", controller = target === "dsh" ? dsh : claude;
+    const target = method.startsWith("dsh-next.") ? "dsh-next" : method.startsWith("dsh.") ? "dsh" : "claude", controller = appearances[target];
     if (sharedBusy || controller.busy || startupBusy[target]) return;
     try { await controller.run(method); } catch { /* The hook retains the exact operation and reports its error. */ }
   }
@@ -510,7 +514,7 @@ function App() {
   const openUpdates = () => { setUtility("updates"); if (!busy) setUpdateCheck(value => value + 1); };
   const runtimeLabel = disconnected ? tr("需要重新连接") : !hello ? tr("正在连接本地管理器…") : statusError || !snapshot ? tr("状态暂不可用") : snapshot.desired.paused ? tr("已暂停") : tr(health[snapshot.engine.health]);
   const appearanceLabel = disconnected ? tr("需要重新连接") : !hello ? tr("正在连接本地管理器…") : !appearance.supported ? tr("暂不支持") : appearance.statusError || !appearance.snapshot ? tr("状态暂不可用") : appearance.snapshot.connection === "awaiting-debugger" ? tr("等待开启调试") : appearance.snapshot.connection !== "connected" ? tr("未连接") : appearance.snapshot.paused ? tr("已暂停") : tr(appearance.snapshot.renderer === "applied" ? "运行中" : "已连接");
-  const activeSelection = details && (snapshot?.desired.theme?.source === details.ref.source && snapshot.desired.theme.id === details.ref.id || snapshot?.renderer.theme?.source === details.ref.source && snapshot.renderer.theme.id === details.ref.id || claude.snapshot?.theme?.source === details.ref.source && claude.snapshot.theme.id === details.ref.id || dsh.snapshot?.theme?.source === details.ref.source && dsh.snapshot.theme.id === details.ref.id);
+  const activeSelection = details && (snapshot?.desired.theme?.source === details.ref.source && snapshot.desired.theme.id === details.ref.id || snapshot?.renderer.theme?.source === details.ref.source && snapshot.renderer.theme.id === details.ref.id);
   return <LanguageContext.Provider value={language}><div className="app"><main>
     <aside className="application-rail">
       <ApplicationTargets value={application} onChange={setApplication}
@@ -555,8 +559,8 @@ function App() {
           <AppearancePanel target={application} client={client} hello={hello} theme={appearanceTheme} selectedPreview={themes.find(theme => identity(theme) === selected) ?? null}
             snapshot={appearance.statusError ? null : appearance.snapshot} supported={appearance.supported} busy={busy || !hello} draftDirty={draftDirty}
             activeTheme={themes.find(theme => theme.ref.source === appearance.snapshot?.theme?.source && theme.ref.id === appearance.snapshot.theme.id) ?? null}
-            visible={page === "console"} onEdit={() => goPage("settings")} onApply={() => { if (!busy) { if (appearanceTheme) void applyTarget(appearanceTheme.ref, appearanceTheme.revision, application, appearanceTheme.storedParameters).catch(() => {}); else if (!selected) void controlAppearance(application === "dsh" ? "dsh.resume" : "claude.resume"); } }}
-            onOriginal={action => void original(action)} onStartupBusy={application === "dsh" ? onDshStartupBusy : onClaudeStartupBusy}
+            visible={page === "console"} onEdit={() => goPage("settings")} onApply={() => { if (!busy) { if (appearanceTheme) void applyTarget(appearanceTheme.ref, appearanceTheme.revision, application, appearanceTheme.storedParameters).catch(() => {}); else if (!selected) void controlAppearance(`${application}.resume`); } }}
+            onOriginal={action => void original(action)} onStartupBusy={appearanceStartupBusy[application]}
             onControl={method => void controlAppearance(method)} onRefresh={() => { void appearance.refresh(); void load(true); }} />}
       </div>
     </section>
@@ -565,7 +569,7 @@ function App() {
       {client && hello?.capabilities.methods.includes("community.list") && hello.capabilities.methods.includes("community.preview") ?
         <CommunityLibrary key={hello.backendSessionId} client={client} visible={page === "community"} busy={busy || libraryBusy || incomingLinks.length > 0 || !!communityRequest}
           platform={hello.platform} engineVersion={hello.versions.application}
-          activeThemes={[snapshot?.desired.theme ?? null, snapshot?.renderer.theme ?? null, claude.snapshot?.theme ?? null, dsh.snapshot?.theme ?? null]}
+          activeThemes={[snapshot?.desired.theme ?? null, snapshot?.renderer.theme ?? null]}
           application={application} canApply={hello.capabilities.methods.includes(application === "codex" ? "skin.apply" : `${application}.apply`)} downloadUpdate={communityDownload}
           onDelete={local => void deleteCommunity(local)}
           onAction={(theme, action) => setCommunityRequest({ id: crypto.randomUUID(), version: theme.id, action, application,
@@ -593,9 +597,9 @@ function App() {
     <dialog ref={utilityDialog} className={`utility-panel${utility === "updates" ? " utility-panel--updates" : ""}`} onCancel={() => setUtility(null)} aria-label={tr(utility === "system" ? "系统与信息" : "软件更新")}>
       <div className="utility-content"><button className="utility-close" onClick={() => setUtility(null)}>{tr("关闭")}</button>
         {(utility === "system" || maintenanceBusy) && hello?.platform === "macos" && client && hello.capabilities.methods.includes("desktop.get") && <div hidden={utility !== "system"}><SystemPanel client={client} hello={hello} info={desktopInfo} onInfo={onDesktopInfo}
-          disabled={codexBusy || claude.busy || dsh.busy || Object.values(startupBusy).some(Boolean) || fileBusy || importBusy || updateBusy || draftDirty} onBusy={onMaintenanceBusy} onConsole={() => { setUtility(null); goPage("console"); }} /></div>}
+          disabled={codexBusy || claude.busy || dsh.busy || dshNext.busy || Object.values(startupBusy).some(Boolean) || fileBusy || importBusy || updateBusy || draftDirty} onBusy={onMaintenanceBusy} onConsole={() => { setUtility(null); goPage("console"); }} /></div>}
         <div hidden={utility !== "updates"}>{client && hello?.capabilities.methods.includes("updates.check") && <UpdatePanel key={hello.backendSessionId} client={client} session={hello.backendSessionId} checkRequest={updateCheck}
-          disabled={codexBusy || claude.busy || dsh.busy || Object.values(startupBusy).some(Boolean) || fileBusy || importBusy || maintenanceBusy || draftDirty} onBusy={onUpdateBusy} onAvailable={onUpdateAvailable} />}</div>
+          disabled={codexBusy || claude.busy || dsh.busy || dshNext.busy || Object.values(startupBusy).some(Boolean) || fileBusy || importBusy || maintenanceBusy || draftDirty} onBusy={onUpdateBusy} onAvailable={onUpdateAvailable} />}</div>
       </div>
     </dialog>
     {client && hello?.capabilities.methods.includes("community.inspect") && <CommunityPanel client={client} hello={hello}
