@@ -272,7 +272,10 @@ set -euo pipefail
   await fs.writeFile(nodeMock, `#!/bin/bash
 set -euo pipefail
 case " $* " in
-  *" --verify "*)
+  *" --verify "*|*" --once "*)
+    case " $* " in
+      *" --once "*) /usr/bin/printf 'once\\n' >> "$NODE_LOG" ;;
+    esac
     count=0
     [ ! -f "$VERIFY_COUNT" ] || count="$(/bin/cat "$VERIFY_COUNT")"
     count=$((count + 1))
@@ -280,7 +283,6 @@ case " $* " in
     [ "\${VERIFY_ALWAYS_FAIL:-0}" != "1" ] || exit 2
     [ "$count" -gt 1 ] || exit 2
     ;;
-  *" --once "*) /usr/bin/printf 'once\\n' >> "$NODE_LOG" ;;
 esac
 exit 0
 `, { mode: 0o700 });
