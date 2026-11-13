@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.3.1 — 2026-11-13
+
+- Codex 启动视频按窗口比例裁切并铺满，减少等比完整显示造成的留白。
+- 继续提供 Intel x64、Apple Silicon ARM64 独立安装包；Claude 与 DSH 换肤仍仅适用于 Windows。
+- 下载清单及验证限制见 `.github/release-notes/v3.3.1.md`。
+
 ## 3.3.0 — 2026-11-13
 
 - 同步共享界面的流程精简、主题删除策略及操作恢复修复，移除未使用的 community.apply 旧入口。
