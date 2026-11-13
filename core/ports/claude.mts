@@ -13,9 +13,9 @@ export interface ClaudeStartupPayload { enabled: boolean; video: { mimeType: "vi
 // selection, immutable media copies and operation receipts belong to core.
 export interface ClaudeRuntimePort {
   inspect(): Promise<ClaudeRuntimeObservation>;
-  // Returns true when a launch or restart requires startup settings to be reapplied.
+  // Returns true when this preparation launched or restarted the target.
   prepareApply?(): Promise<boolean>;
-  apply(payload: { revision: string; mimeType: string; mediaBase64: string; mediaKind: ClaudeMediaMetadata["mediaKind"]; parameters: ClaudeParameters }): Promise<ClaudeRuntimeObservation>;
+  apply(payload: { revision: string; mimeType: string; mediaBase64: string; mediaKind: ClaudeMediaMetadata["mediaKind"]; parameters: ClaudeParameters }, options?: { playStartup?: boolean }): Promise<ClaudeRuntimeObservation>;
   configureStartup(payload: ClaudeStartupPayload): Promise<void>;
   remove(): Promise<ClaudeRuntimeObservation>;
   close(): Promise<void>;

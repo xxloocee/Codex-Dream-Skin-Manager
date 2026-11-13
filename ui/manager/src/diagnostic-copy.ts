@@ -543,6 +543,7 @@ const appearanceMessages: Readonly<Record<string, string>> = {
   "{application} Inspector endpoint is invalid.": "{application} 主进程调试地址无效。",
   "Rejected {application} Inspector endpoint.": "{application} 主进程调试地址未通过校验。",
   "{application} runtime evaluation failed; appearance may have changed.": "{application} 外观更新失败，当前显示可能已改变，请核对。",
+  "{application} main process execution context ended; appearance is unconfirmed. Apply the skin again.": "{application} 主进程执行上下文已结束，当前外观尚未确认，请重新应用皮肤。",
   "{application} Inspector connection failed.": "{application} 主进程调试连接失败。",
   "{application} Inspector connection timed out.": "{application} 主进程调试连接超时。",
   "{application} Inspector connection is closed.": "{application} 主进程调试连接已关闭。",

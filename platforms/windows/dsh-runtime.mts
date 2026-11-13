@@ -5,7 +5,6 @@ import { dshProcess, type DshTarget } from "./dsh-process.mjs";
 
 export class WindowsDshRuntime extends WindowsElectronRuntime {
   private preparing: Promise<boolean> | null = null;
-  private waitForPage = false;
   private readinessDeadline = 0;
   constructor(root: string, private readonly dshTarget: DshTarget = "dsh") { super(root, dshTarget); }
   private get dshLabel(): string { return this.dshTarget === "dsh-next" ? "DSH Next" : "DSH rc"; }
@@ -44,7 +43,6 @@ export class WindowsDshRuntime extends WindowsElectronRuntime {
       executable = fresh.installations[0]!;
     }
     await dshProcess(this.root, "prepare", { executable: executable!, pid: app?.pid ?? 0, startTime: app?.startTime ?? "0" }, this.readinessDeadline - Date.now(), this.dshTarget);
-    this.waitForPage = true;
     while (Date.now() < this.readinessDeadline) {
       const pending = await this.beforeDeadline(super.connect());
       if (!pending) return true;
@@ -60,20 +58,19 @@ export class WindowsDshRuntime extends WindowsElectronRuntime {
     });
   }
 
-  override async apply(payload: Parameters<ClaudeRuntimePort["apply"]>[0]): Promise<ClaudeRuntimeObservation> {
+  override async apply(payload: Parameters<ClaudeRuntimePort["apply"]>[0], options?: Parameters<ClaudeRuntimePort["apply"]>[1]): Promise<ClaudeRuntimeObservation> {
     if (this.preparing) await this.preparing;
-    if (this.waitForPage) {
+    if (options?.playStartup) {
       while (true) {
         const observed = await this.beforeDeadline(super.inspect());
         if (!observed.diagnostics.some(item => item.code === `${this.dshPrefix}_PAGE_REQUIRED`)) {
           if (observed.connection !== "connected") throw new ContractError("RUNTIME_UNAVAILABLE", observed.diagnostics[0]?.message ?? `${this.dshLabel} main process debugger is unavailable.`, true);
-          this.waitForPage = false;
           break;
         }
         if (Date.now() >= this.readinessDeadline) throw new ContractError("TIMEOUT", `${this.dshLabel} started, but its main application page did not become ready.`, true);
         await new Promise(resolve => setTimeout(resolve, 250));
       }
     }
-    return super.apply(payload);
+    return super.apply(payload, options);
   }
 }

@@ -12,7 +12,7 @@ type Payload = Parameters<ClaudeRuntimePort["apply"]>[0];
 type StartupPayload = Parameters<ClaudeRuntimePort["configureStartup"]>[0];
 type Target = "claude" | "dsh" | "dsh-next";
 type RendererModule = {
-  buildClaudeMainSource(action: string, payload?: Payload | null, startupSource?: string | null, target?: Target): string;
+  buildClaudeMainSource(action: string, payload?: Payload | null, startupSource?: string | null, target?: Target, playStartup?: boolean): string;
   buildClaudeStartupSource(source: string, target?: Target): string;
   buildClaudeStartupVideoSource(video: NonNullable<StartupPayload["video"]>, target?: Target): string;
 };
@@ -124,6 +124,8 @@ async function targetUrl(endpoint: Endpoint, target: TargetConfig): Promise<stri
 class InspectorSession {
   readonly socket: WebSocket;
   private counter = 0;
+  private ended: ContractError | null = null;
+  private defaultContext: { id: number; uniqueId?: string } | null = null;
   private readonly pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
   constructor(url: string, private readonly label: string) {
     this.socket = new WebSocket(url);
@@ -131,6 +133,21 @@ class InspectorSession {
       if (typeof event.data !== "string" || event.data.length > 262144) { this.abort(); return; }
       let message;
       try { message = JSON.parse(event.data); } catch { this.abort(); return; }
+      if (message?.method === "Runtime.executionContextCreated") {
+        const context = message.params?.context;
+        if (!this.ended && context?.auxData?.isDefault === true) this.defaultContext = { id: context.id, uniqueId: context.uniqueId };
+        return;
+      }
+      if (message?.method === "Runtime.executionContextDestroyed") {
+        const context = this.defaultContext, destroyed = message.params;
+        if (context && (destroyed?.executionContextUniqueId !== undefined
+          ? destroyed.executionContextUniqueId === context.uniqueId : destroyed?.executionContextId === context.id)) this.invalidate();
+        return;
+      }
+      if (message?.method === "Runtime.executionContextsCleared" ||
+          (message?.error?.code === -32000 && message.error.message === "Cannot find context with specified id")) {
+        this.invalidate(); return;
+      }
       const pending = this.pending.get(message?.id);
       if (!pending) return;
       this.pending.delete(message.id); clearTimeout(pending.timer);
@@ -140,7 +157,7 @@ class InspectorSession {
     this.socket.addEventListener("error", () => this.abort());
     this.socket.addEventListener("close", () => this.abort());
   }
-  get connected(): boolean { return this.socket.readyState === WebSocket.OPEN; }
+  get connected(): boolean { return !this.ended && this.socket.readyState === WebSocket.OPEN; }
   async open(): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const finish = (error?: Error) => {
@@ -157,9 +174,13 @@ class InspectorSession {
       this.socket.addEventListener("error", failed);
       this.socket.addEventListener("close", failed);
     });
+    await this.request("Runtime.enable");
   }
   evaluate(expression: string): Promise<unknown> {
-    if (!this.connected) throw new ContractError("RUNTIME_UNAVAILABLE", `${this.label} Inspector connection is closed.`, true);
+    return this.request("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true, silent: true });
+  }
+  private request(method: "Runtime.enable" | "Runtime.evaluate", params?: Record<string, unknown>): Promise<unknown> {
+    if (!this.connected) throw this.ended ?? new ContractError("RUNTIME_UNAVAILABLE", `${this.label} Inspector connection is closed.`, true);
     return new Promise((resolve, reject) => {
       const id = ++this.counter;
       const timer = setTimeout(() => {
@@ -168,14 +189,18 @@ class InspectorSession {
         this.abort();
       }, 10000);
       this.pending.set(id, { resolve, reject, timer });
-      try { this.socket.send(JSON.stringify({ id, method: "Runtime.evaluate", params: { expression, returnByValue: true, awaitPromise: true, silent: true } })); }
+      try { this.socket.send(JSON.stringify({ id, method, params })); }
       catch { this.abort(); }
     });
   }
-  private abort(): void {
+  private invalidate(): void {
+    this.abort(new ContractError("RUNTIME_CHANGED", `${this.label} main process execution context ended; appearance is unconfirmed. Apply the skin again.`, true));
+  }
+  private abort(error = new ContractError("RUNTIME_UNAVAILABLE", `${this.label} Inspector connection closed; appearance state is unknown.`, true)): void {
+    this.ended ??= error;
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
-      pending.reject(new ContractError("RUNTIME_UNAVAILABLE", `${this.label} Inspector connection closed; appearance state is unknown.`, true));
+      pending.reject(this.ended);
     }
     this.pending.clear();
     if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) this.socket.close();
@@ -222,7 +247,7 @@ export class WindowsElectronRuntime implements ClaudeRuntimePort {
     this.application = app;
     if (!app) return unavailable(`${this.config.prefix}_NOT_RUNNING`, this.config.notRunning);
     const endpoints = app.listeners.filter(item => ["127.0.0.1", "::1"].includes(item.address) && Number.isInteger(item.port) && item.port > 0 && item.port <= 65535);
-    if (!endpoints.length) return unavailable(`${this.config.prefix}_DEBUGGER_REQUIRED`, this.config.debuggerRequired, true);
+    if (!endpoints.length) return unavailable(`${this.config.prefix}_DEBUGGER_REQUIRED`, this.config.debuggerRequired, this.target === "claude");
     let timeout: ContractError | null = null;
     for (const endpoint of endpoints) {
       let candidate: InspectorSession | null = null;
@@ -241,7 +266,7 @@ export class WindowsElectronRuntime implements ClaudeRuntimePort {
         return null;
       } catch (error) {
         if (candidate) await candidate.close();
-        if (this.target !== "claude" && error instanceof ContractError && error.code === "RUNTIME_CHANGED") throw error;
+        if (error instanceof ContractError && error.code === "RUNTIME_CHANGED") throw error;
         // Finding a Node Inspector and then failing its connection/evaluation
         // does not prove that restarting the application is necessary.
         if (this.target !== "claude" && candidate) throw error;
@@ -249,24 +274,25 @@ export class WindowsElectronRuntime implements ClaudeRuntimePort {
       }
     }
     if (timeout) throw timeout;
-    return unavailable(`${this.config.prefix}_DEBUGGER_UNVERIFIED`, `No verified ${this.config.label} Main Process Debugger is available. ${this.config.debuggerRequired}`, true);
+    return unavailable(`${this.config.prefix}_DEBUGGER_UNVERIFIED`, `No verified ${this.config.label} Main Process Debugger is available. ${this.config.debuggerRequired}`, this.target === "claude");
   }
 
-  private async operation(action: "inspect" | "apply" | "remove" | "configureStartup", payload?: Payload, startupSource: string | null = null): Promise<ClaudeRuntimeObservation> {
+  private async operation(action: "inspect" | "apply" | "remove" | "configureStartup", payload?: Payload, startupSource: string | null = null, playStartup = false): Promise<ClaudeRuntimeObservation> {
     const connection = await this.connect();
     if (connection) return connection;
     const startupDiagnostics: ClaudeRuntimeObservation["diagnostics"] = [];
     if (action === "apply" && this.startupSource !== undefined && this.startupSession !== this.session) {
       try { await this.operation("configureStartup", undefined, this.startupSource); }
       catch (error) {
+        if (error instanceof ContractError && error.code === "RUNTIME_CHANGED") throw error;
         startupDiagnostics.push({ code: `${this.config.prefix}_STARTUP_FAILED`,
           message: error instanceof Error ? error.message : `${this.config.label} startup animation could not be configured.` });
       }
     }
     const session = this.session!;
     this.rendererModule ??= import(pathToFileURL(path.join(this.root, "windows", "scripts", "claude-renderer.mjs")).href) as Promise<RendererModule>;
-    const expression = (await this.rendererModule).buildClaudeMainSource(action, payload ?? null, startupSource, this.target);
-    let result: { supported?: boolean; cancelled?: boolean; results?: { renderer?: string; revision?: string; failed?: boolean; error?: string | null }[] };
+    const expression = (await this.rendererModule).buildClaudeMainSource(action, payload ?? null, startupSource, this.target, this.target !== "claude" && playStartup);
+    let result: { supported?: boolean; cancelled?: boolean; results?: { renderer?: string; revision?: string; failed?: boolean; error?: string | null; startupError?: string | null }[] };
     try { result = await session.evaluate(expression) as typeof result; }
     catch (error) { if (error instanceof ContractError) throw error; throw new ContractError("RUNTIME_UNAVAILABLE", `${this.config.label} runtime could not complete the request.`, true); }
     if (result?.cancelled) throw new ContractError("RUNTIME_CHANGED", `A newer ${this.config.label} appearance command superseded this request.`, true);
@@ -308,19 +334,20 @@ export class WindowsElectronRuntime implements ClaudeRuntimePort {
     const renderer = results.every(row => row.renderer === "applied" && typeof row.revision === "string" && row.revision === revision) ? "applied"
       : results.every(row => row.renderer === "removed") ? "removed" : "unknown";
     const errors = [...new Set(results.flatMap(row => row.error ? [row.error] : []))];
+    const startupErrors = [...new Set(results.flatMap(row => row.startupError ? [row.startupError] : []))];
     return { connection: "connected", renderer, revision: renderer === "applied" ? revision! : null,
-      diagnostics: [...startupDiagnostics, ...(errors.length ? errors.map(message => ({ code: `${this.config.prefix}_LIFECYCLE_FAILED`, message }))
+      diagnostics: [...startupDiagnostics, ...startupErrors.map(message => ({ code: `${this.config.prefix}_STARTUP_FAILED`, message })), ...(errors.length ? errors.map(message => ({ code: `${this.config.prefix}_LIFECYCLE_FAILED`, message }))
         : renderer === "unknown" ? [{ code: `${this.config.prefix}_WINDOWS_DIFFER`, message: `${this.config.label} windows do not have a consistent verified appearance.` }] : [])] };
   }
   async inspect(): Promise<ClaudeRuntimeObservation> {
     try { return await this.operation("inspect"); }
     catch (error) {
-      if (error instanceof ContractError && error.code === "TIMEOUT") throw error;
+      if (error instanceof ContractError && (error.code === "TIMEOUT" || error.code === "RUNTIME_CHANGED")) throw error;
       return unavailable(`${this.config.prefix}_RUNTIME_UNAVAILABLE`, `${this.config.label} runtime could not be inspected. Its existing appearance has not been confirmed.`);
     }
   }
-  async apply(payload: Payload): Promise<ClaudeRuntimeObservation> {
-    try { return await this.operation("apply", payload); }
+  async apply(payload: Payload, options?: Parameters<ClaudeRuntimePort["apply"]>[1]): Promise<ClaudeRuntimeObservation> {
+    try { return await this.operation("apply", payload, null, options?.playStartup); }
     catch (error) {
       if (error instanceof ContractError) throw error;
       throw new ContractError("RUNTIME_UNAVAILABLE", `${this.config.label} background could not be applied; appearance state is unconfirmed.`, true);

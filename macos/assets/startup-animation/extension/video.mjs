@@ -40,7 +40,7 @@ export function installStartupVideo(source = null) {
     const doc = current.contentDocument;
     doc.documentElement.innerHTML = '<head></head><body></body>';
     const style = doc.createElement("style");
-    style.textContent = 'html,body{margin:0;width:100%;height:100%;background:#000}video{width:100%;height:100%;object-fit:contain}button{position:fixed;right:24px;bottom:24px;padding:8px 14px;border:1px solid #ffffff66;border-radius:6px;background:#0009;color:#fff;cursor:pointer;font:13px system-ui}button:focus-visible{outline:2px solid #fff;outline-offset:3px}';
+    style.textContent = 'html,body{margin:0;width:100%;height:100%;background:#000}video{width:100%;height:100%;object-fit:cover}button{position:fixed;right:24px;bottom:24px;padding:8px 14px;border:1px solid #ffffff66;border-radius:6px;background:#0009;color:#fff;cursor:pointer;font:13px system-ui}button:focus-visible{outline:2px solid #fff;outline-offset:3px}';
     doc.head.appendChild(style);
     video = doc.createElement("video");
     video.muted = true; video.playsInline = true; video.loop = false;

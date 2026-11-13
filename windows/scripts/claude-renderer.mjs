@@ -244,7 +244,7 @@ export async function claudeRendererOperation(action, payload, layout, loadMedia
     const startup = window[startupKey];
     const startupStatus = startup?.api.status();
     return { renderer: applied ? 'applied' : current ? 'unknown' : 'removed', revision: applied ? current.revision : null,
-      error: startupStatus && ['failed', 'timeout'].includes(startupStatus.phase) ? `${target === 'dsh-next' ? 'DSH Next' : namespace === 'Dsh' ? 'DSH rc' : 'Claude'} startup animation ${startupStatus.phase}.` : null };
+      startupError: startupStatus && ['failed', 'timeout'].includes(startupStatus.phase) ? `${target === 'dsh-next' ? 'DSH Next' : namespace === 'Dsh' ? 'DSH rc' : 'Claude'} startup animation ${startupStatus.phase}.` : null };
   }
   let media;
   let installed = false;
@@ -438,6 +438,7 @@ export function installClaudeMainController(electron, rendererSource, target = '
   if (globalThis[key]) return globalThis[key];
   const records = new Map();
   let desired = null, startupSource = null, epoch = 0, disposed = false, commanding = false;
+  const isDsh = target === 'dsh' || target === 'dsh-next';
   const eligible = (page, anyRoute = false) => {
     if (page.isDestroyed() || page.getType() !== 'window') return false;
     try {
@@ -446,6 +447,17 @@ export function installClaudeMainController(electron, rendererSource, target = '
         : url.protocol === 'app:' && url.hostname === 'localhost' && (anyRoute || url.pathname === '/epitaxy' || url.pathname.startsWith('/epitaxy/'));
     }
     catch { return false; }
+  };
+  const current = (record, generation, document, dispatch) => !disposed && globalThis[key] === controller && epoch === generation &&
+    record.document === document && (!dispatch || globalThis[dispatchKey] === dispatch);
+  const playStartup = async (record, generation, document, dispatch) => {
+    if (!startupSource || record.started || !current(record, generation, document, dispatch) || !eligible(record.page)) return;
+    // Consume before crossing the async boundary so lifecycle and apply cannot
+    // both play this document. Playback failure does not undo its background.
+    record.started = true;
+    record.startupError = null;
+    try { await record.page.executeJavaScript(startupSource); }
+    catch (error) { if (current(record, generation, document, dispatch)) record.startupError = String(error?.message ?? error); }
   };
   const run = async record => {
     if (disposed || commanding || record.running) { record.dirty = true; return; }
@@ -460,11 +472,9 @@ export function installClaudeMainController(electron, rendererSource, target = '
         if (disposed || globalThis[key] !== controller || epoch !== generation || record.document !== document) return;
         if (result?.renderer !== 'applied' || result.revision !== desired.revision) throw new Error('Desktop background could not be reapplied to the new document.');
       }
-      if (startupSource && !record.started) {
-        record.started = true;
-        await record.page.executeJavaScript(startupSource);
-      }
+      else if (isDsh) return;
       record.error = null;
+      await playStartup(record, generation, document);
     } catch (error) { if (!disposed && epoch === generation && record.document === document) record.error = String(error?.message ?? error); }
     finally {
       record.running = false;
@@ -473,11 +483,14 @@ export function installClaudeMainController(electron, rendererSource, target = '
   };
   const attach = (page, existing = false) => {
     if (page.isDestroyed() || page.getType() !== 'window' || records.has(page)) return;
-    const record = { page, document: 0, started: existing, running: false, dirty: false, error: null, listeners: [] };
-    const changed = () => { record.document++; record.started = false; void run(record); };
+    const record = { page, document: 0, started: existing, running: false, dirty: false, error: null, startupError: null, listeners: [] };
+    const changed = details => {
+      if (!details.isMainFrame || details.isSameDocument) return;
+      record.document++; record.started = false; record.error = null; record.startupError = null;
+    };
     const navigated = () => { void run(record); };
     const destroyed = () => { records.delete(page); };
-    record.listeners = [['dom-ready', changed], ['did-finish-load', navigated], ['did-navigate-in-page', navigated], ['destroyed', destroyed]];
+    record.listeners = [['did-start-navigation', changed], ['dom-ready', navigated], ['did-finish-load', navigated], ['did-navigate-in-page', navigated], ['destroyed', destroyed]];
     for (const [event, listener] of record.listeners) page.on(event, listener);
     records.set(page, record);
   };
@@ -485,15 +498,17 @@ export function installClaudeMainController(electron, rendererSource, target = '
   electron.app.on('web-contents-created', created);
   for (const page of electron.webContents.getAllWebContents()) attach(page, true);
   const controller = {
+    controllerVersion: 2,
     rendererSourceKey: rendererSource.toString(),
     configuredStartupSource: null,
-    async command(action, payload, source = null) {
+    async command(action, payload, source = null, shouldPlayStartup = false) {
       if (action === 'inspect') {
         const results = [];
         for (const page of electron.webContents.getAllWebContents().filter(page => eligible(page))) {
           try {
             const result = await page.executeJavaScript(rendererSource('inspect'));
-            results.push({ ...result, error: records.get(page)?.error || result.error });
+            const record = records.get(page);
+            results.push({ ...result, error: record?.error || result.error, startupError: record?.startupError || result.startupError });
           } catch (error) { results.push({ renderer: 'unknown', failed: true, error: String(error?.message ?? error) }); }
         }
         return { supported: true, results };
@@ -514,20 +529,27 @@ export function installClaudeMainController(electron, rendererSource, target = '
         controller.configuredStartupSource = source;
         // Configuration applies to future documents. It never starts playback
         // in a document which is already open when the option changes.
-        for (const record of records.values()) record.started = true;
+        for (const record of records.values()) { record.started = true; record.startupError = null; }
       }
       const previous = desired;
-      if (action === 'apply') desired = payload;
+      if (action === 'apply') {
+        desired = payload;
+        if (isDsh && shouldPlayStartup) for (const record of records.values()) record.started = false;
+      }
       const results = [];
       try {
         for (const page of electron.webContents.getAllWebContents().filter(page => eligible(page, action !== 'apply'))) {
           if (epoch !== generation || globalThis[dispatchKey] !== dispatch) return { supported: true, results, cancelled: true };
           try {
+            const record = records.get(page), document = record?.document;
             const result = await page.executeJavaScript(rendererSource(action === 'configureStartup' ? (source ? 'cancelReady' : 'removeStartup') : action, payload));
             results.push(result);
             if (action === 'apply' && result.renderer === 'applied' && result.revision === payload.revision) {
-              const record = records.get(page);
-              if (record) record.error = null;
+              if (record && current(record, generation, document, dispatch)) {
+                record.error = null;
+                await playStartup(record, generation, document, dispatch);
+                if (current(record, generation, document, dispatch)) result.startupError = record.startupError;
+              }
             }
           } catch (error) { results.push({ renderer: 'unknown', failed: true, error: String(error?.message ?? error) }); }
         }
@@ -546,7 +568,7 @@ export function installClaudeMainController(electron, rendererSource, target = '
   return controller;
 }
 
-export function buildClaudeMainSource(action, payload = null, startupSource = null, target = 'claude') {
+export function buildClaudeMainSource(action, payload = null, startupSource = null, target = 'claude', playStartup = false) {
   payload = prepareClaudePayload(payload);
   const namespace = target === 'dsh-next' ? 'DshNext' : target === 'dsh' ? 'Dsh' : 'Claude';
   const controllerKey = JSON.stringify(`__dreamskin${namespace}ControllerV1`);
@@ -563,8 +585,8 @@ export function buildClaudeMainSource(action, payload = null, startupSource = nu
     if(!electron?.webContents||!electron.app)return {supported:false};
     const rendererSource=${factory};
     let controller=globalThis[${controllerKey}];
-    ${action === 'apply' ? `let savedStartupSource;
-    if(controller&&controller.rendererSourceKey!==rendererSource.toString()){
+    ${action === 'apply' ? `let savedStartupSource, migrationStartupError=null;
+    if(controller&&(controller.controllerVersion!==2||controller.rendererSourceKey!==rendererSource.toString())){
       const previous=controller;
       savedStartupSource=previous.configuredStartupSource??null;
       const removed=await previous.command('remove',null);
@@ -578,9 +600,12 @@ export function buildClaudeMainSource(action, payload = null, startupSource = nu
     ${action === 'apply' ? `if(savedStartupSource!==undefined){
       const configuring=controller.command('configureStartup',null,savedStartupSource);
       const dispatch=globalThis[${dispatchKey}];
-      const configured=await configuring;
-      if(configured.cancelled||configured.results.some(row=>row.failed||row.renderer!=='removed'))return configured;
-      if(globalThis[${controllerKey}]!==controller||globalThis[${dispatchKey}]!==dispatch)return {...configured,cancelled:true};
+      try{
+        const configured=await configuring;
+        if(configured.cancelled)return configured;
+        if(configured.results.some(row=>row.failed||row.renderer!=='removed'))migrationStartupError=configured.results.find(row=>row.error)?.error||'Desktop startup animation configuration could not be restored.';
+      }catch(error){migrationStartupError=String(error?.message??error);}
+      if(globalThis[${controllerKey}]!==controller||globalThis[${dispatchKey}]!==dispatch)return {supported:true,results:[],cancelled:true};
     }` : ''}
     if(controller){
       ${action === 'configureStartup' ? `const source=${JSON.stringify(startupSource)};
@@ -590,6 +615,8 @@ export function buildClaudeMainSource(action, payload = null, startupSource = nu
       if(result.cancelled)return result;
       if(globalThis[${controllerKey}]!==controller||globalThis[${dispatchKey}]!==dispatch)return {...result,cancelled:true};
       if(!result.results.some(row=>row.failed||row.renderer!=='removed'))controller.configuredStartupSource=source;
+      return result;` : action === 'apply' ? `const result=await controller.command('apply',${JSON.stringify(payload)},null,${JSON.stringify((target === 'dsh' || target === 'dsh-next') && playStartup)});
+      if(migrationStartupError)for(const row of result.results)row.startupError=row.startupError||migrationStartupError;
       return result;` : `return controller.command(${JSON.stringify(action)},${JSON.stringify(payload)},${JSON.stringify(startupSource)});`}
     }
     const dispatch=${action === 'inspect' ? 'null' : '{}'};

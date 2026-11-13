@@ -129,7 +129,7 @@ public static class DreamSkinDshRestartManager {
 function Start-DshApplication {
   $fresh = Get-DshInventory
   if ($fresh.installations -inotcontains $ExpectedExecutable -or $fresh.applications.Count -ne 0) { throw "$label installation or process changed before launch; no restart was attempted." }
-  Start-Process -FilePath $ExpectedExecutable -ArgumentList @('--inspect=127.0.0.1:0') -WorkingDirectory ([IO.Path]::GetDirectoryName($ExpectedExecutable)) -WindowStyle Hidden
+  Start-Process -FilePath $ExpectedExecutable -ArgumentList @('--inspect=127.0.0.1:0') -WorkingDirectory ([IO.Path]::GetDirectoryName($ExpectedExecutable)) -WindowStyle Normal
 }
 
 $inventory = Get-DshInventory

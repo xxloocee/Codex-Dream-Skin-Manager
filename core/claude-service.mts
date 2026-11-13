@@ -74,7 +74,7 @@ export class AppearanceService<T extends AppearanceTarget> {
   private snapshot(active: ActiveCopy | null, observed?: AppearanceRuntimeObservation): AppearanceSnapshot<T> {
     const mismatch = observed?.renderer === "applied" && (!active || active.paused || observed.revision !== active.revision);
     return { target: this.target, supported: !!this.runtime,
-      connection: observed?.connection ?? (this.runtime ? "awaiting-debugger" : "unavailable"),
+      connection: observed?.connection ?? (this.runtime && this.target === "claude" ? "awaiting-debugger" : "unavailable"),
       renderer: mismatch ? "unknown" : observed?.renderer ?? (this.runtime ? "unknown" : "unavailable"),
       theme: active?.theme ?? null, themeRevision: active?.themeRevision ?? null,
       parameters: active?.parameters ?? null, paused: active?.paused ?? false, diagnostics: [...this.startupDiagnostics, ...observed?.diagnostics ?? [], ...(mismatch ? [{ code: `${this.diagnosticPrefix}_REVISION_MISMATCH`, message: `The ${this.label} renderer does not match the selected background snapshot.` }] : [])] };
@@ -192,6 +192,7 @@ export class AppearanceService<T extends AppearanceTarget> {
   private async ensureStartupForBackground(): Promise<void> {
     try { await this.ensureStartup(); }
     catch (error) {
+      if (error instanceof ContractError && error.code === "RUNTIME_CHANGED") throw error;
       const result = failure(null, error);
       this.startupDiagnostics = [{ code: `${this.diagnosticPrefix}_STARTUP_FAILED`, message: result.ok ? `${this.label} startup animation could not be configured.` : result.error.message }];
     }
@@ -290,13 +291,15 @@ export class AppearanceService<T extends AppearanceTarget> {
         await this.saveActive(active);
         receipt.operation.snapshot = this.snapshot(active);
         invoked = true;
+        let launched = false;
         if (payload) {
-          if (await this.runtime!.prepareApply?.()) this.startupConfigured = undefined;
+          launched = await this.runtime!.prepareApply?.() ?? false;
+          if (launched) this.startupConfigured = undefined;
           await this.ensureStartupForBackground();
           receipt.operation.snapshot = this.snapshot(active);
         }
         else this.startupConfigured = undefined;
-        const observed = payload ? await this.runtime!.apply(payload) : await this.runtime!.remove();
+        const observed = payload ? await this.runtime!.apply(payload, { playStartup: launched }) : await this.runtime!.remove();
         receipt.operation.snapshot = this.snapshot(active, observed);
         const expected = payload ? "applied" : "removed";
         const succeeded = observed.connection === "connected" && receipt.operation.snapshot.renderer === expected;

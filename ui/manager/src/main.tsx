@@ -513,7 +513,7 @@ function App() {
   }, [operation?.id, operation?.state]);
   const openUpdates = () => { setUtility("updates"); if (!busy) setUpdateCheck(value => value + 1); };
   const runtimeLabel = disconnected ? tr("需要重新连接") : !hello ? tr("正在连接本地管理器…") : statusError || !snapshot ? tr("状态暂不可用") : snapshot.desired.paused ? tr("已暂停") : tr(health[snapshot.engine.health]);
-  const appearanceLabel = disconnected ? tr("需要重新连接") : !hello ? tr("正在连接本地管理器…") : !appearance.supported ? tr("暂不支持") : appearance.statusError || !appearance.snapshot ? tr("状态暂不可用") : appearance.snapshot.connection === "awaiting-debugger" ? tr("等待开启调试") : appearance.snapshot.connection !== "connected" ? tr("未连接") : appearance.snapshot.paused ? tr("已暂停") : tr(appearance.snapshot.renderer === "applied" ? "运行中" : "已连接");
+  const appearanceLabel = disconnected ? tr("需要重新连接") : !hello ? tr("正在连接本地管理器…") : !appearance.supported ? tr("暂不支持") : appearance.statusError || !appearance.snapshot ? tr("状态暂不可用") : application === "claude" && appearance.snapshot.connection === "awaiting-debugger" ? tr("等待开启调试") : appearance.snapshot.connection !== "connected" ? tr("未连接") : appearance.snapshot.paused ? tr("已暂停") : tr(appearance.snapshot.renderer === "applied" ? "运行中" : "已连接");
   const activeSelection = details && (snapshot?.desired.theme?.source === details.ref.source && snapshot.desired.theme.id === details.ref.id || snapshot?.renderer.theme?.source === details.ref.source && snapshot.renderer.theme.id === details.ref.id);
   return <LanguageContext.Provider value={language}><div className="app"><main>
     <aside className="application-rail">

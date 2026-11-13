@@ -62,7 +62,8 @@ export function useAppearance(target: AppearanceTarget, client: ManagerClient | 
     void refresh();
     const focus = () => { if (!document.hidden) void refresh(); };
     window.addEventListener("focus", focus); document.addEventListener("visibilitychange", focus);
-    return () => { statusEpoch.current++; window.removeEventListener("focus", focus); document.removeEventListener("visibilitychange", focus); };
+    const timer = window.setInterval(focus, 5000);
+    return () => { statusEpoch.current++; window.clearInterval(timer); window.removeEventListener("focus", focus); document.removeEventListener("visibilitychange", focus); };
   }, [refresh, statusSupported]);
   const refreshParameters = useCallback(() => { parameterEpoch.current++; setParametersRead(value => value + 1); }, []);
   useEffect(() => {
