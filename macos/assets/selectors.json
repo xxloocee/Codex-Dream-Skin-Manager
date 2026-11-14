@@ -3,6 +3,13 @@
   "description": "双端统一选择器契约。scope 与 required 来自双端 DOM 快照实测；shell-main 与 header-tint 另由 2026-07-31 Codex 26.727.40816 真实 macOS renderer 复核。doctor / CI 应逐条 querySelector 并按 tier 判级：L1 缺失=皮肤主行为受损，L2 缺失=精修静默降级。",
   "sourceInspections": [
     {
+      "date": "2026-11-14",
+      "version": "26.1111.21308",
+      "platform": "macos",
+      "evidence": "本机皮肤管理器 3.3.1 下只读 renderer DOM/computed style：输入区 footer 是 thread-scroll-container 内包含真实 thread composer 的 pointer-events-none absolute 容器；其自身背景透明，但 ::before 绘制透明到 rgb(24,24,24) 的渐变，::after 绘制同色不透明底色。旧装饰识别保护含输入框的容器，无法清除其伪元素。新增按 thread composer 归属和定位语义识别的 backdrop 选择器，仅清除两个伪元素背景，不绑定 footer 模块 hash。",
+      "limits": "证据来自修复前本机只读诊断；未运行测试、构建或修复后视觉验收，Windows 同版未实测。"
+    },
+    {
       "date": "2026-11-07",
       "version": "26.1103.4239.0",
       "platform": "windows",
@@ -44,8 +51,13 @@
     }
   ],
   "verifiedAgainst": {
-    "date": "2026-11-07",
+    "date": "2026-11-14",
     "codexVersions": [
+      {
+        "version": "26.1111.21308",
+        "platform": "macos",
+        "evidence": "maintainer: 本机 3.3.1 皮肤下修复前只读 renderer DOM/computed style，确认 thread footer 的 ::before 渐变和 ::after 底色残留，语义选择器命中该输入框外层。未做修复后双端实机视觉验收。"
+      },
       {
         "version": "26.1103.4239.0",
         "platform": "windows",
@@ -92,8 +104,9 @@
         "evidence": "fixture: runtime/dom-fixtures/codex-dom-fixture-win32-watch.json（7 状态）；bundle hash 与 mac 不同（ModelPickerTrigger mac=1fm6a win=1w4ob），确认双端存在版本错位"
       }
     ],
-    "verdict": "双端运行时继续共用一份 selector/CSS 合同。26.727.40816 起主表面与顶栏的旧语义类改为 CSS Modules，26.803~26.818 又把输入框壳迁到 _ComposerLayoutRoot_，26.1103 改用名称-hash；保留旧锚点、追加稳定属性或模块名前缀，绝不匹配完整 hash。26.803~26.818 的证据来自报告者；26.1103 已做 Windows 修复前本机只读诊断和隔离 Chromium 核对，尚未做修复后真实客户端及 macOS 视觉验收。",
+    "verdict": "双端运行时继续共用一份 selector/CSS 合同。26.727.40816 起主表面与顶栏的旧语义类改为 CSS Modules，26.803~26.818 又把输入框壳迁到 _ComposerLayoutRoot_，26.1103 改用名称-hash；保留旧锚点、追加稳定属性或模块名前缀，绝不匹配完整 hash。26.803~26.818 的证据来自报告者；26.1103 已做 Windows 修复前本机只读诊断和隔离 Chromium 核对。26.1111 的 macOS 修复前只读诊断确认底部背景改由 thread footer 的伪元素绘制，仅清除这两个背景；尚未做修复后双端实机视觉验收。",
     "gaps": [
+      "macOS 26.1111 已有修复前本机只读 renderer 诊断；伪元素修复后的双端视觉验收及 Windows 同版实测尚未完成",
       "Windows 26.1103 已有修复前本机只读 renderer 诊断，修复后真实客户端视觉验收尚未完成",
       "#376：26.814.5517.0 上 Codex 设置→外观切换深浅色后主题混色，settings/appearance 路径的锚点行为未验证",
       "#371：Windows 顶部与底部区域配色与主区不一致，尚未确认是 header-tint 未命中还是原生层未被覆盖"
@@ -129,6 +142,7 @@
     { "key": "project-selector", "selector": ".group\\/project-selector", "tier": "L2", "scope": "home config", "required": false, "notes": "依赖用户项目配置；win 快照未出现（该机可能未配置项目），不算平台差异" },
     { "key": "markdown", "selector": "[class*=\"_markdown\"]", "tier": "L2", "scope": "thread", "required": false, "notes": "会话内容块，单页可达 100+ 个，样式规则注意性能" },
     { "key": "thread-surface", "selector": ".thread-scroll-container", "tier": "L2", "scope": "thread", "required": false, "notes": "会话滚动表面；双端活动会话快照均存在" },
+    { "key": "thread-composer-backdrop", "selector": ".thread-scroll-container [class~=\"pointer-events-none\"][class~=\"absolute\"]:has([data-codex-composer-root][data-composer-placement=\"thread\"])", "tier": "L2", "scope": "thread", "required": false, "notes": "26.1111 输入区外层通过 ::before/::after 绘制底部渐变和底色；按真实 thread composer 归属及定位语义识别，只用于清除伪元素背景，不得隐藏容器或更改布局。macOS 本机只读 DOM/computed style 已确认，不依赖模块名/hash。" },
     { "key": "message", "selector": ":is([data-message-author-role], [data-local-conversation-user-anchor], [data-local-conversation-final-assistant])", "tier": "L2", "scope": "thread", "required": false, "notes": "用户与助手消息的稳定语义边界；兼容旧版 role 属性和 Codex 26.727+ 语义属性。当前全宽 user anchor 在运行时优先映射到内部自适应圆角气泡，找不到气泡时保留旧版 anchor fallback" },
     { "key": "settings-panel", "selector": "[data-settings-panel-slug=\"general-settings\"]", "tier": "L2", "scope": "settings", "required": false, "notes": "Codex 26.727 设置页稳定导航锚点；设置页可先落在 General，不再保证 appearance-theme 或 theme-preview 存在" },
     { "key": "appearance-radio", "selector": "input[name=\"appearance-theme\"]", "tier": "L2", "scope": "settings", "required": false, "notes": "旧版外观三选一；新设置页可能仅有 settings-panel" },
