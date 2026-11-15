@@ -325,6 +325,7 @@ function Install-DreamSkinUpdate {
     # Keep the interactive installer independent of the updater's protocol
     # pipes, so its lifetime cannot delay the updater's final close/result.
     $process = Start-Process -FilePath $installerPath -WorkingDirectory $downloadRoot -PassThru `
+      -ArgumentList ('/LOG="' + (Join-Path $downloadRoot 'installer.log') + '"') `
       -RedirectStandardOutput (Join-Path $downloadRoot 'installer.stdout.log') `
       -RedirectStandardError (Join-Path $downloadRoot 'installer.stderr.log')
     if ($null -eq $process -or $process.Id -le 0) { throw 'The verified installer could not be started.' }

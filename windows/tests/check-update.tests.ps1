@@ -112,11 +112,14 @@ try {
       }
     }
     function Start-Process {
-      param([string]$FilePath, [string]$WorkingDirectory, [switch]$PassThru)
+      param([string]$FilePath, [string]$WorkingDirectory, [switch]$PassThru,
+        [string]$ArgumentList, [string]$RedirectStandardOutput, [string]$RedirectStandardError)
       if (-not (Test-Path -LiteralPath $FilePath -PathType Leaf) -or
         -not (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
         throw 'The updater tried to launch a missing installer or working directory.'
       }
+      Assert-Equal ('/LOG="' + (Join-Path $WorkingDirectory 'installer.log') + '"') $ArgumentList `
+        'The updater did not request a detailed Inno Setup log in its download directory.'
       $script:LaunchCount++
       return [pscustomobject]@{ Id = 4242 }
     }

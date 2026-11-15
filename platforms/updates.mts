@@ -109,7 +109,7 @@ export class PlatformUpdates implements UpdatePort {
       raw = await this.windows("Check"); channel = "windows-release";
       try {
         const executable = path.join(this.root, "CodexDreamSkinManager.exe"); await safePath(executable, this.root);
-        if ((await lstat(executable)).isFile()) { mode = "windows-installer"; reason = "下载校验完成后启动 Windows 安装器；安装时可能关闭当前管理器。"; }
+        if ((await lstat(executable)).isFile()) { mode = "windows-installer"; reason = "下载校验完成后启动 Windows 安装器；安装前会关闭管理器及本安装目录的后台运行时。"; }
       } catch (error) { if (!record(error) || error.code !== "ENOENT") throw error; }
       trust = "内置公钥验证更新清单 Ed25519 签名；安装包 SHA-256 必须与已签名清单、SHA256SUMS.txt 和实际下载内容一致。";
     } else {
@@ -156,6 +156,8 @@ export class PlatformUpdates implements UpdatePort {
     if (candidate.installMode === "windows-installer") {
       const raw = await this.windows("Install", candidate, id, onProgress);
       if (raw.installerStarted !== true || typeof raw.installerProcessId !== "number" || raw.installerProcessId <= 0) throw new ContractError("IO_ERROR", "安装器未确认启动。");
+      // The Windows installer owns shutdown, including upgrades from older
+      // managers. The prepared restart protocol below is specific to macOS.
       return { managerMustQuit: false };
     }
     try {
@@ -205,11 +207,17 @@ export class PlatformUpdates implements UpdatePort {
           throw new ContractError("IO_ERROR", "更新结果回执无效，请核对已安装版本。");
         }
       }
-      // Only the installed payload confirms success. This also reconciles
-      // older helpers with no receipt and later runs after an installer handoff.
+      // Setup writes this when its installation flow finishes. No additional
+      // payload scan runs here or in the installer.
       const executable = path.join(this.root, "CodexDreamSkinManager.exe");
       const version = await optionalBytes(path.join(this.root, "windows", "VERSION"), this.root, 128);
-      if (version && !newerVersion(expectedVersion, stableVersion(Buffer.from(version).toString("utf8").trim()))) {
+      const completeBytes = await optionalBytes(path.join(this.root, "updater", "installation-complete.json"), this.root, 4096);
+      const complete = completeBytes ? jsonObject(completeBytes) : null;
+      if (complete && (complete.schemaVersion !== 1 || typeof complete.version !== "string")) {
+        throw new ContractError("IO_ERROR", "安装完成记录无效，请核对已安装版本。");
+      }
+      const installedVersion = version ? stableVersion(Buffer.from(version).toString("utf8").trim()) : null;
+      if (complete && installedVersion && complete.version === installedVersion && !newerVersion(expectedVersion, installedVersion)) {
         try {
           await safePath(executable, this.root);
           if ((await lstat(executable)).isFile()) return "installed";
