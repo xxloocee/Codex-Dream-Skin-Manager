@@ -11,8 +11,7 @@ const finite = (value: number | null, fallback: number, min: number, max: number
 export function previewParameters(stored: ThemeParameters, patch: Partial<ThemeParameters> = {}, systemDark?: boolean): ThemeParameters {
   const value = { ...stored, ...patch };
   const framing = value.framingEnabled ?? [value.positionX, value.positionY, value.zoom, value.positionMode].some(entry => entry !== null);
-  const shellDefault = value.appearance === "light" ? 0.64 : value.appearance === "dark" ? 0.58
-    : systemDark === undefined ? null : systemDark ? 0.58 : 0.64;
+  const shellDefault = value.appearance === "light" || value.appearance === "dark" || systemDark !== undefined ? 0.25 : null;
   return {
     appearance: value.appearance ?? "auto", focusX: value.focusX === null ? null : finite(value.focusX, 0.5, 0, 1),
     focusY: value.focusY === null ? null : finite(value.focusY, 0.5, 0, 1),
@@ -21,7 +20,7 @@ export function previewParameters(stored: ThemeParameters, patch: Partial<ThemeP
     playbackRate: finite(value.playbackRate, 1, 0.25, 2),
     safeArea: value.safeArea ?? "auto", taskMode: value.taskMode ?? "auto", bubbleOpacity: finite(value.bubbleOpacity, 0, 0, 1),
     surfaceOpacity: finite(value.surfaceOpacity, 0.3, 0, 1), accent: value.accent && /^#[0-9a-f]{6}$/i.test(value.accent) ? value.accent : null,
-    shellOpacity: value.shellOpacity == null ? shellDefault : finite(value.shellOpacity, shellDefault ?? 0.58, 0, 1),
+    shellOpacity: value.shellOpacity == null ? shellDefault : finite(value.shellOpacity, shellDefault ?? 0.25, 0, 1),
   };
 }
 

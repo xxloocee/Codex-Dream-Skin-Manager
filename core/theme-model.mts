@@ -53,7 +53,7 @@ export function parameters(config: Record<string, unknown>): { stored: ThemePara
     playbackRate: stored.playbackRate ?? 1,
     framingEnabled: framing, safeArea: stored.safeArea ?? "auto", taskMode: stored.taskMode ?? "auto",
     bubbleOpacity: stored.bubbleOpacity ?? 0, surfaceOpacity: stored.surfaceOpacity ?? 0.3, accent: stored.accent,
-    shellOpacity: stored.shellOpacity ?? (stored.appearance === "light" ? 0.64 : 0.58),
+    shellOpacity: stored.shellOpacity ?? 0.25,
   } };
 }
 

@@ -120,7 +120,7 @@ try {
         return lightDarkSupported;
       } },
       getComputedStyle(node) {
-        const base = attributes.get("data-dream-shell") === "light" ? 0.64 : 0.58;
+        const base = 0.25;
         const token = styles.get("--ds-shell-background") || `rgb(17 19 24 / ${base})`;
         if (node === root) return { getPropertyValue: () => token };
         const value = token.match(/\/\s*([0-9.]+)\)/)?.[1] ?? token.match(/,\s*([0-9.]+)\)$/)?.[1];
@@ -157,7 +157,7 @@ try {
     }
     attributes.set("data-dream-shell", "light");
     const resetReceipt = await applyLoadedToSession(session, shellPayload(undefined), { opacityOnly: true });
-    assert.equal(resetReceipt.shellVeilAlpha, 0.64);
+    assert.equal(resetReceipt.shellVeilAlpha, 0.25);
     assert.equal(styles.has("--ds-shell-background"), false);
     assert.equal(Object.hasOwn(state, "shellOpacity"), false);
     attributes.set("data-dream-shell", "dark");

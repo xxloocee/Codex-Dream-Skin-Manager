@@ -349,8 +349,7 @@ function updateShellOpacity({ themeId, revision, shellOpacity }) {
         color.match(/^rgba\([^)]*,\s*([0-9.]+%?)\s*\)$/i)?.[1];
       const alpha = channel !== undefined ? Number.parseFloat(channel) / (channel.endsWith("%") ? 100 : 1)
         : color === "transparent" ? 0 : /^(?:rgb|color|lab|lch|oklab|oklch)\(/i.test(color) ? 1 : NaN;
-      const expectedAlpha = shellOpacity ?? (baseline.value ? null :
-        root.getAttribute("data-dream-shell") === "light" ? 0.64 : 0.58);
+      const expectedAlpha = shellOpacity ?? (baseline.value ? null : 0.25);
       if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1 ||
           expectedAlpha !== null && Math.abs(alpha - expectedAlpha) > 0.001) {
         throw new Error("The visible shell veil did not use the requested opacity.");

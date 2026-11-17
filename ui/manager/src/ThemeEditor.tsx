@@ -26,7 +26,7 @@ const ranges = {
   positionX: ["水平位置", -1, 1, 0], positionY: ["垂直位置", -1, 1, 0], zoom: ["缩放", 1, 2, 1],
   playbackRate: ["视频播放速度", 0.25, 2, 1],
   bubbleOpacity: ["消息气泡不透明度（用户与助手）", 0, 1, 0], surfaceOpacity: ["面板不透明度（输入框、工具面板等）", 0, 1, 0.3],
-  shellOpacity: ["背景遮罩不透明度", 0, 1, 0.58],
+  shellOpacity: ["背景遮罩不透明度", 0, 1, 0.25],
 } as const;
 const choices = {
   appearance: ["外观模式", [["auto", "自动"], ["light", "浅色"], ["dark", "深色"]]],
@@ -109,8 +109,8 @@ export function ThemeEditor({ theme, busy, canApply, mode = "edit", allowCopy = 
         {application === "codex" && <div className="editor-fields">{choiceControl("safeArea")}{choiceControl("taskMode")}</div>}
         {rangeControl("shellOpacity")}
         <div className="framing-actions"><button type="button" disabled={parameter("shellOpacity") == null}
-          title={tr("清除自定义背景遮罩，随浅色和深色外观自动调整。")}
-          onClick={() => change("shellOpacity", null)}>{tr("使用外观默认值")}</button></div>
+          title={tr("清除自定义背景遮罩，恢复默认不透明度 25%。")}
+          onClick={() => change("shellOpacity", null)}>{tr("使用默认值（25%）")}</button></div>
         {application === "codex" && rangeControl("bubbleOpacity")}{rangeControl("surfaceOpacity")}
         {theme.mediaKind === "video" && rangeControl("playbackRate")}
         {application === "codex" && <label className="accent-field">{tr("主题强调色")}<span><input maxLength={7} placeholder="#RRGGBB" value={String(parameter("accent") ?? "")} onChange={event => change("accent", event.target.value || null)} />

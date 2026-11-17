@@ -17,7 +17,7 @@
   --ds-panel-rgb: 25 28 34;
   --ds-panel-2-rgb: 32 36 43;
   /* Window tint is independent of the floating-panel opacity setting. */
-  --ds-shell-background: rgb(var(--ds-bg-rgb) / .58);
+  --ds-shell-background: rgb(var(--ds-bg-rgb) / .25);
   /* Shared floating surface settings. Change background alpha, never element
      opacity: text, icons, images and semantic highlights must stay opaque. */
   --ds-surface-opacity: .30;
@@ -71,7 +71,7 @@
 
 html[data-dream-skin="active"][data-dream-shell="light"] {
   color-scheme: light !important;
-  --ds-shell-background: rgb(var(--ds-panel-rgb) / .64);
+  --ds-shell-background: rgb(var(--ds-panel-rgb) / .25);
   --ds-bg: #f3f5f6;
   --ds-panel: #fafbfb;
   --ds-panel-2: #e9edef;

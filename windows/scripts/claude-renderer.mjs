@@ -266,7 +266,7 @@ export async function claudeRendererOperation(action, payload, layout, loadMedia
     const draw = () => {
       const dark = p.appearance === 'dark' || (p.appearance !== 'light' && darkQuery.matches);
       const color = dark ? '24,24,28' : '248,247,244';
-      const shell = p.shellOpacity ?? (dark ? .58 : .64);
+      const shell = p.shellOpacity ?? .25;
       const surface = p.surfaceOpacity ?? .3;
       const box = layout(media, { width: innerWidth, height: innerHeight }, p);
       Object.assign(media.element.style, { width: `${box.width}px`, height: `${box.height}px`, left: `${box.x}px`, top: `${box.y}px` });

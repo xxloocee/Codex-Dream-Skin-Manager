@@ -111,7 +111,7 @@ test("background overlay opacity is optional, bounded and never backfilled by an
     const config = { appearance, art: { bubbleOpacity: 0.2, surfaceOpacity: 0.3 } };
     const values = parameters(config);
     assert.equal(values.stored.shellOpacity, null);
-    assert.equal(values.preview.shellOpacity, appearance === "light" ? 0.64 : 0.58);
+    assert.equal(values.preview.shellOpacity, 0.25);
     const edited = editTheme(config, { parameters: { bubbleOpacity: 0.4 } }, "macos");
     assert.deepEqual(edited, { appearance, art: { bubbleOpacity: 0.4, surfaceOpacity: 0.3 } });
     const overlay = editTheme(config, { parameters: { shellOpacity: 0.12 } }, "macos");
@@ -121,13 +121,13 @@ test("background overlay opacity is optional, bounded and never backfilled by an
   }
   assert.throws(() => parameters({ art: { shellOpacity: 1.01 } }), code("THEME_INVALID"));
 });
-test("overlay preview follows system appearance only while the parameter remains unset", () => {
+test("overlay preview uses 25% across appearances while preserving explicit values", () => {
   const stored = Object.freeze(parameters({ appearance: "auto", art: {} }).stored);
-  assert.equal(previewParameters(stored, {}, true).shellOpacity, 0.58);
-  assert.equal(previewParameters(stored, {}, false).shellOpacity, 0.64);
-  assert.equal(previewParameters(previewParameters(stored), {}, false).shellOpacity, 0.64);
-  assert.equal(previewParameters(stored, { appearance: "light" }, true).shellOpacity, 0.64);
-  assert.equal(previewParameters(stored, { appearance: "dark" }, false).shellOpacity, 0.58);
+  assert.equal(previewParameters(stored, {}, true).shellOpacity, 0.25);
+  assert.equal(previewParameters(stored, {}, false).shellOpacity, 0.25);
+  assert.equal(previewParameters(previewParameters(stored), {}, false).shellOpacity, 0.25);
+  assert.equal(previewParameters(stored, { appearance: "light" }, true).shellOpacity, 0.25);
+  assert.equal(previewParameters(stored, { appearance: "dark" }, false).shellOpacity, 0.25);
   assert.equal(previewParameters(stored, { shellOpacity: 0 }, false).shellOpacity, 0);
   assert.equal(previewParameters(stored, { shellOpacity: 1 }, true).shellOpacity, 1);
   assert.equal(stored.shellOpacity, null);
@@ -155,7 +155,7 @@ test("Windows preset overrides retain explicit overlay opacity and remove it whe
     assert.equal(source.config.art.shellOpacity, 0.45, "Preset settings must not mutate the bundled contract.");
   }
 });
-test("portable theme roundtrips preserve overlay opacity and distinguish system defaults in deduplication", async () => {
+test("portable theme roundtrips preserve overlay opacity and distinguish unset defaults in deduplication", async () => {
   const config = { schemaVersion: 1, id: "overlay-fixture", name: "Overlay fixture", image: "art.png", category: "custom", tags: [], appearance: "auto", art: {} };
   const media = Buffer.from("isolated media fixture"), validation = { platform: "macos", async inspect() {}, async css() {} };
   for (const value of [undefined, 0, 0.38, 1]) {
@@ -167,7 +167,7 @@ test("portable theme roundtrips preserve overlay opacity and distinguish system 
   }
   assert.notEqual(packageFingerprint(config, media, null, null),
     packageFingerprint({ ...config, art: { shellOpacity: 0.58 } }, media, null, null),
-    "A system-dependent default must not deduplicate against a fixed opacity that differs in light mode.");
+    "An unset default must not deduplicate against an explicit opacity override.");
   assert.notEqual(themeFingerprint(config, media, null),
     themeFingerprint({ ...config, art: { shellOpacity: 0.58 } }, media, null),
     "Direct media imports must preserve the same distinction as package imports.");

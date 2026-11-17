@@ -3,6 +3,13 @@
   "description": "双端统一选择器契约。scope 与 required 来自双端 DOM 快照实测；shell-main 与 header-tint 另由 2026-07-31 Codex 26.727.40816 真实 macOS renderer 复核。doctor / CI 应逐条 querySelector 并按 tier 判级：L1 缺失=皮肤主行为受损，L2 缺失=精修静默降级。",
   "sourceInspections": [
     {
+      "date": "2026-11-17",
+      "version": "26.1111.2228.0",
+      "platform": "windows",
+      "evidence": "只读本机安装包 app.asar：webview/assets/async/e0771b52df8e.css 中 footer 的 ::before/::after 在包含 [data-thread-composer-backdrop] [data-composer-body] 时分别绘制 surface 渐变和不透明底色。webview/assets/async/344734.3322725bda.js 确认 footer 使用 pointer-events-none absolute；default 布局将其置于 thread-scroll-container 内，compact 布局则置于滚动容器外的兄弟分支。backdrop 选择器改用原生伪元素开启条件及定位语义，去除滚动容器后代限制，仅清除两个伪元素背景。",
+      "limits": "静态安装包证据；未读取真实会话 DOM，未确认报告场景使用哪种布局，未向客户端注入修改，未运行测试、构建或修复后双端实机视觉验收。"
+    },
+    {
       "date": "2026-11-14",
       "version": "26.1111.21308",
       "platform": "macos",
@@ -142,7 +149,7 @@
     { "key": "project-selector", "selector": ".group\\/project-selector", "tier": "L2", "scope": "home config", "required": false, "notes": "依赖用户项目配置；win 快照未出现（该机可能未配置项目），不算平台差异" },
     { "key": "markdown", "selector": "[class*=\"_markdown\"]", "tier": "L2", "scope": "thread", "required": false, "notes": "会话内容块，单页可达 100+ 个，样式规则注意性能" },
     { "key": "thread-surface", "selector": ".thread-scroll-container", "tier": "L2", "scope": "thread", "required": false, "notes": "会话滚动表面；双端活动会话快照均存在" },
-    { "key": "thread-composer-backdrop", "selector": ".thread-scroll-container [class~=\"pointer-events-none\"][class~=\"absolute\"]:has([data-codex-composer-root][data-composer-placement=\"thread\"])", "tier": "L2", "scope": "thread", "required": false, "notes": "26.1111 输入区外层通过 ::before/::after 绘制底部渐变和底色；按真实 thread composer 归属及定位语义识别，只用于清除伪元素背景，不得隐藏容器或更改布局。macOS 本机只读 DOM/computed style 已确认，不依赖模块名/hash。" },
+    { "key": "thread-composer-backdrop", "selector": "[class~=\"pointer-events-none\"][class~=\"absolute\"]:has([data-thread-composer-backdrop] [data-composer-body])", "tier": "L2", "scope": "thread", "required": false, "notes": "26.1111 输入区外层通过 ::before/::after 绘制底部渐变和底色；复用原生 [data-thread-composer-backdrop] [data-composer-body] 开启条件及定位语义，支持 footer 位于滚动容器内的 default 和位于其外的 compact 布局，不依赖模块名/hash。仅清除伪元素背景，不得隐藏容器或更改布局；Windows 安装包只读确认，尚未做修复后双端实机视觉验收。" },
     { "key": "message", "selector": ":is([data-message-author-role], [data-local-conversation-user-anchor], [data-local-conversation-final-assistant])", "tier": "L2", "scope": "thread", "required": false, "notes": "用户与助手消息的稳定语义边界；兼容旧版 role 属性和 Codex 26.727+ 语义属性。当前全宽 user anchor 在运行时优先映射到内部自适应圆角气泡，找不到气泡时保留旧版 anchor fallback" },
     { "key": "settings-panel", "selector": "[data-settings-panel-slug=\"general-settings\"]", "tier": "L2", "scope": "settings", "required": false, "notes": "Codex 26.727 设置页稳定导航锚点；设置页可先落在 General，不再保证 appearance-theme 或 theme-preview 存在" },
     { "key": "appearance-radio", "selector": "input[name=\"appearance-theme\"]", "tier": "L2", "scope": "settings", "required": false, "notes": "旧版外观三选一；新设置页可能仅有 settings-panel" },
