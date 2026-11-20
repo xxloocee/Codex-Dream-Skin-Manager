@@ -237,7 +237,9 @@ html[data-dream-skin="active"] {
     z-index: -2 !important;
   }
 
+  /* Native frame and backing layers share the same window-wide tint. */
   html[data-dream-skin="active"][data-dream-art-wide="true"]:not([data-dream-task-mode="off"]) :is(
+    [data-app-shell-frame], [data-app-shell-surface-backing],
     [data-ds-part="sidebar"], [data-ds-part="main"],
     [data-ds-part="home"], [data-ds-part="header"],
     [class~="group/application-menu-top-bar"], [class*="_ApplicationMenuTopBar_"]
@@ -459,8 +461,11 @@ html[data-dream-skin="active"] __DREAM_SELECTOR_LEFT_PANEL__ button[aria-label^=
   color: var(--ds-secondary);
 }
 
-html[data-dream-skin="active"] __DREAM_SELECTOR_LEFT_PANEL__ [class~="bg-token-list-hover-background"],
-html[data-dream-skin="active"] __DREAM_SELECTOR_LEFT_PANEL__ [aria-current="page"] {
+/* Native sidebar rows and their title buttons can both mark the current page.
+   Paint the selection once, on the outermost selected element. */
+html[data-dream-skin="active"] __DREAM_SELECTOR_LEFT_PANEL__ :is(
+  [class~="bg-token-list-hover-background"], [aria-current="page"]
+):not(:where([class~="bg-token-list-hover-background"] *, [aria-current="page"] *)) {
   background: rgb(var(--ds-accent-rgb) / .12) !important;
   border: 1px solid rgb(var(--ds-accent-rgb) / .22) !important;
   box-shadow: 0 4px 16px rgb(var(--ds-bg-rgb) / .12) !important;

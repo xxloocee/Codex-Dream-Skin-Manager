@@ -350,12 +350,12 @@ function App() {
   }, [client, hello, snapshot?.runtime?.activeRevision, activeRead, !!statusError, !!snapshot]);
 
   useEffect(() => {
-    if (page === "settings" && !selected && themes.length && !loading) {
+    if ((page === "settings" || page === "console") && !selected && themes.length && !loading) {
       const active = application !== "codex" ? appearance.snapshot?.theme : snapshot?.desired.theme;
-      const initial = themes.find(theme => theme.ref.source === active?.source && theme.ref.id === active?.id) ?? themes[0];
+      const initial = themes.find(theme => theme.ref.source === active?.source && theme.ref.id === active?.id) ?? (page === "settings" ? themes[0] : undefined);
       if (initial) void choose(initial);
     }
-  }, [page, selected, themes, loading, hello, operationBusy, fileBusy, importBusy, updateBusy, maintenanceBusy, operation, application, appearance.snapshot?.theme]);
+  }, [page, selected, themes, loading, hello, operationBusy, fileBusy, importBusy, updateBusy, maintenanceBusy, operation, application, appearance.snapshot?.theme, snapshot?.desired.theme?.source, snapshot?.desired.theme?.id]);
 
   useEffect(() => {
     if (!hello || !client || !hello.capabilities.methods.includes("operations.get")) return;

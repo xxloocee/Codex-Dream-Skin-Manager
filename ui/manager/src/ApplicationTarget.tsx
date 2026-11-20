@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import codexIcon from "./assets/codex.png";
 import claudeIcon from "./assets/claude.png";
 import dshIcon from "./assets/dsh.png";
+import dshNextIcon from "./assets/dsh-next.png";
 import { ZapIcon } from "./Icons";
 
 export type ApplicationTarget = "codex" | "claude" | "dsh" | "dsh-next";
@@ -64,7 +65,7 @@ export function ApplicationTargets({
               title={`${applicationNames[target]}${isApplied ? ` · ${tr("当前应用已启用皮肤")}` : ""}${disabled ? ` · ${tr("请等待当前操作结束。")}` : ""}`}
               onClick={() => onChange(target)}
             >
-              <ApplicationIcon source={target === "codex" ? codexIcon : target === "claude" ? claudeIcon : dshIcon} />
+              <ApplicationIcon source={target === "codex" ? codexIcon : target === "claude" ? claudeIcon : target === "dsh" ? dshIcon : dshNextIcon} />
               {target === "dsh" && <span className="application-variant" aria-hidden="true">rc</span>}
               {isApplied && <span className="agent-active-dot" aria-hidden="true" />}
             </button>
