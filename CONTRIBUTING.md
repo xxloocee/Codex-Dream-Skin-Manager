@@ -21,7 +21,7 @@ bash macos/scripts/build-app.sh --output /absolute/path/Dream\ Skin.app
 
 品牌迁移依据见 [Dream Skin 品牌迁移](docs/dream-skin-migration.md)。默认 Windows 包为 `build/DreamSkin/DreamSkin.exe`，macOS 为 `build/macos/Dream Skin.app`；历史数据目录与更新兼容名称不随显示品牌更改。
 
-品牌源码与 Windows 本地构建、打包已完成，尚未正式发布；验证结果及 macOS 暂缓范围统一见 [品牌迁移验证记录](docs/brand-migration-validation.md)。
+v3.4.0 起使用 Dream Skin 品牌发布；本地验证结果及 macOS 实机暂缓范围见 [品牌迁移验证记录](docs/brand-migration-validation.md)，正式构建与附件以对应 Tag 的 Actions 和 Release 为准。
 
 ## 代码归属
 

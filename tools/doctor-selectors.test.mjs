@@ -20,7 +20,7 @@ assert.doesNotMatch(selectorFor("shell-main"), /_[A-Za-z]+_[a-z0-9]{4,}/);
 assert.doesNotMatch(selectorFor("header-tint"), /_[A-Za-z]+_[a-z0-9]{4,}/);
 assert.equal(
   selectorFor("main-content-top-fade"),
-  ':is(.app-shell-main-content-top-fade, [class*="_MainContentTopFade_"], [class^="MainContentTopFade-"], [class*=" MainContentTopFade-"], [data-app-shell-main-content-top-fade]:empty)',
+  ':is(.app-shell-main-content-top-fade, [class*="_MainContentTopFade_"], [class^="MainContentTopFade-"], [class*=" MainContentTopFade-"], [data-app-shell-main-content-top-fade]:empty, div[aria-hidden="true"][class~="pointer-events-none"][class~="absolute"][class~="inset-x-0"][class~="top-0"][class*="bg-[image:var(--app-shell-content-fade,"]:empty)',
 );
 assert.equal(
   selectorFor("message"),

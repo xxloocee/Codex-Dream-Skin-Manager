@@ -59,7 +59,7 @@ function Get-ManagerPlatformProbe {
     runtimeSessionId = if ($identity) { Get-ManagerPlatformDigest $runtime } else { $null }
     startRequired = [bool]($null -eq $identity)
     # A live verified browser needs only metadata/watcher reconciliation.
-    reconnectRequired = [bool]($identity -and (-not $state -or -not $state.port -or "$($state.browserId)" -cne $browser))
+    reconnectRequired = [bool]($identity -and (-not $watcherVerified -or -not $state -or -not $state.port -or "$($state.browserId)" -cne $browser))
     recoveryRequired = $false
     watcherVerified = $watcherVerified
     processRunning = [bool]($processes.Count -gt 0)

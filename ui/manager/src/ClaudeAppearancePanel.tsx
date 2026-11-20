@@ -46,6 +46,7 @@ export function AppearancePanel({
   onStartupBusy(value: boolean): void;
 }) {
   const tr = useText(), msg = useMessage();
+  const applied = snapshot?.connection === "connected" && !snapshot.paused && snapshot.renderer === "applied";
   return (
     <ThemeDetailsPanel
       client={client}
@@ -67,8 +68,11 @@ export function AppearancePanel({
         application: target,
         activeTheme,
         activeParameters: snapshot?.parameters ? { ...emptyParameters, ...snapshot.parameters, taskMode: "full" } : null,
-        currentName: activeTheme?.name ?? (snapshot?.theme ? `${snapshot.theme.source}:${snapshot.theme.id}` : tr("暂无主题")),
+        currentName: applied && snapshot.theme
+          ? activeTheme?.ref.source === snapshot.theme.source && activeTheme.ref.id === snapshot.theme.id ? activeTheme.name : snapshot.theme.id
+          : tr(!snapshot ? "状态暂不可用" : snapshot.connection !== "connected" ? "未连接" : snapshot.paused ? "已暂停" : "尚未核验"),
         paused: snapshot?.paused ?? false,
+        applied,
         allowed: action => supported && !!hello?.capabilities.methods.includes(`${target}.${action}`),
         onControl: action => onControl(`${target}.${action}`),
         notice: (

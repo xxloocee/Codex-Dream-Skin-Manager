@@ -19,14 +19,14 @@
 
 ## 下载与安装
 
-**当前已发布版本：`3.3.2`** · [前往 GitHub Releases 下载](https://github.com/xxloocee/Dream-Skin/releases)
+**当前已发布版本：`3.4.0`** · [前往 GitHub Releases 下载](https://github.com/xxloocee/Dream-Skin/releases)
 
 | 选择版本 | 系统要求 | 已发布安装包 |
 | --- | --- | --- |
-| Windows 安装版 | Windows 10/11 x64 | `CodexDreamSkinManager-v3.3.2-windows-x64-setup.exe` |
-| Windows 便携版 | Windows 10/11 x64 | `CodexDreamSkinManager-v3.3.2-windows-x64-portable.zip` |
-| macOS Intel | macOS 13+ | `CodexDreamSkinManager-v3.3.2-macos-x64.dmg` |
-| macOS Apple Silicon | macOS 13+ | `CodexDreamSkinManager-v3.3.2-macos-arm64.dmg` |
+| Windows 安装版 | Windows 10/11 x64 | `DreamSkin-v3.4.0-windows-x64-setup.exe` |
+| Windows 便携版 | Windows 10/11 x64 | `DreamSkin-v3.4.0-windows-x64-portable.zip` |
+| macOS Intel | macOS 13+ | `DreamSkin-v3.4.0-macos-x64.dmg` |
+| macOS Apple Silicon | macOS 13+ | `DreamSkin-v3.4.0-macos-arm64.dmg` |
 
 - **先安装目标客户端**：Codex、Claude Desktop、DSH rc 或 DSH Next。
 - **无需另装 Node.js**：发布包已内置运行环境。
@@ -34,7 +34,7 @@
 - **下载校验**：使用发布页中的 `SHA256SUMS.txt` 核对文件。
 
 > [!NOTE]
-> Dream Skin 品牌源码与本地 Windows 构建已完成，品牌新版尚未正式发布。上表保留已发布附件的原名称；原有主题和设置继续使用现有数据目录。
+> v3.4.0 起正式使用 Dream Skin 品牌和新附件名称；原有主题和设置继续使用现有数据目录，旧版自动更新所需的兼容附件继续保留。
 
 <details>
 <summary>品牌迁移后的程序名称与发布包命名</summary>
@@ -43,12 +43,12 @@
 | --- | --- |
 | Windows 入口 | `DreamSkin.exe` |
 | macOS 常规应用 | `Dream Skin.app` |
-| Windows 安装包 | `DreamSkin-v3.3.2-windows-x64-setup.exe` |
-| Windows 便携包 | `DreamSkin-v3.3.2-windows-x64-portable.zip` |
-| macOS Intel 安装包 | `DreamSkin-v3.3.2-macos-x64.dmg` |
-| macOS Apple Silicon 安装包 | `DreamSkin-v3.3.2-macos-arm64.dmg` |
+| Windows 安装包 | `DreamSkin-v3.4.0-windows-x64-setup.exe` |
+| Windows 便携包 | `DreamSkin-v3.4.0-windows-x64-portable.zip` |
+| macOS Intel 安装包 | `DreamSkin-v3.4.0-macos-x64.dmg` |
+| macOS Apple Silicon 安装包 | `DreamSkin-v3.4.0-macos-arm64.dmg` |
 
-以上以当前源码版本举例，**不表示这些新名称的附件已经可下载**。旧客户端所需的更新附件名称继续保留兼容。
+新包中的 Windows 入口为 `DreamSkin.exe`；便携包须完整解压。旧客户端所需的更新附件名称继续保留兼容。
 
 Logo 使用居中的镂空 D 形标记，Dream 为靛紫、Skin 为紫粉。
 

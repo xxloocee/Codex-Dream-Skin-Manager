@@ -3,6 +3,13 @@
   "description": "双端统一选择器契约。scope 与 required 来自双端 DOM 快照实测；shell-main 与 header-tint 另由 2026-07-31 Codex 26.727.40816 真实 macOS renderer 复核。doctor / CI 应逐条 querySelector 并按 tier 判级：L1 缺失=皮肤主行为受损，L2 缺失=精修静默降级。",
   "sourceInspections": [
     {
+      "date": "2026-11-21",
+      "version": "26.1117.3838.0",
+      "platform": "windows",
+      "evidence": "只读本机安装包 app.asar：webview/assets/async/273709.5529b38cc2.js 的顶部渐变不再使用 MainContentTopFade 模块类，而是 aria-hidden 的 pointer-events-none absolute inset-x-0 top-0 空 div，通过 bg-[image:var(--app-shell-content-fade,linear-gradient(to_bottom,currentColor,transparent))] 绘制；364313.d749d31da5.js 的标题栏也复用此背景变量。按装饰节点语义及背景变量识别，仅清除背景和阴影，不隐藏或改变布局。",
+      "limits": "静态安装包证据；未读取真实会话 DOM、未注入或重启 Codex，未运行测试、构建或修复后双端视觉验收。"
+    },
+    {
       "date": "2026-11-17",
       "version": "26.1111.2228.0",
       "platform": "windows",
@@ -58,8 +65,13 @@
     }
   ],
   "verifiedAgainst": {
-    "date": "2026-11-14",
+    "date": "2026-11-21",
     "codexVersions": [
+      {
+        "version": "26.1117.3838.0",
+        "platform": "windows",
+        "evidence": "maintainer: 只读本机 app.asar 中顶部渐变组件及其原生 CSS，确认 --app-shell-content-fade 装饰节点；未实测 renderer 或修复后视觉效果。"
+      },
       {
         "version": "26.1111.21308",
         "platform": "macos",
@@ -136,7 +148,7 @@
     { "key": "shell-main", "selector": "main:is(.main-surface, [data-app-shell-main-surface], [class*=\"_MainContentSurface_\"])", "tier": "L1", "scope": "all", "required": true, "notes": "全局主表面。26.727.40816 提供 data-app-shell-main-surface，并使用 _MainContentSurface_ CSS Module；保留旧类兼容历史版本，前缀只限定在 main 元素。mac 设置页缺失（win 存在），缺失时整页仅 L0" },
     { "key": "left-panel", "selector": "aside.app-shell-left-panel", "tier": "L1", "scope": "all", "required": true, "notes": "左侧栏；收起/重建时会移除节点，勿在其消失时清皮" },
     { "key": "header-tint", "selector": "header:is(.app-header-tint, [data-app-shell-header-edge-scroll], [class*=\"_Header_\"])", "tier": "L1", "scope": "all", "required": true, "notes": "顶栏。26.727.40816 输出 data-app-shell-header-edge-scroll 并使用 _Header_ CSS Module；保留旧类兼容历史版本，前缀只限定在 header 元素。皮肤不得覆盖其 position/z-index（既有回归约束）" },
-    { "key": "main-content-top-fade", "selector": ":is(.app-shell-main-content-top-fade, [class*=\"_MainContentTopFade_\"], [class^=\"MainContentTopFade-\"], [class*=\" MainContentTopFade-\"], [data-app-shell-main-content-top-fade]:empty)", "tier": "L2", "scope": "all", "required": false, "notes": "仅清除主区顶部渐变的背景，不隐藏节点。26.924 的 data-app-shell-main-content-top-fade 是聊天与输入框的祖先容器状态，不能单独匹配；保留旧语义类、模块名前缀和仅限空节点的旧属性回退，兼容 26.1103 的名称-hash 模块格式。未知结构保留原生显示。" },
+    { "key": "main-content-top-fade", "selector": ":is(.app-shell-main-content-top-fade, [class*=\"_MainContentTopFade_\"], [class^=\"MainContentTopFade-\"], [class*=\" MainContentTopFade-\"], [data-app-shell-main-content-top-fade]:empty, div[aria-hidden=\"true\"][class~=\"pointer-events-none\"][class~=\"absolute\"][class~=\"inset-x-0\"][class~=\"top-0\"][class*=\"bg-[image:var(--app-shell-content-fade,\"]:empty)", "tier": "L2", "scope": "all", "required": false, "notes": "仅清除主区顶部渐变背景和阴影，不隐藏节点。26.924 的 data-app-shell-main-content-top-fade 是聊天与输入框的祖先容器状态，不能单独匹配；保留旧类和空节点属性回退。26.1117 改按顶部空装饰节点的定位语义及背景变量识别，不绑定模块 hash。未知结构保留原生显示。" },
     { "key": "home-icon", "selector": "[data-testid=\"home-icon\"]", "tier": "L1", "scope": "home", "required": true, "notes": "首页判定信号，双端一致" },
     { "key": "home-route", "selector": "[role=\"main\"]:has([data-testid=\"home-icon\"])", "tier": "L1", "scope": "home", "required": true, "notes": "首页容器。实测 [role=main] 仅存在于首页——它不是通用路由锚点，thread 页没有" },
     { "key": "home-route-css", "selector": "[role=\"main\"]", "tier": "L1", "scope": "home", "required": true, "notes": "home-route 的 CSS 可组合别名：不含 :has()。CSS 禁止 :has() 嵌套，home-route 原选择器一旦写进 :has()/:not(:has()) 整条规则会被解析器丢弃（v1.3.1 全窗口首页与任务页氛围背景因此失效）。依据与 home-route 相同的实测：[role=main] 仅存在于首页；该锚点缺失时 CSS 路由门控整体失效，故必须按 L1 必需项监控" },

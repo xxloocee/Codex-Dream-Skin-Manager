@@ -590,8 +590,35 @@ try {
 '@
   $command = $command.Replace('__PAYLOAD__', $payload)
   $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
-  return Invoke-DreamSkinNative -FilePath 'powershell.exe' -ArgumentList @(
-    '-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-EncodedCommand', $encoded)
+  # Read raw streams instead of PowerShell's native-command adapter, which
+  # attempts CLIXML decoding when another PowerShell writes to stderr.
+  $startInfo = [Diagnostics.ProcessStartInfo]::new()
+  $startInfo.FileName = 'powershell.exe'
+  $startInfo.Arguments = "-NoProfile -ExecutionPolicy RemoteSigned -EncodedCommand $encoded"
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $startInfo.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $startInfo.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+  $startInfo.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
+  $child = [Diagnostics.Process]::new()
+  $child.StartInfo = $startInfo
+  try {
+    [void]$child.Start()
+    # Drain both pipes concurrently so a full stderr pipe cannot block stdout.
+    $stdoutRead = $child.StandardOutput.ReadToEndAsync()
+    $stderrRead = $child.StandardError.ReadToEndAsync()
+    $child.WaitForExit()
+    $stdout = $stdoutRead.GetAwaiter().GetResult()
+    $stderr = $stderrRead.GetAwaiter().GetResult()
+    $exitCode = $child.ExitCode
+    $output = @($stdout)
+    if ($exitCode -ne 0 -and $stderr) { $output += $stderr }
+    return [pscustomobject]@{ Output = $output; ExitCode = $exitCode }
+  } finally {
+    $child.Dispose()
+  }
 }
 
 function ConvertFrom-DreamSkinUtf8Base64 {

@@ -27,4 +27,4 @@ Windows 包根 / macOS Contents/Resources
 
 macOS 可执行文件在 `Contents/MacOS/DreamSkinSharedHost`；首次启动初始化内置主题。
 公共运行时由 `runtime/` 生成到两端，平台资源清单为 `packaging/shared-resources.json`。
-Windows 3.3.2 已完成本地构建与打包，尚未正式发布；验证结果及 macOS 暂缓范围见 [品牌迁移验证记录](../docs/brand-migration-validation.md)。
+品牌迁移的 Windows 本地构建与打包结果见 [品牌迁移验证记录](../docs/brand-migration-validation.md)。v3.4.0 正式包由 Tag CI 构建 Windows x64 和 macOS 双架构；macOS 实机验收继续暂缓。

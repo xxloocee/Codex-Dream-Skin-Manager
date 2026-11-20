@@ -31,6 +31,7 @@ export interface TargetSkinControls {
   activeParameters?: ThemeParameters | null | undefined;
   currentName: string;
   paused: boolean;
+  applied: boolean;
   allowed(action: "pause" | "resume" | "reset" | "restore"): boolean;
   onControl(action: "pause" | "resume" | "reset" | "restore"): void;
   notice?: ReactNode | undefined;
@@ -137,7 +138,14 @@ export function ThemeDetailsPanel({
     ? selectedTheme ? null : targetControls?.activeParameters ?? null
     : selectedTheme ? null : activeTheme ? previewParameters(activeTheme.storedParameters, {}, systemDark) : null;
 
-  const isApplied = !!(currentTheme && shown && currentTheme.ref.source === shown.ref.source && currentTheme.ref.id === shown.ref.id);
+  const rendererApplied = targetControls ? targetControls.applied : snapshot?.engine.health === "healthy" &&
+    snapshot.desired.paused === false && snapshot.renderer.status === "applied" &&
+    !!snapshot.engine.runtimeSessionId && snapshot.renderer.runtimeSessionId === snapshot.engine.runtimeSessionId;
+  const appliedRef = rendererApplied ? targetControls ? targetControls.activeTheme?.ref : snapshot?.renderer.theme : null;
+  const isApplied = !!(appliedRef && shown && appliedRef.source === shown.ref.source && appliedRef.id === shown.ref.id);
+  const currentName = targetControls?.currentName ?? (appliedRef
+    ? activeTheme?.ref.source === appliedRef.source && activeTheme.ref.id === appliedRef.id ? activeTheme.name : appliedRef.id
+    : tr(paused ? "已暂停" : !snapshot ? "状态暂不可用" : snapshot.engine.health === "healthy" ? "尚未核验" : snapshot.engine.health === "stopped" ? "未运行" : "需要重新连接"));
 
   function setQuickValue(key: "shellOpacity" | "surfaceOpacity" | "bubbleOpacity", value: number | null) {
     setQuickError("");
@@ -222,8 +230,8 @@ export function ThemeDetailsPanel({
         <div className="inspector-content">
           <div className="inspector-title-row">
             <h2 className="inspector-theme-name" title={shown?.name}>{shown?.name ?? tr("尚未选择主题")}</h2>
-            <span className="inspector-runtime-status" title={targetControls?.currentName ?? activeTheme?.name}>
-              {applicationNames[application]}: {targetControls?.currentName ?? activeTheme?.name ?? tr(snapshot?.desired.theme ? "状态暂不可用" : "未运行")}
+            <span className="inspector-runtime-status" title={currentName}>
+              {applicationNames[application]}: {currentName}
             </span>
           </div>
 

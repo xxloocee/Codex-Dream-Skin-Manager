@@ -456,11 +456,6 @@ html[data-dream-skin="active"] __DREAM_SELECTOR_LEFT_PANEL__ button[aria-label^=
   text-shadow: none !important;
 }
 
-html[data-dream-skin="active"] __DREAM_SELECTOR_LEFT_PANEL__ button[aria-label^="切换模式"]::after {
-  content: " ·";
-  color: var(--ds-secondary);
-}
-
 /* Native sidebar rows and their title buttons can both mark the current page.
    Paint the selection once, on the outermost selected element. */
 html[data-dream-skin="active"] __DREAM_SELECTOR_LEFT_PANEL__ :is(
@@ -1599,9 +1594,10 @@ html[data-dream-skin="active"][data-dream-art-wide="true"] __DREAM_SELECTOR_SHEL
 /* Codex 26.924 puts the fade state attribute on the content container, not
    just the decorative fade. Clear paint only: even a future selector drift
    must never hide the chat/composer subtree or alter its native layout. */
-html[data-dream-skin="active"][data-dream-art-wide="true"] __DREAM_SELECTOR_SHELL_MAIN__
+html[data-dream-skin="active"] __DREAM_SELECTOR_SHELL_MAIN__
   __DREAM_SELECTOR_MAIN_CONTENT_TOP_FADE__ {
   background: transparent !important;
+  box-shadow: none !important;
 }
 
 /* Codex paints a second opaque fade behind the sticky composer. The composer

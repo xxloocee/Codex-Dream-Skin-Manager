@@ -695,29 +695,32 @@ function App() {
   }, [renderedFeedback]);
 
   const openUpdates = () => { setUtility("updates"); setUpdateCheck(value => value + 1); };
-  const runtimeLabel = disconnected ? tr("需要重新连接") : !hello ? tr("正在连接本地管理器…") : statusError || !snapshot ? tr("状态暂不可用") : snapshot.desired.paused ? tr("已暂停") : tr(health[snapshot.engine.health]);
+  const codexApplied = !!hello && !disconnected && !statusError && snapshot?.engine.health === "healthy" &&
+    snapshot.desired.paused === false && snapshot.renderer.status === "applied" &&
+    !!snapshot.engine.runtimeSessionId && snapshot.renderer.runtimeSessionId === snapshot.engine.runtimeSessionId;
+  const appearanceApplied = !!hello && !disconnected && !appearance.statusError && appearance.snapshot?.connection === "connected" &&
+    appearance.snapshot.renderer === "applied" && !appearance.snapshot.paused;
+  const runtimeLabel = disconnected ? tr("需要重新连接") : !hello ? tr("正在连接本地管理器…") : statusError || !snapshot ? tr("状态暂不可用") : snapshot.desired.paused ? tr("已暂停") : tr(snapshot.engine.health === "healthy" && !codexApplied ? "已连接" : health[snapshot.engine.health]);
   const appearanceLabel = disconnected ? tr("需要重新连接") : !hello ? tr("正在连接本地管理器…") : !appearance.supported ? tr("暂不支持") : appearance.statusError || !appearance.snapshot ? tr("状态暂不可用") : application === "claude" && appearance.snapshot.connection === "awaiting-debugger" ? tr("等待开启调试") : appearance.snapshot.connection !== "connected" ? tr("未连接") : appearance.snapshot.paused ? tr("已暂停") : tr(appearance.snapshot.renderer === "applied" ? "运行中" : "已连接");
-  const isHealthy = application === "codex"
-    ? snapshot?.engine.health === "healthy" && !snapshot.desired.paused && !statusError
-    : appearance.snapshot?.connection === "connected" && appearance.snapshot.renderer === "applied" && !appearance.snapshot.paused && !appearance.statusError;
-  const isPaused = application === "codex" ? !!snapshot?.desired.paused : !!appearance.snapshot?.paused;
+  const isHealthy = application === "codex" ? codexApplied : appearanceApplied;
+  const isPaused = !!hello && !disconnected && (application === "codex" ? !statusError && !!snapshot?.desired.paused : !appearance.statusError && !!appearance.snapshot?.paused);
 
   const activeSelection = details && (
     (snapshot?.desired.theme?.source === details.ref.source && snapshot.desired.theme.id === details.ref.id) ||
     (snapshot?.renderer.theme?.source === details.ref.source && snapshot.renderer.theme.id === details.ref.id)
   );
-  const activeThemeId = application === "codex"
-    ? (activeSkin ? identity(activeSkin) : snapshot?.desired.theme ? `${snapshot.desired.theme.source}:${snapshot.desired.theme.id}` : "")
-    : (appearance.snapshot?.theme ? `${appearance.snapshot.theme.source}:${appearance.snapshot.theme.id}` : "");
-  const appliedThemeRef = appearance.snapshot?.theme;
+  const appliedThemeRef = application === "codex"
+    ? codexApplied ? snapshot?.renderer.theme : null
+    : appearanceApplied ? appearance.snapshot?.theme : null;
+  const activeThemeId = appliedThemeRef ? `${appliedThemeRef.source}:${appliedThemeRef.id}` : "";
   const currentSkinName = !hello || disconnected
     ? tr("未连接")
-    : application === "codex"
-      ? statusError || !snapshot ? tr("状态暂不可用") : activeSkin?.name ?? tr(snapshot.desired.theme ? "状态暂不可用" : "未应用主题")
-      : appearance.statusError || !appearance.snapshot ? tr("状态暂不可用")
-        : appliedThemeRef
-          ? themes.find(theme => theme.ref.source === appliedThemeRef.source && theme.ref.id === appliedThemeRef.id)?.name ?? appliedThemeRef.id
-          : tr("未应用主题");
+    : (application === "codex" ? statusError || !snapshot : appearance.statusError || !appearance.snapshot)
+      ? tr("状态暂不可用")
+      : appliedThemeRef
+        ? themes.find(theme => theme.ref.source === appliedThemeRef.source && theme.ref.id === appliedThemeRef.id)?.name ??
+          (application === "codex" && activeSkin?.ref.source === appliedThemeRef.source && activeSkin.ref.id === appliedThemeRef.id ? activeSkin.name : appliedThemeRef.id)
+        : tr(isPaused ? "已暂停" : (application === "codex" ? snapshot?.engine.health === "healthy" : appearance.snapshot?.connection === "connected") ? "尚未核验" : "未应用主题");
 
   const settingsThemes = useMemo(() => {
     const q = settingsFilter.trim().toLowerCase();
@@ -854,10 +857,10 @@ function App() {
               value={application}
               onChange={setApplication}
               activeStatus={{
-                codex: !!activeSkin || !!snapshot?.desired.theme,
-                claude: claude.snapshot?.connection === "connected",
-                dsh: dsh.snapshot?.connection === "connected",
-                "dsh-next": dshNext.snapshot?.connection === "connected",
+                codex: codexApplied,
+                claude: !!hello && !disconnected && !claude.statusError && claude.snapshot?.connection === "connected" && claude.snapshot.renderer === "applied" && !claude.snapshot.paused,
+                dsh: !!hello && !disconnected && !dsh.statusError && dsh.snapshot?.connection === "connected" && dsh.snapshot.renderer === "applied" && !dsh.snapshot.paused,
+                "dsh-next": !!hello && !disconnected && !dshNext.statusError && dshNext.snapshot?.connection === "connected" && dshNext.snapshot.renderer === "applied" && !dshNext.snapshot.paused,
               }}
               version={hello?.versions.application}
               upgradeAvailable={runtimeUpgradeReady}
@@ -1009,7 +1012,7 @@ function App() {
                     {...detailProps}
                     selectedPreview={themes.find(theme => identity(theme) === selected) ?? null}
                     activeTheme={activeSkin}
-                    snapshot={statusError ? null : snapshot}
+                    snapshot={disconnected || !hello || statusError ? null : snapshot}
                     visible={page === "console"}
                     onEdit={() => goPage("settings")}
                     onApply={() => { if (details) void apply(); else if (!selected) void controlRuntime("skin.resume"); }}
@@ -1023,7 +1026,7 @@ function App() {
                     hello={hello}
                     theme={appearanceTheme}
                     selectedPreview={themes.find(theme => identity(theme) === selected) ?? null}
-                    snapshot={appearance.statusError ? null : appearance.snapshot}
+                    snapshot={disconnected || !hello || appearance.statusError ? null : appearance.snapshot}
                     supported={appearance.supported}
                     busy={busy || !hello}
                     draftDirty={draftDirty}
