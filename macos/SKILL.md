@@ -1,12 +1,12 @@
 ---
 name: codex-dream-skin-studio
-description: Manage Codex wallpapers, themes and appearance through the shared Codex Dream Skin desktop manager on macOS.
+description: Manage Codex wallpapers, themes and appearance through the shared Dream Skin desktop manager on macOS.
 compatibility: macOS 13+, official Codex Desktop app, bundled Node.js 22.22.2
 ---
 
-# Codex Dream Skin on macOS
+# Dream Skin on macOS
 
-The user entry is `Codex Dream Skin.app`. Its AppKit/WKWebView host runs the same React UI and Node core as Windows. This document describes the project; installing it as an agent skill is optional.
+The user entry is `Dream Skin.app`. Automatically updated older installations may retain the `Codex Dream Skin.app` filename. Its AppKit/WKWebView host runs the same React UI and Node core as Windows. This document describes the project; installing it as an agent skill is optional.
 
 ## Workflow
 

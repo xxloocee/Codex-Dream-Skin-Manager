@@ -2,20 +2,20 @@
   #error "AppVersion must be supplied from windows/VERSION"
 #endif
 #ifndef PackageRoot
-  #define PackageRoot "..\build\CodexDreamSkinManager"
+  #define PackageRoot "..\build\DreamSkin"
 #endif
 #ifndef OutputDir
   #define OutputDir "..\dist"
 #endif
 
-#define AppName "Codex Dream Skin Manager"
-#define AppExeName "CodexDreamSkinManager.exe"
+#define AppName "Dream Skin"
+#define AppExeName "DreamSkin.exe"
 
 [Setup]
 AppId={{A4A6B717-9DB4-4C21-9AF1-7F9EA5D2CF5E}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=Codex Dream Skin
+AppPublisher=Dream Skin
 AppPublisherURL=https://github.com/xxloocee/Codex-Dream-Skin-Manager
 AppSupportURL=https://github.com/xxloocee/Codex-Dream-Skin-Manager/issues
 DefaultDirName={localappdata}\Programs\CodexDreamSkinManager
@@ -25,7 +25,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
-OutputBaseFilename=CodexDreamSkinManager-v{#AppVersion}-windows-x64-setup
+OutputBaseFilename=DreamSkin-v{#AppVersion}-windows-x64-setup
 SetupIconFile=..\assets\CodexDreamSkinManager.ico
 UninstallDisplayIcon={app}\{#AppExeName}
 Compression=lzma2/ultra64
@@ -39,7 +39,7 @@ ShowLanguageDialog=no
 Uninstallable=yes
 VersionInfoVersion={#AppVersion}
 VersionInfoProductName={#AppName}
-VersionInfoCompany=Codex Dream Skin
+VersionInfoCompany=Dream Skin
 VersionInfoDescription={#AppName} installer
 
 [Languages]
@@ -47,6 +47,16 @@ Name: "chinesesimp"; MessagesFile: "languages\ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加快捷方式："
+
+[InstallDelete]
+Type: files; Name: "{app}\CodexDreamSkinManager.exe"
+Type: files; Name: "{app}\CodexDreamSkinManager.exe.config"
+Type: files; Name: "{app}\CodexDreamSkinManager.dll"
+Type: files; Name: "{app}\CodexDreamSkinManager.pdb"
+Type: files; Name: "{autoprograms}\Codex Dream Skin Manager.lnk"
+Type: files; Name: "{autodesktop}\Codex Dream Skin Manager.lnk"
+Type: files; Name: "{autoprograms}\Codex Dream Skin.lnk"
+Type: files; Name: "{autodesktop}\Codex Dream Skin.lnk"
 
 [Files]
 Source: "windows-install.ps1"; Flags: dontcopy

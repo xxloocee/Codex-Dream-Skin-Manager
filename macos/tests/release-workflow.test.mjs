@@ -83,23 +83,23 @@ assert.match(workflow, /runner: macos-15\r?\n/, "ARM64 uses a supported native r
 assert.match(workflow, /runner: macos-15-intel/, "Intel uses a native runner.");
 assert.match(workflow, /DREAMSKIN_ARCHS: \$\{\{ matrix.target \}\}/);
 assert.match(workflow, /NODE="\$\(command -v node\)" bash macos\/scripts\/build-dmg\.sh/);
-assert.match(workflow, /CodexDreamSkinManager-v\$\{RELEASE_VERSION\}-macos-\$\{RELEASE_ARCH\}\.dmg/);
+assert.match(workflow, /DreamSkin-v\$\{RELEASE_VERSION\}-macos-\$\{RELEASE_ARCH\}\.dmg/);
 assert.match(workflow, /^    needs: \[validate, windows, macos\]$/m);
 assert.match(workflow, /SHA256SUMS\.txt/);
 assert.match(workflow, /--notes-file "\$notes"/);
-assert.match(packageRelease, /CodexDreamSkinManager-v\$Version-windows-x64-portable/);
-assert.match(packageInstaller, /CodexDreamSkinManager-v\$Version-windows-x64-setup/);
+assert.match(packageRelease, /DreamSkin-v\$Version-windows-x64-portable/);
+assert.match(packageInstaller, /DreamSkin-v\$Version-windows-x64-setup/);
 assert.match(
   installerDefinition,
-  /OutputBaseFilename=CodexDreamSkinManager-v\{#AppVersion\}-windows-x64-setup/,
+  /OutputBaseFilename=DreamSkin-v\{#AppVersion\}-windows-x64-setup/,
 );
 
 // Download names are centralized in the root README for both platforms.
 for (const asset of [
-  `CodexDreamSkinManager-v${releaseVersion}-windows-x64-setup.exe`,
-  `CodexDreamSkinManager-v${releaseVersion}-windows-x64-portable.zip`,
-  `CodexDreamSkinManager-v${releaseVersion}-macos-x64.dmg`,
-  `CodexDreamSkinManager-v${releaseVersion}-macos-arm64.dmg`,
+  `DreamSkin-v${releaseVersion}-windows-x64-setup.exe`,
+  `DreamSkin-v${releaseVersion}-windows-x64-portable.zip`,
+  `DreamSkin-v${releaseVersion}-macos-x64.dmg`,
+  `DreamSkin-v${releaseVersion}-macos-arm64.dmg`,
   "SHA256SUMS.txt",
 ]) {
   assert.ok(readme.includes(asset), `README must name release asset: ${asset}`);

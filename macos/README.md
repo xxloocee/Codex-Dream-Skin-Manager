@@ -1,6 +1,6 @@
 # macOS 平台
 
-唯一用户入口是 `Codex Dream Skin.app`，使用 AppKit/WKWebView 承载与 Windows 相同的 React UI，并运行包内 Node/core。菜单栏提供窗口与页面导航，不再维护第二套主题界面或 SwiftBar 插件。
+唯一用户入口是 `Dream Skin.app`，使用 AppKit/WKWebView 承载与 Windows 相同的 React UI，并运行包内 Node/core。菜单栏提供窗口与页面导航，不再维护第二套主题界面或 SwiftBar 插件。
 
 需要 macOS 13+。源码构建需要 Node.js 22.22.2、Swift/macOS SDK，在仓库根目录执行：
 
@@ -11,7 +11,9 @@ bash macos/scripts/build-app.sh
 bash macos/scripts/build-dmg.sh
 ```
 
-默认应用输出为 `build/macos/Codex Dream Skin.app`，DMG 在 `macos/release`。构建脚本准备包内 Node、共享 UI/core、平台脚本与主题，不自动运行测试。首次打开管理器会初始化内置主题。
+默认应用输出为 `build/macos/Dream Skin.app`，DMG 在 `macos/release`。构建脚本准备包内 Node、共享 UI/core、平台脚本与主题，不自动运行测试。首次打开管理器会初始化内置主题。
+
+品牌迁移保留数据目录、Bundle ID 和更新通道。旧版自动更新后应用路径可能仍为 `Codex Dream Skin.app`，内部显示名为 Dream Skin；手动安装新品牌包时请先退出旧应用并替换原安装，避免同时保留两份同身份应用。签名更新 ZIP 保留旧名结构，见 [品牌迁移说明](../docs/dream-skin-migration.md)。
 
 平台脚本保留 Codex 发现、启动、CDP 连接、主题发布、原生图片转换和外观恢复。主题库、编辑、导入导出及社区流程统一使用共享 core。
 用户主题位于 `~/Library/Application Support/CodexDreamSkinStudio`；部署的引擎位于 `~/.codex/codex-dream-skin-studio`。源码清理不操作这些用户目录。

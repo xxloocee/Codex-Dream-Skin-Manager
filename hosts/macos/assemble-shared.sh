@@ -2,7 +2,7 @@
 # Build the shared manager directly from source.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
-OUTPUT="${1:-$ROOT/build/macos/Codex Dream Skin.app}"
+OUTPUT="${1:-$ROOT/build/macos/Dream Skin.app}"
 case "$OUTPUT" in /*.app) ;; *) printf 'Output must be an absolute .app path.\n' >&2; exit 2 ;; esac
 [ ! -e "$OUTPUT" ] && [ ! -L "$OUTPUT" ] || { printf 'Output already exists; choose a new output path.\n' >&2; exit 2; }
 cd "$ROOT"

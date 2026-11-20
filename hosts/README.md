@@ -8,9 +8,11 @@ Windows 的 WPF/WebView2 与 macOS 的 AppKit/WKWebView 加载相同的 `ui/mana
 先在根目录执行 `npm ci`。Windows 运行 `build.ps1`（内部调用 `hosts/windows/assemble-shared.ps1`），macOS 运行 `bash macos/scripts/build-app.sh`（内部调用 `hosts/macos/assemble-shared.sh`）。
 Windows 需要 .NET SDK 8、Node 22.22.2 及其 LICENSE；macOS 需要 Swift/macOS SDK，构建时准备包内 Node。
 
-Windows 默认包位于 `build/CodexDreamSkinManager`，启动根目录 `CodexDreamSkinManager.exe`。
-macOS 默认包位于 `build/macos/Codex Dream Skin.app`，直接打开应用。`build-dmg.sh` 将新应用装入 DMG。
+Windows 默认包位于 `build/DreamSkin`，启动根目录 `DreamSkin.exe`。
+macOS 默认包位于 `build/macos/Dream Skin.app`，直接打开应用。`build-dmg.sh` 将新应用装入 DMG。
 两个系统统一使用 `dreamskin://` 协议。后端断开时，共享页面提供“重新连接”，重新建立会话且不自动重放操作。
+
+用户数据目录、Windows 安装路径/AppId 和 macOS Bundle ID 保留。签名更新 ZIP 的旧名目录属于旧客户端兼容协议，详见 [品牌迁移说明](../docs/dream-skin-migration.md)。
 
 ## 包内布局
 
@@ -25,4 +27,4 @@ Windows 包根 / macOS Contents/Resources
 
 macOS 可执行文件在 `Contents/MacOS/DreamSkinSharedHost`；首次启动初始化内置主题。
 公共运行时由 `runtime/` 生成到两端，平台资源清单为 `packaging/shared-resources.json`。
-本轮只做源码检查，尚未重新构建或执行两端实机验收。
+Windows 3.3.2 已完成本地构建与打包，尚未正式发布；验证结果及 macOS 暂缓范围见 [品牌迁移验证记录](../docs/brand-migration-validation.md)。

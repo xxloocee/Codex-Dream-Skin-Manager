@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Dream Skin</title>
+  <defs>
+    <!-- 线性流光渐变 (Dream Violet to Neon Pink) -->
+    <linearGradient id="sym-outer-grad" x1="15%" y1="10%" x2="90%" y2="95%">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="38%" stop-color="#8B5CF6"/>
+      <stop offset="72%" stop-color="#A855F7"/>
+      <stop offset="100%" stop-color="#EC4899"/>
+    </linearGradient>
+
+    <!-- 底层换色晶彩 (Undercoat Glow) -->
+    <linearGradient id="sym-inner-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="40%" stop-color="#818CF8"/>
+      <stop offset="80%" stop-color="#C084FC"/>
+      <stop offset="100%" stop-color="#F43F5E"/>
+    </linearGradient>
+
+    <!-- 顶层高光与边缘 -->
+    <linearGradient id="sym-glass-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.9"/>
+      <stop offset="60%" stop-color="#DDD6FE" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#C4B5FD" stop-opacity="0.1"/>
+    </linearGradient>
+
+    <!-- 星芒渐变 -->
+    <linearGradient id="sym-star-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="35%" stop-color="#FFE4E6"/>
+      <stop offset="75%" stop-color="#FB7185"/>
+      <stop offset="100%" stop-color="#A855F7"/>
+    </linearGradient>
+
+    <!-- 辉光滤镜 -->
+    <filter id="sym-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#7C3AED" flood-opacity="0.3"/>
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#EC4899" flood-opacity="0.25"/>
+    </filter>
+
+    <filter id="sym-star-glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#F43F5E" flood-opacity="0.7"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="14" flood-color="#8B5CF6" flood-opacity="0.5"/>
+    </filter>
+
+    <clipPath id="dream-skin-icon-clip">
+      <rect x="24" y="24" width="464" height="464" rx="112"/>
+    </clipPath>
+    <!-- Cut the D counter out of the glass, underglow and shell together. -->
+    <mask id="sym-d-counter" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+      <rect width="512" height="512" fill="#FFFFFF"/>
+      <path d="M224 180 L224 340 C268 340, 314 326, 334 294 C356 258, 350 218, 324 194 C300 170, 262 180, 224 180 Z" fill="#000000"/>
+    </mask>
+  </defs>
+  <g clip-path="url(#dream-skin-icon-clip)">
+    <rect x="24" y="24" width="464" height="464" rx="112" fill="#000000"/>
+    <g transform="translate(-60.535 -34.7225) scale(1.18)">
+<!-- 核心群组 -->
+  <g transform="translate(16, 16) scale(0.94)">
+    <g mask="url(#sym-d-counter)">
+    <!-- 底层漫射彩晕 (Chroma underglow) -->
+    <path d="M168 132 C168 132, 280 126, 342 184 C394 232, 386 312, 332 360 C276 410, 180 392, 168 392 Z"
+          fill="url(#sym-inner-grad)"
+          opacity="0.45"
+          filter="url(#sym-glow)"/>
+
+    <!-- 主体换肤 D 形轮廓 (Morphing D Shell) -->
+    <path d="M160 120
+             C160 111.163, 167.163 104, 176 104
+             C246 104, 314 126, 358 174
+             C406 226, 406 300, 360 352
+             C314 402, 242 416, 174 416
+             C166.268 416, 160 409.732, 160 402
+             L160 120 Z
+             M224 180
+             L224 340
+             C268 340, 314 326, 334 294
+             C356 258, 350 218, 324 194
+             C300 170, 262 180, 224 180 Z"
+          fill="url(#sym-outer-grad)"
+          filter="url(#sym-glow)"
+          fill-rule="evenodd"/>
+
+    <!-- 毛玻璃透叠层 (Frosted Overlapping Layer) -->
+    <path d="M136 162
+             C136 153.163, 143.163 146, 152 146
+             C216 146, 282 164, 318 204
+             C358 248, 356 312, 314 356
+             C272 400, 210 406, 150 406
+             C142.268 406, 136 399.732, 136 392
+             L136 162 Z"
+          fill="url(#sym-glass-grad)"
+          stroke="#FFFFFF"
+          stroke-width="2.5"
+          stroke-opacity="0.9"/>
+    </g>
+
+    <!-- 顶部主高光弧 -->
+    <path d="M180 112
+             C246 112, 304 132, 346 176
+             C382 214, 390 262, 376 310"
+          fill="none"
+          stroke="#FFFFFF"
+          stroke-width="5"
+          stroke-linecap="round"
+          opacity="0.9"/>
+
+    <path d="M232 192
+             L232 328
+             C262 328, 298 316, 314 290"
+          fill="none"
+          stroke="#FFFFFF"
+          stroke-width="2.5"
+          stroke-linecap="round"
+          opacity="0.6"/>
+
+    <!-- AI Agent 星芒火花 (Sparkle) -->
+    <g transform="translate(356, 120)" filter="url(#sym-star-glow)">
+      <path d="M0 -46
+               C2.5 -16, 16 -2.5, 46 0
+               C16 2.5, 2.5 16, 0 46
+               C-2.5 16, -16 2.5, -46 0
+               C-16 -2.5, -2.5 -16, 0 -46 Z"
+            fill="url(#sym-star-grad)"/>
+      <circle cx="0" cy="0" r="7" fill="#FFFFFF"/>
+    </g>
+
+    <!-- 伴随光子微粒 -->
+    <circle cx="140" cy="136" r="4.5" fill="#38BDF8" opacity="0.95"/>
+    <circle cx="396" cy="304" r="5" fill="#F43F5E" opacity="0.85"/>
+    <g transform="translate(192, 380)">
+      <path d="M0 -14 C1 -4, 4 -1, 14 0 C4 1, 1 4, 0 14 C-1 4, -4 1, -14 0 C-4 -1, -1 -4, 0 -14 Z" fill="#FFFFFF" opacity="0.9"/>
+    </g>
+  </g>
+    </g>
+  </g>
+</svg>

@@ -866,7 +866,7 @@ try {
     }
   }
 
-  Write-Host "Codex Dream Skin is active on verified loopback port $Port."
+  Write-Host "Dream Skin is active on verified loopback port $Port."
   if ($ResultToken) {
     Write-DreamSkinStartResult -StateRoot $StateRoot -Token $ResultToken `
       -Outcome 'success' -Category 'none' -AppearanceRecovery $appearanceRecovery

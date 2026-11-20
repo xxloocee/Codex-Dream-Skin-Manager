@@ -13,7 +13,7 @@ if ([string]::IsNullOrWhiteSpace($scriptRoot)) {
   $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 }
 if ([string]::IsNullOrWhiteSpace($PackageRoot)) {
-  $PackageRoot = Join-Path $scriptRoot '..\build\CodexDreamSkinManager'
+  $PackageRoot = Join-Path $scriptRoot '..\build\DreamSkin'
 }
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
   $OutputDirectory = Join-Path $scriptRoot '..\dist'
@@ -53,7 +53,7 @@ function Assert-OfficialInnoSetupCompiler {
 
 $package = [System.IO.Path]::GetFullPath($PackageRoot)
 $output = [System.IO.Path]::GetFullPath($OutputDirectory)
-$executable = Join-Path $package 'CodexDreamSkinManager.exe'
+$executable = Join-Path $package 'DreamSkin.exe'
 $iss = Join-Path $scriptRoot '..\packaging\CodexDreamSkinManager.iss'
 
 foreach ($requiredPath in @(
@@ -114,7 +114,7 @@ $IsccPath = [System.IO.Path]::GetFullPath($IsccPath)
 Assert-OfficialInnoSetupCompiler -Path $IsccPath
 
 New-Item -ItemType Directory -Force -Path $output | Out-Null
-$baseName = "CodexDreamSkinManager-v$Version-windows-x64-setup"
+$baseName = "DreamSkin-v$Version-windows-x64-setup"
 $installer = Join-Path $output "$baseName.exe"
 $checksum = Join-Path $output "$baseName.sha256"
 foreach ($path in @($installer, $checksum)) {

@@ -24,6 +24,10 @@ https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases/latest/download/up
 
 ## 数据格式
 
+Dream Skin 品牌迁移后，常规附件改为 `DreamSkin-v<版本>-…`。发布流程另提供同一 Windows 安装器的 `CodexDreamSkinManager-v<版本>-windows-x64-setup.exe` 兼容附件，并将其纳入 `SHA256SUMS.txt` 和签名 `update.json`，供旧更新器继续精确匹配。macOS 签名更新 ZIP 的外名与内部旧应用目录也保留。仓库地址、公钥、签名格式及版本规则不变，详见 [品牌迁移说明](dream-skin-migration.md)。
+
+Windows 新旧更新器的附件选择、签名与 hash 兼容已通过本地隔离验证；这不代表生产 Release 的在线安装升级已经验收。命令与边界见 [品牌迁移验证记录](brand-migration-validation.md)，macOS 验证本轮暂缓。
+
 `schemaVersion` 为 `1`。为复用现有版本比较和附件选择逻辑，保留已有 release 字段名；这些字段来自发布流程生成的静态文件，不来自 GitHub API。
 
 | 字段 | 内容 |
@@ -31,7 +35,7 @@ https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases/latest/download/up
 | `tag_name` | 严格的稳定版本标签 `vMAJOR.MINOR.PATCH` |
 | `html_url` | 本仓库对应标签的发布页 |
 | `draft` / `prerelease` | 均为 `false` |
-| `assets` | 四个平台安装/便携包和 `SHA256SUMS.txt` |
+| `assets` | 四个公开安装/便携包、Windows 旧名安装器兼容附件、两个 macOS 签名更新 ZIP，以及 `SHA256SUMS.txt` |
 | `assets[].name` | 完整附件名 |
 | `assets[].browser_download_url` | 本仓库对应标签的 HTTPS 下载地址 |
 | `assets[].sha256` | 附件实际内容的 64 位小写 SHA-256 |
@@ -43,10 +47,10 @@ Windows 包内 `updater/public-key.pem` 来自源码中的 `packaging/update-pub
 ## 生成与发布
 
 1. Release 工作流等待 Windows x64、macOS x64/ARM64 构建完成。
-2. 校验四个包的文件名集合，生成 `SHA256SUMS.txt`。
+2. 为新 Windows 安装器复制旧名兼容附件；核对四个公开包、该兼容附件与两个 macOS 更新 ZIP 的文件名集合，生成 `SHA256SUMS.txt`。
 3. `tools/create-update-manifest.py` 核对包内容与校验清单一致，生成 `dist/update.json`。
 4. `tools/sign-update-manifest.mjs` 使用发布私钥签出 `dist/update.json.sig`；现有脚本签出 macOS `gui-manifest.json` / `gui-manifest.sig`。
-5. 将四个包、两个 macOS 更新 ZIP、校验清单和两组签名清单一同上传到对应 Release。
+5. 将四个公开包、Windows 旧名兼容附件、两个 macOS 更新 ZIP、校验清单和两组签名清单一同上传到对应 Release。
 
 正式 Release 在构建前要求 Secret 存在、为 Ed25519 且与固定公钥匹配，缺失或不匹配直接失败，不再降级成未签名发布。Windows 组包复制公钥；macOS 正式通道也校对派生公钥。发布私钥不得写入源码或包。密钥轮换需要单独分发信任更新。
 

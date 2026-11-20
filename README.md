@@ -1,4 +1,6 @@
-# Codex Dream Skin Manager
+# Dream Skin
+
+<p align="center"><img src="assets/branding/dream-skin.svg" width="192" alt="Dream Skin Logo"></p>
 
 为 Codex 桌面客户端更换背景、管理主题和调整界面外观，Windows 版同时支持 Claude Desktop 的 Code 页面、DSH rc（社区版 DeepSeek Harness）及 DSH Next。Windows 和 macOS 共用管理界面、业务核心和 Codex 换肤运行时，由各自的原生窗口承载。
 
@@ -14,6 +16,17 @@
 | macOS Apple Silicon | macOS 13+ | `CodexDreamSkinManager-v3.3.2-macos-arm64.dmg` |
 
 请先安装所需的 Codex、Claude Desktop、DSH rc 或 DSH Next 客户端。发布包已内置 Node.js，无需单独配置运行环境；Windows 便携版须完整解压，不能只复制 EXE。`SHA256SUMS.txt` 提供下载包校验值。
+
+当前 **Dream Skin** 品牌源码与本地 Windows 构建已完成，尚未正式发布；以上已发布版本的附件名称保持原样。迁移后的 Windows 入口为 `DreamSkin.exe`，macOS 常规应用为 `Dream Skin.app`。构建/发布命名如下（以当前源码版本举例，不表示已有下载）：
+
+- `DreamSkin-v3.3.2-windows-x64-setup.exe`
+- `DreamSkin-v3.3.2-windows-x64-portable.zip`
+- `DreamSkin-v3.3.2-macos-x64.dmg`
+- `DreamSkin-v3.3.2-macos-arm64.dmg`
+
+原有主题和设置继续使用现有数据目录。旧客户端所需的更新附件名称保留兼容；范围与代码清单见 [品牌迁移说明](docs/dream-skin-migration.md)。
+
+Dream Skin 使用居中的镂空 D 形标记，Dream 为靛紫、Skin 为紫粉。Windows 本地构建与验证结果、macOS 暂缓范围见 [品牌迁移验证记录](docs/brand-migration-validation.md)。
 
 ## 主要功能
 
@@ -67,7 +80,7 @@ Windows 另需 .NET SDK 8 和 WebView2 Runtime；macOS 需要 Xcode Command Line
 bash macos/scripts/build-app.sh
 ```
 
-默认输出分别为 `build/CodexDreamSkinManager/` 和 `build/macos/Codex Dream Skin.app`。
+默认输出分别为 `build/DreamSkin/` 和 `build/macos/Dream Skin.app`。
 构建入口只构建新管理器，不执行测试。已有输出时可指定新目录。
 
 - `ui/manager/`：共享 React 页面。

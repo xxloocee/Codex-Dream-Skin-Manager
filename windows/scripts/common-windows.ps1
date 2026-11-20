@@ -195,9 +195,9 @@ function Enter-DreamSkinOperationLock {
   if (-not $acquired) {
     $mutex.Dispose()
     if ($TimeoutMilliseconds -eq 0) {
-      throw 'Another Codex Dream Skin install, start, restore, or verify operation is already running.'
+      throw 'Another Dream Skin install, start, restore, or verify operation is already running.'
     }
-    throw "Another Codex Dream Skin operation did not finish within $TimeoutMilliseconds ms."
+    throw "Another Dream Skin operation did not finish within $TimeoutMilliseconds ms."
   }
   return $mutex
 }
@@ -1491,7 +1491,7 @@ function Stop-DreamSkinCodex {
 function Confirm-DreamSkinRestart {
   param([string]$Message)
   $shell = New-Object -ComObject WScript.Shell
-  return $shell.Popup($Message, 0, 'Codex Dream Skin', 52) -eq 6
+  return $shell.Popup($Message, 0, 'Dream Skin', 52) -eq 6
 }
 
 function Invoke-DreamSkinCodexWindowActivation {

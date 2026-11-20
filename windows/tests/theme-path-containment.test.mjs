@@ -45,7 +45,7 @@ test("real parent-directory traversal remains rejected", async () => {
 
     await assert.rejects(
       loadTheme(root),
-      /must remain inside the selected theme directory/,
+      /Theme image must stay inside its theme directory/,
     );
   } finally {
     await fs.rm(parent, { recursive: true, force: true });

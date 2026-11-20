@@ -248,7 +248,7 @@ OperationSnapshot.method 增加 `themes.update`/`themes.copy`；effects 增加�
 | `updates.openRelease` | `{handle}` | 原生宿主经内部 updates.authorizeOpen 获取批准的固定发布页，返回 opened；网页不能传 URL |
 | `updates.quit` | `{operationId}` | 原生宿主经 updates.authorizeQuit 取得正常退出许可；只允许本会话 Mac handoff 且无业务操作 |
 
-核心版本为规范稳定三段，无前导零，≤64 字符，以 BigInt 比较，最新≤当前不发起安装。三通道 windows-release、macos-release、macos-gui 分开，模式 manual/windows-installer/macos-signed；配置签名通道失败不回退普通通道。Windows 固定静态清单和普通版本，Mac 未配置签名时沿用静态清单/受限发布页跳转备用与引擎 VERSION；配置签名时按独立 GUI version、配置仓库/公钥检查。正式应用身份为 Windows CodexDreamSkinManager / Mac cc.dreamskin.manager；不再有独立预览通道或安装身份。
+核心版本为规范稳定三段，无前导零，≤64 字符，以 BigInt 比较，最新≤当前不发起安装。三通道 windows-release、macos-release、macos-gui 分开，模式 manual/windows-installer/macos-signed；配置签名通道失败不回退普通通道。Windows 固定静态清单和普通版本，Mac 未配置签名时沿用静态清单/受限发布页跳转备用与引擎 VERSION；配置签名时按独立 GUI version、配置仓库/公钥检查。Windows 正式入口为 DreamSkin.exe，保留原安装 AppId、安装路径与更新附件兼容名；Mac Bundle ID 仍为 cc.dreamskin.manager。不再有独立预览通道或安装身份；品牌迁移边界见 dream-skin-migration.md。
 
 提案绑定当前/最新版本、通道、安装身份、Windows installer SHA-256 或 Mac exact 签名 manifest 摘要/包 hash/配置/公钥字节。提交前 UI 明确勾选批准，核心复查绑定；Windows wrapper 下载前再次检查 version/hash，双清单和包 hash 校验沿用；Mac prepare 再次检查 exact manifest 摘要、签名/架构/大小/hash/codesign/bundle/GUI version及下一通道/公钥。目标必须是当前 Resources 所属 app、bundle/GUI version匹配、父目录可写、非 /Volumes；外置 helper 正常等待退出，保留旧 app并失败恢复。公开结果不含暂存/安装路径。
 

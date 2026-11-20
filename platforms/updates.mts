@@ -108,7 +108,7 @@ export class PlatformUpdates implements UpdatePort {
     if (this.platform === "windows") {
       raw = await this.windows("Check"); channel = "windows-release";
       try {
-        const executable = path.join(this.root, "CodexDreamSkinManager.exe"); await safePath(executable, this.root);
+        const executable = path.join(this.root, "DreamSkin.exe"); await safePath(executable, this.root);
         if ((await lstat(executable)).isFile()) { mode = "windows-installer"; reason = "下载校验完成后启动 Windows 安装器；安装前会关闭管理器及本安装目录的后台运行时。"; }
       } catch (error) { if (!record(error) || error.code !== "ENOENT") throw error; }
       trust = "内置公钥验证更新清单 Ed25519 签名；安装包 SHA-256 必须与已签名清单、SHA256SUMS.txt 和实际下载内容一致。";
@@ -209,7 +209,7 @@ export class PlatformUpdates implements UpdatePort {
       }
       // Setup writes this when its installation flow finishes. No additional
       // payload scan runs here or in the installer.
-      const executable = path.join(this.root, "CodexDreamSkinManager.exe");
+      const executable = path.join(this.root, "DreamSkin.exe");
       const version = await optionalBytes(path.join(this.root, "windows", "VERSION"), this.root, 128);
       const completeBytes = await optionalBytes(path.join(this.root, "updater", "installation-complete.json"), this.root, 4096);
       const complete = completeBytes ? jsonObject(completeBytes) : null;

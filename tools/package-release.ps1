@@ -13,17 +13,17 @@ if ([string]::IsNullOrWhiteSpace($scriptRoot)) {
   $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 }
 if ([string]::IsNullOrWhiteSpace($PackageRoot)) {
-  $PackageRoot = Join-Path $scriptRoot '..\build\CodexDreamSkinManager'
+  $PackageRoot = Join-Path $scriptRoot '..\build\DreamSkin'
 }
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
   $OutputDirectory = Join-Path $scriptRoot '..\dist'
 }
 $package = [System.IO.Path]::GetFullPath($PackageRoot)
 $output = [System.IO.Path]::GetFullPath($OutputDirectory)
-$executable = Join-Path $package 'CodexDreamSkinManager.exe'
+$executable = Join-Path $package 'DreamSkin.exe'
 
 $requiredFiles = @(
-  'CodexDreamSkinManager.exe',
+  'DreamSkin.exe',
   'LICENSE',
   'THIRD_PARTY_NOTICES.md',
   'THIRD_PARTY\Codex-Dream-Skin\LICENSE',
@@ -48,7 +48,7 @@ if ($productVersion -ne $Version) {
 }
 
 New-Item -ItemType Directory -Force -Path $output | Out-Null
-$baseName = "CodexDreamSkinManager-v$Version-windows-x64-portable"
+$baseName = "DreamSkin-v$Version-windows-x64-portable"
 $archive = Join-Path $output "$baseName.zip"
 $checksum = Join-Path $output "$baseName.sha256"
 foreach ($path in @($archive, $checksum)) {

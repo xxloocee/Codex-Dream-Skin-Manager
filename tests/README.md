@@ -10,7 +10,9 @@
 npm run test:shared
 ```
 
-该命令编译共享核心，并运行 `shared-manager.test.mjs`、`shared-library-transactions.test.mjs` 和 `shared-library-worker.test.mjs`，覆盖协议、主题库事务与 worker 链路。
+该命令编译共享核心，并运行共享管理器、主题库事务、worker、透明度刷新、社区和更新清单测试，覆盖协议、主题操作、社区及签名更新链路。其中有 macOS/POSIX 场景，执行 Windows 限定验证时应按实际范围选择文件并筛选用例，不能把过滤的用例当作已通过。
+
+Dream Skin 品牌迁移的 Windows 限定命令、90 项正式回归结果及安装验证边界见 [品牌迁移验证记录](../docs/brand-migration-validation.md)。
 
 ## 平台运行时
 

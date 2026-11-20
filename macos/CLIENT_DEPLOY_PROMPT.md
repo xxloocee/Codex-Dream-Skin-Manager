@@ -1,11 +1,11 @@
 # macOS 应用交付说明
 
-当前交付物是包含 `Codex Dream Skin.app` 的 DMG，或签名更新通道的应用 ZIP。只分发完整应用；业务核心、平台引擎与 Node 均随应用打包。
+当前源码交付物是包含 `Dream Skin.app` 的 DMG，或应用 ZIP；签名更新 ZIP 为兼容旧客户端保留 `Codex Dream Skin.app` 内层目录。旧发布包的名字不会随源码修改。只分发完整应用；业务核心、平台引擎与 Node 均随应用打包。
 
 ## 给使用者
 
 1. 从项目 Releases 下载适合设备的 DMG，按发布的 SHA-256 核对下载文件。
-2. 将 `Codex Dream Skin.app` 拖入 Applications，退出旧版本管理器后再打开。不要在挂载的 DMG 上进行原地更新。
+2. 先退出旧版本管理器，再将 `Dream Skin.app` 放入 Applications 并替换原安装；旧应用叫 `Codex Dream Skin.app` 时不要同时保留两个入口。不要在挂载的 DMG 上进行原地更新，也不需要删除主题数据。
 3. 在共享主题库中选预设，或导入自己的图片、视频、`.cdskin` / 支持的 Mac ZIP 主题包。
 4. 调整参数并保存；点击应用才切换 Codex。需要重启 Codex 时先保存工作，再在界面确认。
 5. 暂停、继续和恢复原始外观均在管理器中完成。关闭窗口后可通过菜单栏或 Dock 重开；断线使用“重新连接”。

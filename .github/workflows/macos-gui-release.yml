@@ -42,19 +42,22 @@ jobs:
           echo "GUI_VERSION=$version" >> "$GITHUB_ENV"
       - name: Build universal shared manager
         run: |
-          DREAMSKIN_ARCHS='arm64 x86_64' bash macos/scripts/build-app.sh --output "$RUNNER_TEMP/package/Codex Dream Skin.app"
+          DREAMSKIN_ARCHS='arm64 x86_64' bash macos/scripts/build-app.sh --output "$RUNNER_TEMP/package/Dream Skin.app"
       - name: Package and sign update manifest
         run: |
           mkdir -p dist-gui
-          ditto -c -k --keepParent "$RUNNER_TEMP/package/Codex Dream Skin.app" "dist-gui/CodexDreamSkin-$GUI_VERSION-universal.zip"
-          cp "dist-gui/CodexDreamSkin-$GUI_VERSION-universal.zip" "dist-gui/CodexDreamSkin-$GUI_VERSION-arm64.zip"
-          cp "dist-gui/CodexDreamSkin-$GUI_VERSION-universal.zip" "dist-gui/CodexDreamSkin-$GUI_VERSION-x64.zip"
-          "$RUNNER_TEMP/package/Codex Dream Skin.app/Contents/Resources/runtime/node/node" macos/scripts/publish-gui-manifest.mjs "$GUI_VERSION" dist-gui
+          ditto -c -k --keepParent "$RUNNER_TEMP/package/Dream Skin.app" "dist-gui/DreamSkin-$GUI_VERSION-universal.zip"
+          # Signed update clients require the legacy archive and app root names.
+          mkdir -p "$RUNNER_TEMP/update-package"
+          ditto "$RUNNER_TEMP/package/Dream Skin.app" "$RUNNER_TEMP/update-package/Codex Dream Skin.app"
+          ditto -c -k --keepParent "$RUNNER_TEMP/update-package/Codex Dream Skin.app" "dist-gui/CodexDreamSkin-$GUI_VERSION-arm64.zip"
+          cp "dist-gui/CodexDreamSkin-$GUI_VERSION-arm64.zip" "dist-gui/CodexDreamSkin-$GUI_VERSION-x64.zip"
+          "$RUNNER_TEMP/package/Dream Skin.app/Contents/Resources/runtime/node/node" macos/scripts/publish-gui-manifest.mjs "$GUI_VERSION" dist-gui
       - name: Publish complete release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "gui-v$GUI_VERSION" dist-gui/* --target "$GITHUB_SHA" --title "Codex Dream Skin for Mac $GUI_VERSION" --notes "下载安装请选择 CodexDreamSkin-$GUI_VERSION-universal.zip，解压后应用名称为 Codex Dream Skin，支持苹果芯片和 Intel。主题数据单独存储并保留。" --latest=false
+          gh release create "gui-v$GUI_VERSION" dist-gui/* --target "$GITHUB_SHA" --title "Dream Skin for Mac $GUI_VERSION" --notes "下载安装请选择 DreamSkin-$GUI_VERSION-universal.zip，解压后应用名称为 Dream Skin，支持苹果芯片和 Intel。主题数据单独存储并保留。" --latest=false
       - name: Remove signing key
         if: always()
         run: rm -f "$RUNNER_TEMP/gui-signing-key.pem"

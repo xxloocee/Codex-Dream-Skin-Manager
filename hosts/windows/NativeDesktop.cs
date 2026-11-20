@@ -17,6 +17,7 @@ namespace DreamSkin.SharedHost
         private readonly Queue<JObject> intents = new Queue<JObject>();
         private readonly HashSet<string> notified = new HashSet<string>();
         private System.Windows.Forms.NotifyIcon notification;
+        private System.Drawing.Icon notificationIcon;
         internal NativeDesktop(Window window) { owner = window; }
         internal static string CommunityLink(string address)
         {
@@ -77,13 +78,14 @@ namespace DreamSkin.SharedHost
             if (method == "desktop.notifyUpdate") {
                 var channel = (string)authorized["channel"]; var version = (string)authorized["version"];
                 if (!Regex.IsMatch(version ?? "", @"\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\z") || !notified.Add(channel + ":" + version)) return new JObject { ["delivered"] = false };
-                notification?.Dispose(); notification = new System.Windows.Forms.NotifyIcon { Icon = System.Drawing.SystemIcons.Information, Visible = true, Text = "Dream Skin" };
+                notificationIcon = notificationIcon ?? System.Drawing.Icon.ExtractAssociatedIcon(System.Reflection.Assembly.GetExecutingAssembly().Location);
+                notification?.Dispose(); notification = new System.Windows.Forms.NotifyIcon { Icon = notificationIcon, Visible = true, Text = "Dream Skin" };
                 notification.BalloonTipClicked += (sender, args) => Navigate("settings", "updates");
                 notification.ShowBalloonTip(8000, "Dream Skin", ((string)Info()["resolvedLanguage"] == "zh-CN" ? "有新版本：" : "Update available: ") + version, System.Windows.Forms.ToolTipIcon.Info);
                 return new JObject { ["delivered"] = true };
             }
             throw new IOException();
         }
-        internal void Close() { notification?.Dispose(); }
+        internal void Close() { notification?.Dispose(); notificationIcon?.Dispose(); }
     }
 }

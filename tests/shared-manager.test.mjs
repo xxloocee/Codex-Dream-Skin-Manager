@@ -249,13 +249,13 @@ test("all 13 confirmation kinds bind to their method and invalid copy fully fall
     const actual = confirmationText("en-US", { method: methods[index], confirmation });
     assert.notEqual(actual.reason, confirmation.reason); assert.notEqual(actual.impact, confirmation.impact);
     if (copy.subject) assert.ok(actual.reason.includes("控制台"));
-    assert.equal(confirmationText("en-US", { method: "themes.copy", confirmation }), confirmation);
+    assert.deepEqual(confirmationText("en-US", { method: "themes.copy", confirmation }), { reason: "original reason", impact: "original impact" });
   });
   for (const copy of [undefined, { kind: "unknown" }, { kind: "deleteSaved" }, { kind: "applyRestart", subject: "bad" },
     { kind: "deleteSaved", subject: "ok", unexpected: true }, { kind: "deleteSaved", subject: "x".repeat(257) }]) {
     assert.equal(confirmationCopy(copy), undefined);
     const confirmation = { reason: "raw", impact: "raw impact", copy };
-    assert.equal(confirmationText("en-US", { method: "themes.delete", confirmation }), confirmation);
+    assert.deepEqual(confirmationText("en-US", { method: "themes.delete", confirmation }), { reason: "raw", impact: "raw impact" });
   }
 });
 

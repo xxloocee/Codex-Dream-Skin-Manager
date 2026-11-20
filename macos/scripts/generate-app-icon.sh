@@ -10,17 +10,8 @@ TMP="$(/usr/bin/mktemp -d /tmp/codex-dream-skin-icon.XXXXXX)"
 trap 'status=$?; /bin/rm -rf "$TMP"; exit "$status"' EXIT
 
 ICONSET="$TMP/DreamSkin.iconset"
-SOURCE="$TMP/icon-1024.png"
+SOURCE="$ROOT/../assets/branding/dream-skin.png"
 /bin/mkdir -p "$ICONSET" "$(dirname "$OUTPUT")"
-# No array here: expanding an empty array under `set -u` is fatal on the
-# /bin/bash 3.2 this shebang resolves to.
-if [ -n "${DREAMSKIN_SDK:-}" ]; then
-  /usr/bin/xcrun swift -sdk "$DREAMSKIN_SDK" \
-    "$ROOT/../hosts/macos/Tools/generate-icon.swift" "$SOURCE"
-else
-  /usr/bin/xcrun swift \
-    "$ROOT/../hosts/macos/Tools/generate-icon.swift" "$SOURCE"
-fi
 
 make_icon() {
   local pixels="$1"

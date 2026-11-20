@@ -210,7 +210,7 @@ test("Windows payload uses the same compiled Safe CSS cascade as macOS", async (
     const loaded = await loadPayload(themeDir);
     const captured = extractPayloadArguments(loaded.payload);
     assert.equal(loaded.safeCssStatus, "validated");
-    assert.match(captured.cssText, /@layer dreamskin-accessibility, dreamskin-community;/);
+    assert.match(captured.cssText, /@layer dreamskin-accessibility, dreamskin-community, dreamskin-surfaces;/);
     assert.match(captured.cssText, /@layer dreamskin-community\s*\{/);
     assert.ok(captured.cssText.includes("background-color: #123456 !important;"));
     assert.ok(captured.cssText.includes("background-image: none !important;"));

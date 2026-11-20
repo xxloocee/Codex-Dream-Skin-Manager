@@ -292,11 +292,27 @@ fs.rename=async function(from,to){ if(path.resolve(String(to))===target) throw n
   const recovery = { method: "library.recover", params: { operationId: identity(), transactionId: command.params.operationId, expectedRevision: entry.revision, action: "cleanupDeleted" } };
   const confirmed = await f.call("propose", [recovery]); await f.intent(recovery);
   // Intercept only the fixed recycle child-process boundary. Never call the real recycle helper.
-  const fakeTrash = path.join(f.root, "fake-trash");
-  const recycleHook = await f.hook(`import cp from 'node:child_process'; import fs from 'node:fs'; import {EventEmitter} from 'node:events'; import {syncBuiltinESMExports} from 'node:module';
-const original=cp.spawn; cp.spawn=function(exe,args,options){ if(args?.some(arg=>String(arg).endsWith('manager-trash.ps1'))){ fs.renameSync(${JSON.stringify(stage)},${JSON.stringify(fakeTrash)}); const child=new EventEmitter(); child.stdout=new EventEmitter(); child.stderr=new EventEmitter(); queueMicrotask(()=>{child.stdout.emit('data',Buffer.from('{"recycled":true}'));child.emit('close',0);}); return child; } return original(exe,args,options); }; syncBuiltinESMExports();`);
+  const fakeTrash = path.join(f.root, "fake-trash"), trashScript = path.join(f.app, "windows/scripts/manager-trash.ps1");
+  const recycleHook = await f.hook(String.raw`import cp from 'node:child_process'; import fs from 'node:fs'; import {EventEmitter} from 'node:events'; import {syncBuiltinESMExports} from 'node:module';
+const original = cp.spawn;
+cp.spawn = function(exe, args, options) {
+  const index = args?.indexOf('-EncodedCommand') ?? -1;
+  if (index >= 0) {
+    // Decode the PowerShell command, then its JSON payload; other scripts run normally.
+    const command = Buffer.from(args[index + 1], 'base64').toString('utf16le');
+    const payload = /FromBase64String\('([A-Za-z0-9+/=]+)'\)/.exec(command)?.[1];
+    if (payload && JSON.parse(Buffer.from(payload, 'base64').toString('utf8')).script === ${JSON.stringify(trashScript)}) {
+      fs.renameSync(${JSON.stringify(stage)}, ${JSON.stringify(fakeTrash)});
+      const child = new EventEmitter(); child.stdout = new EventEmitter(); child.stderr = new EventEmitter();
+      queueMicrotask(() => { child.stdout.emit('data', Buffer.from('{"recycled":true}')); child.emit('close', 0); });
+      return child;
+    }
+  }
+  return original(exe, args, options);
+};
+syncBuiltinESMExports();`);
   // The fixed helper must exist for the production safePath check, but is never executed.
-  await writeFile(path.join(f.app, "windows/scripts/manager-trash.ps1"), "throw 'Real recycle forbidden in fixture'\n");
+  await writeFile(trashScript, "throw 'Real recycle forbidden in fixture'\n");
   const recovered = await f.call("executeConfirmed", [recovery, confirmed.fingerprint], recycleHook);
   assert.equal(recovered.error, null); assert.equal(recovered.recoveryCompleted, true);
   assert.deepEqual(await readFile(path.join(fakeTrash, "removable.png")), removedMedia);

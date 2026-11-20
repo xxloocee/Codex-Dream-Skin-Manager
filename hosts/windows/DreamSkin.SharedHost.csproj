@@ -4,7 +4,9 @@
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages>
-    <LangVersion>latest</LangVersion><AssemblyName>CodexDreamSkinManager</AssemblyName>
+    <LangVersion>latest</LangVersion><AssemblyName>DreamSkin</AssemblyName>
+    <Product>Dream Skin</Product>
+    <Title>Dream Skin</Title>
     <ApplicationIcon>../../assets/CodexDreamSkinManager.ico</ApplicationIcon>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <RestoreLockedMode>true</RestoreLockedMode>

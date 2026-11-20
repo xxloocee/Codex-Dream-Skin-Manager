@@ -35,7 +35,7 @@ try {
   Write-InstallLog "用户已确认关闭安装目录内的管理器及后台进程：$root"
 
   # Stop task sources before finding their independent PowerShell workers.
-  foreach ($relative in @('CodexDreamSkinManager.exe', 'runtime\node\node.exe')) {
+  foreach ($relative in @('DreamSkin.exe', 'CodexDreamSkinManager.exe', 'runtime\node\node.exe')) {
     $executable = Join-Path $root $relative
     $name = [IO.Path]::GetFileName($executable)
     foreach ($entry in @(Get-CimInstance Win32_Process -Filter "Name = '$name'" | Where-Object {

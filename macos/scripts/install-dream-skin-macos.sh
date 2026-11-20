@@ -123,7 +123,7 @@ fi
 "$NODE" "$INJECTOR" --check-payload --theme-dir "$THEME_DIR" >/dev/null
 sync_appearance_pin
 
-printf 'Codex Dream Skin Studio %s installed at %s for Codex %s using Dream Skin bundled Node.js %s.\n' \
+printf 'Dream Skin %s installed at %s for Codex %s using Dream Skin bundled Node.js %s.\n' \
   "$SKIN_VERSION" "$PROJECT_ROOT" "$CODEX_VERSION" "$NODE_VERSION"
 printf 'Open the Dream Skin manager to customize, apply or restore a theme.\n'
 printf 'Bundled presets are ready in your theme library — pick one in the Dream Skin manager.\n'

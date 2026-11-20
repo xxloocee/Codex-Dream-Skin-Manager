@@ -5,7 +5,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-if (-not $OutputDirectory) { $OutputDirectory = Join-Path $root 'build\CodexDreamSkinManager' }
+if (-not $OutputDirectory) { $OutputDirectory = Join-Path $root 'build\DreamSkin' }
 $destination = [IO.Path]::GetFullPath($OutputDirectory)
 $buildRoot = [IO.Path]::GetFullPath((Join-Path $root 'build')).TrimEnd('\')
 if (-not $destination.StartsWith($buildRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Output must be inside the project build directory.' }

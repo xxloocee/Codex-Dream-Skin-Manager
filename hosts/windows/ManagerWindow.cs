@@ -27,7 +27,7 @@ namespace DreamSkin.SharedHost
         private bool closed;
         internal ManagerWindow(string applicationRoot)
         {
-            root = applicationRoot; Title = "Codex Dream Skin Manager"; Width = Math.Min(1400, SystemParameters.WorkArea.Width); Height = Math.Min(830, SystemParameters.WorkArea.Height); MinWidth = 820; MinHeight = 600;
+            root = applicationRoot; Title = "Dream Skin"; Width = Math.Min(1400, SystemParameters.WorkArea.Width); Height = Math.Min(830, SystemParameters.WorkArea.Height); MinWidth = 820; MinHeight = 600;
             Desktop = new NativeDesktop(this);
             sessionRoot = Path.Combine(Path.GetTempPath(), "DreamSkin-manager-" + Guid.NewGuid().ToString("N"));
             mediaDirectory = Path.Combine(sessionRoot, "media"); Directory.CreateDirectory(mediaDirectory);

@@ -125,7 +125,7 @@ function Reset-Fixture {
   $script:failLauncher = $false
 }
 function Assert-NoActiveAnnouncement {
-  if (@($script:messages | Where-Object { $_ -like 'Codex Dream Skin is active*' }).Count) {
+  if (@($script:messages | Where-Object { $_ -like 'Dream Skin is active*' }).Count) {
     throw 'Connection preparation falsely announced a running skin.'
   }
 }

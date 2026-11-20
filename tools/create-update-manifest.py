@@ -17,11 +17,16 @@ def main():
 
     base_url = "https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases"
     package_names = [
-        f"CodexDreamSkinManager-{args.tag}-windows-x64-setup.exe",
-        f"CodexDreamSkinManager-{args.tag}-windows-x64-portable.zip",
-        f"CodexDreamSkinManager-{args.tag}-macos-x64.dmg",
-        f"CodexDreamSkinManager-{args.tag}-macos-arm64.dmg",
+        f"DreamSkin-{args.tag}-windows-x64-setup.exe",
+        f"DreamSkin-{args.tag}-windows-x64-portable.zip",
+        f"DreamSkin-{args.tag}-macos-x64.dmg",
+        f"DreamSkin-{args.tag}-macos-arm64.dmg",
     ]
+    if any((args.directory / name).exists() for name in package_names):
+        # Older Windows clients select this exact installer name.
+        package_names.append(f"CodexDreamSkinManager-{args.tag}-windows-x64-setup.exe")
+    else:
+        package_names = [name.replace("DreamSkin-", "CodexDreamSkinManager-", 1) for name in package_names]
     # New releases also ship signed-updater archives. Keep accepting historical
     # four-package inputs so old manual-download manifests can still be rebuilt.
     update_names = [f"CodexDreamSkin-{args.tag[1:]}-{arch}.zip" for arch in ["arm64", "x64"]]

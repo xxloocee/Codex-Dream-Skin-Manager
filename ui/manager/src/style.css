@@ -715,17 +715,17 @@ small, .muted, .eyebrow {
   padding-left: 2px;
 }
 
-.brand-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: var(--brand-dot-radius);
-  background: var(--brand-primary);
-  box-shadow: 0 0 10px var(--brand-glow);
+.brand-mark {
+  display: block;
+  width: 28px;
+  height: 28px;
+  flex: none;
 }
 
-[data-ui-style="linear"] .brand-dot {
-  background: #f4f4f6;
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.35);
+.brand-mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .brand-text {
@@ -733,6 +733,29 @@ small, .muted, .eyebrow {
   font-weight: 700;
   letter-spacing: 0.11em;
   color: var(--text-primary);
+}
+
+.brand-text-dream,
+.brand-text-skin {
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.brand-text-dream {
+  background-image: linear-gradient(90deg, #1e1b4b, #4338ca);
+}
+
+.brand-text-skin {
+  background-image: linear-gradient(90deg, #7c3aed, #9333ea 50%, #ec4899);
+}
+
+[data-ui-style="linear"] .brand-text-dream {
+  background-image: linear-gradient(90deg, #a5b4fc, #c4b5fd);
+}
+
+[data-ui-style="linear"] .brand-text-skin {
+  background-image: linear-gradient(90deg, #a78bfa, #c084fc 50%, #f472b6);
 }
 
 /* Segmented Page Navigation */

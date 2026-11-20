@@ -60,10 +60,10 @@ jobs:
             throw "README current version does not match tag version ($version)."
           }
           $expectedAssets = @(
-            "CodexDreamSkinManager-v$version-windows-x64-setup.exe",
-            "CodexDreamSkinManager-v$version-windows-x64-portable.zip",
-            "CodexDreamSkinManager-v$version-macos-x64.dmg",
-            "CodexDreamSkinManager-v$version-macos-arm64.dmg",
+            "DreamSkin-v$version-windows-x64-setup.exe",
+            "DreamSkin-v$version-windows-x64-portable.zip",
+            "DreamSkin-v$version-macos-x64.dmg",
+            "DreamSkin-v$version-macos-arm64.dmg",
             'SHA256SUMS.txt'
           )
           foreach ($asset in $expectedAssets) {
@@ -212,8 +212,8 @@ jobs:
         run: |
           export DREAMSKIN_UPDATE_ARCHIVE="$PWD/macos/release/CodexDreamSkin-${RELEASE_VERSION}-${RELEASE_ARCH}.zip"
           NODE="$(command -v node)" bash macos/scripts/build-dmg.sh
-          mv "macos/release/CodexDreamSkin-v${RELEASE_VERSION}.dmg" \
-            "macos/release/CodexDreamSkinManager-v${RELEASE_VERSION}-macos-${RELEASE_ARCH}.dmg"
+          mv "macos/release/DreamSkin-v${RELEASE_VERSION}.dmg" \
+            "macos/release/DreamSkin-v${RELEASE_VERSION}-macos-${RELEASE_ARCH}.dmg"
 
       - name: Upload macOS release asset
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -258,11 +258,15 @@ jobs:
         env:
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
         run: |
-          expected=(
+          # Preserve the exact installer asset selected by older Windows clients.
+          cp "DreamSkin-v${RELEASE_VERSION}-windows-x64-setup.exe" \
             "CodexDreamSkinManager-v${RELEASE_VERSION}-windows-x64-setup.exe"
-            "CodexDreamSkinManager-v${RELEASE_VERSION}-windows-x64-portable.zip"
-            "CodexDreamSkinManager-v${RELEASE_VERSION}-macos-x64.dmg"
-            "CodexDreamSkinManager-v${RELEASE_VERSION}-macos-arm64.dmg"
+          expected=(
+            "DreamSkin-v${RELEASE_VERSION}-windows-x64-setup.exe"
+            "DreamSkin-v${RELEASE_VERSION}-windows-x64-portable.zip"
+            "DreamSkin-v${RELEASE_VERSION}-macos-x64.dmg"
+            "DreamSkin-v${RELEASE_VERSION}-macos-arm64.dmg"
+            "CodexDreamSkinManager-v${RELEASE_VERSION}-windows-x64-setup.exe"
             "CodexDreamSkin-${RELEASE_VERSION}-arm64.zip"
             "CodexDreamSkin-${RELEASE_VERSION}-x64.zip"
           )
@@ -301,13 +305,13 @@ jobs:
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
             gh release edit "$RELEASE_TAG" \
-              --title "Codex Dream Skin Manager v${RELEASE_VERSION}" \
+              --title "Dream Skin v${RELEASE_VERSION}" \
               --notes-file "$notes" \
               --repo "$GITHUB_REPOSITORY"
           else
             gh release create "$RELEASE_TAG" "${assets[@]}" \
               --verify-tag \
-              --title "Codex Dream Skin Manager v${RELEASE_VERSION}" \
+              --title "Dream Skin v${RELEASE_VERSION}" \
               --notes-file "$notes" \
               --repo "$GITHUB_REPOSITORY"
           fi

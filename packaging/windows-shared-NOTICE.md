@@ -1,4 +1,4 @@
-# Codex Dream Skin Manager — Windows components
+# Dream Skin — Windows components
 
 This package assembles the shared React interface, Node core, Windows WPF/WebView2 host and platform runtime from source. `shared-resource-inventory.json` describes managed resources; it is not a complete release or installation acceptance report.
 

@@ -41,7 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
         do {
             web = WKWebView(frame: .zero, configuration: config); web.navigationDelegate = self; web.uiDelegate = self
             window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1220, height: 820), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            window.title = "Codex Dream Skin"; window.minSize = NSSize(width: 820, height: 600); window.contentView = web
+            window.title = "Dream Skin"; window.minSize = NSSize(width: 820, height: 600); window.contentView = web
             window.delegate = self; window.center(); window.makeKeyAndOrderFront(nil)
             try startBackend()
             power = PowerState { [weak self] awake in
@@ -153,7 +153,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
         for (title, action, key) in [(desktop.text("复制", "Copy"), Selector(("copy:")), "c"), (desktop.text("粘贴", "Paste"), Selector(("paste:")), "v"), (desktop.text("剪切", "Cut"), Selector(("cut:")), "x"), (desktop.text("全选", "Select All"), Selector(("selectAll:")), "a")] { editing.addItem(NSMenuItem(title: title, action: action, keyEquivalent: key)) }
         main.addItem(edit)
         if statusItem == nil { statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength) }
-        statusItem?.button?.image = NSImage(systemSymbolName: "paintpalette", accessibilityDescription: "Dream Skin"); statusItem?.menu = menu.copy() as? NSMenu
+        let statusIcon = NSApp.applicationIconImage.copy() as? NSImage
+        statusIcon?.size = NSSize(width: 18, height: 18)
+        statusIcon?.isTemplate = false
+        statusItem?.button?.setAccessibilityLabel("Dream Skin")
+        statusItem?.button?.image = statusIcon; statusItem?.menu = menu.copy() as? NSMenu
     }
     @objc private func menuRoute(_ sender: NSMenuItem) { guard let target = sender.representedObject as? String else { return }; if target == "updates" || target == "maintenance" { route("settings", section: target) } else { route(target) } }
     @objc private func quitManager() { NSApp.terminate(nil) }

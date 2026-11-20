@@ -27,6 +27,7 @@ import type { ApplicationTarget } from "./ApplicationTarget";
 import { AppearancePanel } from "./ClaudeAppearancePanel";
 import { useAppearance } from "./useClaudeAppearance";
 import { LayoutGridIcon, CompassIcon, ImageIcon, SlidersIcon, PackageIcon, DownloadIcon, TrashIcon, SearchIcon, InfoIcon, XIcon } from "./Icons";
+import dreamSkinLogo from "../../../assets/branding/dream-skin.svg?raw";
 import "./style.css";
 
 type UiStyle = "cupertino" | "swiss" | "linear";
@@ -750,8 +751,9 @@ function App() {
         <header className="desktop-header">
           <div className="header-brand-nav">
             <div className="brand-logo">
-              <span className="brand-dot" />
-              <span className="brand-text">Dream Skin</span>
+              {/* Inline the bundled SVG so the brand works within the offline page's CSP. */}
+              <span className="brand-mark" aria-hidden="true" dangerouslySetInnerHTML={{ __html: dreamSkinLogo }} />
+              <span className="brand-text"><span className="brand-text-dream">Dream</span>{" "}<span className="brand-text-skin">Skin</span></span>
             </div>
 
             <nav className="page-navigation" aria-label={tr("管理器页面")}>
