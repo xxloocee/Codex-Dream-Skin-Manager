@@ -12,6 +12,8 @@ macOS 普通 DMG 未配置独立 GUI 签名通道时，原生管理器的手动�
 https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases/latest/download/update.json
 ```
 
+仓库现已更名为 [xxloocee/Dream-Skin](https://github.com/xxloocee/Dream-Skin)，公开文档与安装器支持链接使用新地址。上面的旧地址保留为更新协议身份：已安装客户端精确检查签名清单中的旧仓库 URL，网络层经 GitHub 重定向访问新仓库。`tools/create-update-manifest.py` 继续生成旧地址，两个 macOS 发布工作流也固定旧 `channel.repository`，避免旧版拒绝安装。不要在旧地址重新创建仓库，否则会破坏重定向；不要单独替换更新常量或签名清单 URL。公钥、签名/hash 校验及兼容附件名保持不变。
+
 ## macOS 签名更新的代理
 
 管理器的签名更新检查与安装包下载统一经 `macos/scripts/gui-update.sh` 启动。入口优先沿用显式的 `https_proxy` / `HTTPS_PROXY` / `http_proxy` / `HTTP_PROXY` 环境配置；没有这些配置时，使用 `scutil --proxy` 读取当前生效的 macOS 安全网页代理（HTTPSProxy / HTTPSPort），并在没有显式 `no_proxy` / `NO_PROXY` 时沿用系统排除主机列表。所有更新目标均为 HTTPS。
@@ -24,7 +26,7 @@ https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases/latest/download/up
 
 ## 数据格式
 
-Dream Skin 品牌迁移后，常规附件改为 `DreamSkin-v<版本>-…`。发布流程另提供同一 Windows 安装器的 `CodexDreamSkinManager-v<版本>-windows-x64-setup.exe` 兼容附件，并将其纳入 `SHA256SUMS.txt` 和签名 `update.json`，供旧更新器继续精确匹配。macOS 签名更新 ZIP 的外名与内部旧应用目录也保留。仓库地址、公钥、签名格式及版本规则不变，详见 [品牌迁移说明](dream-skin-migration.md)。
+Dream Skin 品牌迁移后，常规附件改为 `DreamSkin-v<版本>-…`。发布流程另提供同一 Windows 安装器的 `CodexDreamSkinManager-v<版本>-windows-x64-setup.exe` 兼容附件，并将其纳入 `SHA256SUMS.txt` 和签名 `update.json`，供旧更新器继续精确匹配。macOS 签名更新 ZIP 的外名与内部旧应用目录也保留。更新协议使用的仓库身份、公钥、签名格式及版本规则不变，详见 [品牌迁移说明](dream-skin-migration.md)。
 
 Windows 新旧更新器的附件选择、签名与 hash 兼容已通过本地隔离验证；这不代表生产 Release 的在线安装升级已经验收。命令与边界见 [品牌迁移验证记录](brand-migration-validation.md)，macOS 验证本轮暂缓。
 
@@ -62,7 +64,7 @@ Windows 包内 `updater/public-key.pem` 来自源码中的 `packaging/update-pub
 2. 导出公钥覆盖 `packaging/update-public-key.pem`：`openssl pkey -in update-private.pem -pubout -out packaging/update-public-key.pem`，并提交。
 3. 在 fork 仓库 Settings → Secrets 中配置 `DREAMSKIN_GUI_SIGNING_KEY`，值为私钥 PEM 全文。
 4. 本地可用 `DREAMSKIN_GUI_SIGNING_KEY_FILE=update-private.pem node tools/sign-update-manifest.mjs --check-key` 确认私钥与固定公钥匹配。
-5. 上述步骤只配置签名信任根。Fork 还须将 `platforms/updates.mts`、`windows/scripts/check-update.ps1`、`tools/create-update-manifest.py` 以及手动检查入口 `macos/scripts/check-update-macos.sh` 中的仓库地址改为自己的仓库；这些入口目前不会自动读取 `GITHUB_REPOSITORY`。否则 Windows 客户端仍请求上游清单，并因公钥不同而拒绝更新。
+5. 上述步骤只配置签名信任根。Fork 还须将 `platforms/updates.mts`、`windows/scripts/check-update.ps1`、`tools/create-update-manifest.py` 以及手动检查入口 `macos/scripts/check-update-macos.sh` 中的仓库地址改为自己的仓库；这些入口目前不会自动读取 `GITHUB_REPOSITORY`。同时修改 `.github/workflows/release.yml` 和 `.github/workflows/macos-gui-release.yml` 的 `DREAMSKIN_UPDATE_REPOSITORY`，两处上游为兼容旧客户端固定了旧仓库身份。否则客户端仍请求上游清单，并因公钥不同而拒绝更新。
 
 首个带签名清单的版本需要用户手动安装一次；之后才走验签更新。
 

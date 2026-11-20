@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 . "$ROOT/scripts/localization-macos.sh"
 VERSION_PATH="$ROOT/VERSION"
+# Keep the update identity shared with signed clients; GitHub redirects to Dream-Skin.
 REPOSITORY="xxloocee/Codex-Dream-Skin-Manager"
 RELEASE_URL="https://github.com/$REPOSITORY/releases/latest"
 UPDATE_MANIFEST_URL="$RELEASE_URL/download/update.json"

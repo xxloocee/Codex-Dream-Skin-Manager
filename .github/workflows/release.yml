@@ -207,7 +207,8 @@ jobs:
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
           DREAMSKIN_ARCHS: ${{ matrix.target }}
           RELEASE_ARCH: ${{ matrix.arch }}
-          DREAMSKIN_UPDATE_REPOSITORY: ${{ github.repository }}
+          # Keep the repository identity expected by installed signed updaters.
+          DREAMSKIN_UPDATE_REPOSITORY: xxloocee/Codex-Dream-Skin-Manager
           DREAMSKIN_UPDATE_TAG_PREFIX: v
         run: |
           export DREAMSKIN_UPDATE_ARCHIVE="$PWD/macos/release/CodexDreamSkin-${RELEASE_VERSION}-${RELEASE_ARCH}.zip"

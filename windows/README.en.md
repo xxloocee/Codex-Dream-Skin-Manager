@@ -2,7 +2,7 @@
 
 Open `DreamSkin.exe` to browse themes, import images or videos, edit appearance, and apply or restore skins. Windows and macOS share the React interface and Node business core; WPF/WebView2 provides the native window and file dialogs. Previously released packages retain their original executable name.
 
-Download the x64 installer or portable ZIP from [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases). The Dream Skin brand changes are complete in local source and the Windows build, but have not been officially released; published downloads retain their original names. Windows 10/11, .NET Framework 4.8 and WebView2 Evergreen Runtime are required. The package includes Node.js. Extract the complete portable package before opening the EXE. The installer creates shortcuts and registers `dreamskin://` links.
+Download the x64 installer or portable ZIP from [GitHub Releases](https://github.com/xxloocee/Dream-Skin/releases). The Dream Skin brand changes are complete in source and the local Windows build, but have not been officially released; published downloads retain their original names. Windows 10/11, .NET Framework 4.8 and WebView2 Evergreen Runtime are required. The package includes Node.js. Extract the complete portable package before opening the EXE. The installer creates shortcuts and registers `dreamskin://` links.
 
 Select a theme to preview it, then choose Apply. Importing or saving a theme alone does not change Codex. The manager asks before a required Codex restart. Pause, resume, reset and restore are available in the shared interface. Use Reconnect if the backend disconnects; accepted operations are not automatically replayed.
 

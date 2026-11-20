@@ -6,7 +6,7 @@
 
 ## 下载与安装
 
-当前版本：`3.3.2`。前往 [GitHub Releases](https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases) 下载对应安装包：
+当前版本：`3.3.2`。前往 [GitHub Releases](https://github.com/xxloocee/Dream-Skin/releases) 下载对应安装包：
 
 | 平台 | 系统要求 | 安装包 |
 | --- | --- | --- |

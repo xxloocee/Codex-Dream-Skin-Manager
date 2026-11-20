@@ -13,6 +13,7 @@ import { privateDirectory } from "../core/write-files.mjs";
 import { transactionProcess } from "./transaction-process.mjs";
 import { ManifestNetworkError, verifiedReleaseManifest, type VerifiedManifest } from "./update-manifest.mjs";
 
+// Stable signed-update identity; GitHub redirects transport to xxloocee/Dream-Skin.
 const repository = "xxloocee/Codex-Dream-Skin-Manager";
 const maxPackageBytes = 1024 * 1048576;
 const windowsUpdateErrors: Record<string, string> = {

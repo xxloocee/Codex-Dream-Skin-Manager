@@ -15,6 +15,7 @@ def main():
     if not re.fullmatch(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", args.tag):
         parser.error("The release tag must be a stable vMAJOR.MINOR.PATCH version.")
 
+    # Preserve exact signed URLs accepted by installed clients after the repo rename.
     base_url = "https://github.com/xxloocee/Codex-Dream-Skin-Manager/releases"
     package_names = [
         f"DreamSkin-{args.tag}-windows-x64-setup.exe",

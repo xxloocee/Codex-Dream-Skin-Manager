@@ -41,6 +41,9 @@ jobs:
           echo "DREAMSKIN_GUI_SIGNING_KEY_FILE=$RUNNER_TEMP/gui-signing-key.pem" >> "$GITHUB_ENV"
           echo "GUI_VERSION=$version" >> "$GITHUB_ENV"
       - name: Build universal shared manager
+        env:
+          # Keep the repository identity expected by installed signed updaters.
+          DREAMSKIN_UPDATE_REPOSITORY: xxloocee/Codex-Dream-Skin-Manager
         run: |
           DREAMSKIN_ARCHS='arm64 x86_64' bash macos/scripts/build-app.sh --output "$RUNNER_TEMP/package/Dream Skin.app"
       - name: Package and sign update manifest

@@ -8,6 +8,7 @@ param(
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+# Stable signed-update identity; GitHub redirects transport to xxloocee/Dream-Skin.
 $script:DreamSkinRepository = 'xxloocee/Codex-Dream-Skin-Manager'
 $script:DreamSkinUpdateManifestUrl = "https://github.com/$script:DreamSkinRepository/releases/latest/download/update.json"
 $script:DreamSkinReleasePage = "https://github.com/$script:DreamSkinRepository/releases/latest"

@@ -67,4 +67,12 @@ node --test --test-reporter=tap windows/tests/theme-schema-contract.test.mjs win
 - 全部客户端与图片、动图、H.264/HEVC 的真实解码、导入预览和播放交互。自动回归与用户的一次换肤反馈不等于这些场景均验收。
 - macOS 按用户要求暂缓；未运行该平台构建、测试或实机验收。
 
-尚未提交、推送、修改仓库名称或正式发布。历史数据、安装身份和主题协议继续按 [迁移文档](dream-skin-migration.md) 保留。
+后续已按用户授权提交推送品牌代码，并将仓库更名为 `xxloocee/Dream-Skin`；尚未正式发布。公开链接与本地远程地址已同步，更新协议继续使用旧仓库身份以兼容已安装客户端。历史数据、安装身份和主题协议继续按 [迁移文档](dream-skin-migration.md) 保留。
+
+## 仓库更名后的只读核对
+
+- GitHub 返回新仓库 `xxloocee/Dream-Skin`；经旧 API 地址读取同一仓库 ID `1305512422`。本地 `origin` 改为新地址，`upstream` 保留原上游。
+- 旧网页地址返回 301 到新仓库；生产 `verifiedReleaseManifest` 使用旧更新身份和固定公钥，经真实重定向读取现有 `v3.3.2` 清单与签名，验签通过。
+- 清单内发布页、安装器与校验清单仍为旧 URL；真实 `SHA256SUMS.txt` 中的安装器 hash 与已签名清单一致，旧安装器 URL 的 HEAD 跳转后返回 200。未下载或运行安装器。
+- 两个 macOS 发布工作流静态固定旧更新身份；未执行 macOS 构建或运行验收。独立审查核对更名差异，并补齐 Fork 的两处工作流配置说明。
+- 本机命令：`D:/DevTools/nvm/v22.22.2/node.exe build/brand-validation-20261120/repository-rename-live.mjs`。结果为同目录 `repository-rename-live-result.json`，`passed: true`。此结果证明现有发布资源读取与签名兼容，不替代未来新版的完整安装升级验收。
