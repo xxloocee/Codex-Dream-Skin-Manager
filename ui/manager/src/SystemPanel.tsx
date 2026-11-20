@@ -5,7 +5,6 @@ import type { UiMessage } from "./ui-message";
 import { useEffect, useRef, useState } from "react";
 import type { DesktopInfo, HelloResult, MaintenanceAction, MaintenanceInfo, MaintenanceOperation, MaintenanceProposal } from "../../../contracts/manager.mjs";
 import type { ManagerClient } from "./client";
-import { BridgeError } from "./client";
 import { preference, useCopy, copy } from "./desktop";
 
 const storage = "dreamskin.manager.maintenance";
@@ -18,9 +17,10 @@ export function SystemPanel({ client, hello, disabled, onBusy, info, onInfo, onC
   const t = useCopy(), [notice, setNotice] = useState<UiMessage>(""), [running, setRunning] = useState(false);
   const [maintenance, setMaintenance] = useState<MaintenanceInfo | null>(null), [proposal, setProposal] = useState<MaintenanceProposal | null>(null);
   const [ids, setIds] = useState<string[]>([]), [operations, setOperations] = useState<Record<string, MaintenanceOperation>>({});
+  const [queryFailed, setQueryFailed] = useState(false), [queryAttempt, setQueryAttempt] = useState(0);
   const working = useRef(false), alive = useRef(true), attempted = useRef(false), records = useRef<string[]>([]);
   const canMaintain = hello.capabilities.methods.includes("maintenance.inspect");
-  const latestId = ids.at(-1), active = latestId ? pending(operations[latestId]) : false;
+  const latestId = ids.at(-1), active = !queryFailed && (latestId ? pending(operations[latestId]) : false);
   useEffect(() => {
     alive.current = true;
     if (canMaintain) {
@@ -45,7 +45,7 @@ export function SystemPanel({ client, hello, disabled, onBusy, info, onInfo, onC
     const value = await client.call("maintenance.get", { operationId: id });
     if (alive.current) {
       setOperations(previous => ({ ...previous, [id]: value }));
-      if (records.current[records.current.length - 1] === id) onBusy(pending(value));
+      if (records.current[records.current.length - 1] === id) { setQueryFailed(false); onBusy(pending(value)); }
     }
     return value;
   }
@@ -60,14 +60,11 @@ export function SystemPanel({ client, hello, disabled, onBusy, info, onInfo, onC
       } catch (error) {
         if (cancelled || records.current[records.current.length - 1] !== id) return;
         setNotice(errorMessage(error, copy.maintenanceError[0]));
-        // A rejected submission has no journal. Other failures retain the
-        // current writer's busy state; old history never participates here.
-        if (error instanceof BridgeError && error.detail.code === "OPERATION_UNKNOWN") onBusy(false);
-        else timer = window.setTimeout(() => void query(), 5000);
+        setQueryFailed(true); onBusy(false);
       }
     };
     void query(); return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer); };
-  }, [client, latestId, canMaintain, onBusy]);
+  }, [client, latestId, canMaintain, onBusy, queryAttempt]);
   async function prepare(action: MaintenanceAction) {
     const value = await client.call("maintenance.prepare", { action });
     if (alive.current) { setProposal(value); attempted.current = false; }
@@ -76,19 +73,22 @@ export function SystemPanel({ client, hello, disabled, onBusy, info, onInfo, onC
     if (!proposal || attempted.current) return;
     const id = hello.backendSessionId + ":" + crypto.randomUUID(), next = [...records.current, id].slice(-16);
     sessionStorage.setItem(storage, JSON.stringify(next)); records.current = next;
-    attempted.current = true; onBusy(true);
+    attempted.current = true; setQueryFailed(false); onBusy(true);
     try {
       const value = await client.call("maintenance.execute", { operationId: id, handle: proposal.handle, accepted: true });
       if (alive.current) setOperations(previous => ({ ...previous, [id]: value }));
-    } finally { if (alive.current) setIds(next); }
+    } catch (error) { if (alive.current) { setQueryFailed(true); onBusy(false); } throw error; }
+    finally { if (alive.current) setIds(next); }
   }
   const locked = disabled || running || active;
-  return <section className="import-panel" id="system-information"><h2>{t("system")}</h2>
+  return <section className="import-panel" id="system-information"><h2 className="system-heading">{t("system")}</h2>
+    <div className="system-preferences">
     <label>{t("language")} <Select aria-label={t("language")} disabled={running || !info} value={info?.language ?? "system"}
       onChange={value => void run(async () => onInfo(await client.call("desktop.language", { language: preference(value) })), true)}
       options={[{ value: "system", label: t("follow") }, { value: "zh-CN", label: "中文" }, { value: "en-US", label: "English" }]} /></label>
-    <p>{t("login")}: {info ? t(info.login) : "—"}</p>
+    <div className="system-login"><p>{t("login")}: {info ? t(info.login) : "—"}</p>
     {info && info.login !== "unsupported" && <button disabled={locked || info.login === "unavailable"} onClick={() => void run(async () => onInfo(await client.call("desktop.login", { enabled: info.login !== "enabled" && info.login !== "requiresApproval" })))}>{t(info.login === "enabled" || info.login === "requiresApproval" ? "disable" : "enable")}</button>}
+    </div></div>
     <div className="actions">{(["themes", "images", "state", "website", "gallery", "studio"] as const).map(target => <button key={target} disabled={running} onClick={() => void run(async () => {
       const result = await client.call("desktop.open", { target }); if (!result.opened) setNotice(uiMessage(copy.systemError[0]));
     }, true)}>{t(target)}</button>)}
@@ -108,7 +108,7 @@ export function SystemPanel({ client, hello, disabled, onBusy, info, onInfo, onC
         return <li key={id}><p>{operation ? t(operation.state) : t("restoring")}</p>{operation?.error && <p className="error">{msg(diagnosticMessage(operation.error))}</p>}
           {operation?.state === "indeterminate" && <p className="notice">{t("unknown")}</p>}
           {operation?.state === "succeeded" && <p className="notice">{t("completed")}</p>}
-          <button disabled={running} onClick={() => void run(async () => { await read(id); }, true)}>{t("query")}</button>
+          <button disabled={running} onClick={() => void run(async () => { await read(id); setQueryAttempt(value => value + 1); }, true)}>{t("query")}</button>
         </li>;
       })}</ul></div>}
     </section>}

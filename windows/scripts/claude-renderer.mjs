@@ -396,7 +396,7 @@ function installClaudeStartupVideo(payload, loadVideo) {
   void loadVideo(payload, generation.signal, { loop: false, onEnded: () => finish(), onError: () => finish('failed') }).then(loaded => {
     if (disposed || finished) { loaded.dispose(); return; }
     media = loaded;
-    Object.assign(media.element.style, { position: 'absolute', width: '100%', height: '100%', objectFit: 'contain' });
+    Object.assign(media.element.style, { position: 'absolute', width: '100%', height: '100%', objectFit: 'cover' });
     overlay.prepend(media.element);
     ready = true; phase = 'playing';
   }, () => finish('failed'));

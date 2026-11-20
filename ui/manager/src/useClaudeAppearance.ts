@@ -1,7 +1,7 @@
 import { applicationNames } from "./ApplicationTarget";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppearanceOperation, AppearanceParameters, AppearanceSnapshot, AppearanceTarget, HelloResult, ThemeDetails, ThemeParameters, ThemeRef } from "../../../contracts/manager.mjs";
-import { BridgeError, ManagerClient } from "./client";
+import { ManagerClient } from "./client";
 import { diagnosticMessage, errorMessage, joinMessages, uiMessage, UiMessageError } from "./ui-message";
 import type { UiMessage } from "./ui-message";
 import { emptyParameters, previewParameters } from "./preview-model";
@@ -27,14 +27,14 @@ export function useAppearance(target: AppearanceTarget, client: ManagerClient | 
   const [operationError, setOperationError] = useState<UiMessage>("");
   const [submitting, setSubmitting] = useState(false), [saving, setSaving] = useState(false);
   const [operationRead, setOperationRead] = useState(0), [parametersRead, setParametersRead] = useState(0);
-  const [saved, setSaved] = useState<{ key: string; parameters: Partial<AppearanceParameters> } | null>(null);
+  const [saved, setSaved] = useState<{ ref: ThemeRef; parameters: Partial<AppearanceParameters> } | null>(null);
   const [parametersError, setParametersError] = useState<UiMessage>("");
   const statusEpoch = useRef(0), parameterEpoch = useRef(0), mutating = useRef(false);
   const statusJob = useRef<Promise<void> | null>(null);
   const themeKey = details ? identity(details) : null;
   const currentThemeKey = useRef(themeKey);
   currentThemeKey.current = themeKey;
-  const parametersReady = !!themeKey && saved?.key === themeKey;
+  const parametersReady = !!details && saved?.ref.source === details.ref.source && saved.ref.id === details.ref.id;
   const theme = useMemo(() => {
     if (!details || !parametersReady) return null;
     const storedParameters = { ...emptyParameters, ...saved!.parameters, accent: null, safeArea: null, taskMode: "full" as const };
@@ -69,10 +69,11 @@ export function useAppearance(target: AppearanceTarget, client: ManagerClient | 
   useEffect(() => {
     let active = true;
     const epoch = ++parameterEpoch.current;
-    setParametersError(""); setSaved(null);
+    // Reuse only this theme's parameters while a newer revision refreshes the current editor.
+    setParametersError("");
     if (client && parametersSupported && details) {
       void client.call(`${target}.parameters.get`, { theme: details.ref }).then(value => {
-        if (active && epoch === parameterEpoch.current) setSaved({ key: identity(details), parameters: value.parameters });
+        if (active && epoch === parameterEpoch.current) setSaved({ ref: details.ref, parameters: value.parameters });
       }).catch(error => { if (active && epoch === parameterEpoch.current) setParametersError(errorMessage(error, "读取参数失败，请重新选择主题。")); });
     }
     return () => { active = false; };
@@ -95,8 +96,6 @@ export function useAppearance(target: AppearanceTarget, client: ManagerClient | 
       } catch (error) {
         if (!active) return;
         setOperationError(errorMessage(error, "结果暂不确定，请刷新状态后核对；不会重复执行。"));
-        if (error instanceof BridgeError && error.detail.code === "OPERATION_UNKNOWN") { setOperation(null); sessionStorage.removeItem(storageKey); void refresh(); }
-        else timer = window.setTimeout(() => void poll(), 5000);
       }
     };
     void poll();
@@ -112,7 +111,7 @@ export function useAppearance(target: AppearanceTarget, client: ManagerClient | 
 
   const run = async (method: AppearanceOperation["method"], selectedTheme?: { ref: ThemeRef; revision: string; storedParameters?: Partial<ThemeParameters> }) => {
     if (!client || !hello?.capabilities.methods.includes(method)) throw new UiMessageError(uiMessage("当前管理器尚不支持此功能。"));
-    if (mutating.current || operation?.state === "running") throw new UiMessageError(uiMessage("请等待当前操作结束。"));
+    if (mutating.current) throw new UiMessageError(uiMessage("请等待当前操作结束。"));
     const id = `${hello.backendSessionId}:${crypto.randomUUID()}`;
     statusEpoch.current++; mutating.current = true;
     setSubmitting(true); setOperationError("");
@@ -144,18 +143,23 @@ export function useAppearance(target: AppearanceTarget, client: ManagerClient | 
   };
   const saveForTheme = async (selectedTheme: { ref: ThemeRef; revision: string }, parameters: Partial<ThemeParameters>) => {
     if (!client || !hello?.capabilities.methods.includes(`${target}.parameters.update`)) throw new UiMessageError(uiMessage("当前管理器尚不支持此功能。"));
-    if (mutating.current || operation?.state === "running") throw new UiMessageError(uiMessage("请等待当前操作结束。"));
+    if (mutating.current) throw new UiMessageError(uiMessage("请等待当前操作结束。"));
     const selected = !!details && identity(details) === identity(selectedTheme);
     statusEpoch.current++; mutating.current = true; setSaving(true);
     try {
       const value = await client.call(`${target}.parameters.update`, { theme: selectedTheme.ref, expectedRevision: selectedTheme.revision, parameters: appearanceParametersOnly(parameters) });
-      if (selected && currentThemeKey.current === identity(selectedTheme)) { parameterEpoch.current++; setSaved({ key: identity(selectedTheme), parameters: value.parameters }); setParametersError(""); }
+      if (selected && currentThemeKey.current === identity(selectedTheme)) { parameterEpoch.current++; setSaved({ ref: selectedTheme.ref, parameters: value.parameters }); setParametersError(""); }
       if (value.snapshot) { setSnapshot(value.snapshot); setStatusError(""); }
-      onNotice(value.refreshError ? joinMessages([uiMessage(`${applicationNames[target]} 参数已保存，当前显示更新失败。`), diagnosticMessage(value.refreshError)], " ") : uiMessage(`${applicationNames[target]} 参数已保存。`));
+      if (value.refreshError) {
+        const notice = joinMessages([uiMessage(`${applicationNames[target]} 参数已保存，当前显示更新失败。`), diagnosticMessage(value.refreshError)], " ");
+        onNotice(notice);
+        throw new UiMessageError(notice);
+      }
+      onNotice(uiMessage(`${applicationNames[target]} 参数已保存。`));
     } finally { statusEpoch.current++; mutating.current = false; setSaving(false); }
   };
   return { supported, snapshot, statusError, operation, operationError, parametersError, theme, parametersReady,
-    busy: submitting || saving || operation?.state === "running" || !!operationId && !operation && !operationError,
+    busy: submitting || saving || !operationError && (operation?.state === "running" || !!operationId && !operation),
     refresh, refreshParameters, run, saveForTheme, save: async (parameters: Partial<ThemeParameters>) => {
       if (!details) throw new UiMessageError(uiMessage("选择主题"));
       await saveForTheme(details, parameters);

@@ -526,8 +526,10 @@ export class ManagerService {
     const writerBusy = !!this.operations?.activeIds.length || !!this.updates?.busy || !!this.maintenance?.busy;
     const libraryBusy = writerBusy || !!this.claude?.capturing || !!this.dsh?.capturing || !!this.dshNext?.capturing;
     details.availability.apply = { allowed: !!this.operations && !writerBusy, reasonCode: !this.operations ? "METHOD_UNSUPPORTED" : writerBusy ? "BUSY" : null };
-    details.availability.update = details.availability.copy = { allowed: !!this.operations && !!this.library && !libraryBusy,
-      reasonCode: !this.operations || !this.library ? "METHOD_UNSUPPORTED" : libraryBusy ? "BUSY" : null };
+    // Details outlive the current write. Contention is checked when a new edit
+    // is submitted, rather than cached as a persistent editor restriction.
+    details.availability.update = details.availability.copy = { allowed: !!this.operations && !!this.library,
+      reasonCode: !this.operations || !this.library ? "METHOD_UNSUPPORTED" : null };
     // This affordance permits requesting deletion checks, not deletion itself.
     // Full runtime/tree protection and confirmation belong to proposeLibrary;
     // running that preflight for every selection would block the preview queue.

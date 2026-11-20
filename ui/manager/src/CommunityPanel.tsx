@@ -7,11 +7,11 @@ import { ConfirmationDialog } from "./ConfirmationDialog";
 import { diagnosticMessage, errorMessage, joinMessages, uiMessage, UiMessageError } from "./ui-message";
 import type { UiMessage } from "./ui-message";
 import { communityCompatibilityMessages, mergeCommunityCompatibility } from "./community-compatibility";
+import { importRefused } from "./import-operations";
 
 export interface CommunityActionRequest { id: string; version: string; action: "download" | "apply"; application: ApplicationTarget; compatibility?: CommunityCompatibility }
 export interface CommunityDownloadUpdate { version: string; downloaded: CommunityLocalTheme | null }
 const receiptsKey = "dreamskin.manager.community", operationKey = "dreamskin.manager.operation";
-const pending = (value: OperationSnapshot | null) => !!value && ["queued", "running", "awaitingConfirmation"].includes(value.state);
 
 export function CommunityPanel({ client, hello, busy, canApply, incoming, request, onConsume, onConsumeRequest, onBusy, onOperation, onIntent, onSaved, onDownloadState, onNotice, onApplyTheme }: {
   client: ManagerClient; hello: HelloResult; busy: boolean; canApply: boolean; incoming: (DesktopIntent & { application: ApplicationTarget }) | null; request: CommunityActionRequest | null;
@@ -24,13 +24,10 @@ export function CommunityPanel({ client, hello, busy, canApply, incoming, reques
   const [link, setLink] = useState(""), [proposal, setProposal] = useState<CommunityProposal | null>(null);
   const [compatibility, setCompatibility] = useState<CommunityCompatibility>();
   const [notice, setNotice] = useState<UiMessage>(""), [running, setRunning] = useState(false), [reading, setReading] = useState(false);
-  const [operation, setOperation] = useState<OperationSnapshot | null>(null);
   const [linkApplication, setLinkApplication] = useState<ApplicationTarget>("codex");
-  const alive = useRef(true), working = useRef(false), sequence = useRef(0), operationId = useRef("");
+  const alive = useRef(true), working = useRef(false), sequence = useRef(0);
+  const pendingImports = useRef(new Map<string, string>());
   useEffect(() => { alive.current = true; return () => { alive.current = false; sequence.current++; }; }, [client]);
-  useEffect(() => client.onEvent(event => {
-    if (event.event === "operation.changed" && event.operation.id === operationId.current) setOperation(event.operation);
-  }), [client]);
   useEffect(() => {
     if (!incoming?.link || busy || working.current || link || request) return;
     setLink(incoming.link); setLinkApplication(incoming.application); onConsume(incoming.id); void inspect(incoming.link, true);
@@ -44,7 +41,7 @@ export function CommunityPanel({ client, hello, busy, canApply, incoming, reques
   async function action(work: () => Promise<void>) {
     if (busy || working.current) return;
     sequence.current++; setReading(false);
-    working.current = true; setRunning(true); onBusy(true); setOperation(null); operationId.current = ""; tell("");
+    working.current = true; setRunning(true); onBusy(true); tell("");
     try { await work(); }
     catch (error) { tell(errorMessage(error, "社区操作未完成。")); }
     finally { working.current = false; if (alive.current) { setRunning(false); onBusy(false); } }
@@ -67,12 +64,12 @@ export function CommunityPanel({ client, hello, busy, canApply, incoming, reques
     const saved: unknown = JSON.parse(sessionStorage.getItem(receiptsKey) ?? "[]");
     const id = `${hello.backendSessionId}:${crypto.randomUUID()}`;
     sessionStorage.setItem(receiptsKey, JSON.stringify([...(Array.isArray(saved) ? saved.slice(-31) : []), { id, kind }]));
-    sessionStorage.setItem(operationKey, id); operationId.current = id; return id;
+    sessionStorage.setItem(operationKey, id); return id;
   }
   async function track(value: OperationSnapshot) {
     const deadline = Date.now() + 180000;
     while (alive.current) {
-      setOperation(value); onOperation(value);
+      onOperation(value);
       if (!["queued", "running"].includes(value.state)) return value;
       if (Date.now() >= deadline) throw new UiMessageError(uiMessage("处理仍在继续，稍后核对结果；不会重复提交。"));
       await new Promise<void>(resolve => window.setTimeout(resolve, 1500));
@@ -84,6 +81,14 @@ export function CommunityPanel({ client, hello, busy, canApply, incoming, reques
     if (action === "apply" && (!canApply || !hello.capabilities.methods.includes(application === "codex" ? "skin.apply" : `${application}.apply`))) return;
     let declaration = declared ?? (proposal?.metadata.id === version ? mergeCommunityCompatibility({ applyCompatible: proposal.metadata.applyCompatible }, proposal.metadata.compatibility) : undefined);
     const report = (value: UiMessage) => tell(joinMessages([value, ...communityCompatibilityMessages(declaration, hello.platform, hello.versions.application)], " "));
+    const previousId = pendingImports.current.get(version);
+    if (previousId) {
+      const previous = await client.call("operations.get", { operationId: previousId });
+      const saved = await track(previous);
+      if (["succeeded", "failed", "cancelled"].includes(saved.state)) pendingImports.current.delete(version);
+      if (saved.state !== "succeeded") throw new UiMessageError(saved.error ? diagnosticMessage(saved.error) : uiMessage("社区主题下载未确认完成，请核对操作结果。"));
+      onSaved();
+    }
     let local = await client.call("community.local", { version });
     declaration = mergeCommunityCompatibility(declaration, local?.compatibility); setCompatibility(declaration);
     onDownloadState(version, local);
@@ -99,9 +104,12 @@ export function CommunityPanel({ client, hello, busy, canApply, incoming, reques
       report(uiMessage("正在下载社区主题…"));
       try {
         const id = remember("import"); let initial: OperationSnapshot;
+        pendingImports.current.set(version, id);
         try { initial = await client.call("community.import", { operationId: id, handle: download.source.handle }); }
+        catch (error) { if (importRefused(error)) pendingImports.current.delete(version); throw error; }
         finally { if (alive.current) onIntent(id); }
         const saved = await track(initial);
+        if (["succeeded", "failed", "cancelled"].includes(saved.state)) pendingImports.current.delete(version);
         if (saved.state !== "succeeded" || !saved.resultTheme || !saved.resultRevision) {
           report(saved.error ? diagnosticMessage(saved.error) : uiMessage("社区主题下载未确认完成，请核对操作结果。")); return;
         }
@@ -117,26 +125,25 @@ export function CommunityPanel({ client, hello, busy, canApply, incoming, reques
       report(applied.error ? diagnosticMessage(applied.error) : uiMessage(applied.state === "succeeded" ? applied.snapshot.renderer === "applied" ?
         "社区主题已应用并核验。" : "操作已完成，请刷新确认当前外观。" : "结果待核对"));
     } else {
-      operationId.current = applied.id;
       const result = await track(applied);
       if (result.state !== "awaitingConfirmation") report(result.error ? diagnosticMessage(result.error) : uiMessage(result.state === "succeeded" ? result.effects.rendererApplied === true ?
         "社区主题已应用并核验。" : "操作已完成，请刷新确认当前外观。" : "社区主题已下载，应用未完成；请核对当前外观。"));
     }
   }
   function close() {
-    if (working.current || pending(operation)) return;
-    sequence.current++; setReading(false); setLink(""); setProposal(null); setCompatibility(undefined); setNotice(""); setOperation(null);
+    if (working.current) return;
+    sequence.current++; setReading(false); setLink(""); setProposal(null); setCompatibility(undefined); setNotice("");
   }
   if (!link) return null;
-  const locked = busy || running || pending(operation), version = /^dreamskin:\/\/apply\?version=(ver_[a-z0-9]{8,64})$/.exec(link)?.[1];
+  const locked = busy || running, version = /^dreamskin:\/\/apply\?version=(ver_[a-z0-9]{8,64})$/.exec(link)?.[1];
   return <ConfirmationDialog title={tr("社区主题")} onCancel={close}><section className="community-panel"><h2>{tr("社区主题")}</h2>
-    {proposal && <><h3>{proposal.metadata.name}</h3><p>{proposal.metadata.authorDisplayName} · {proposal.metadata.version}</p><p>{tr("许可")}：{proposal.metadata.license}</p></>}
+    {proposal && <div className="community-proposal"><h3>{proposal.metadata.name}</h3><p>{proposal.metadata.authorDisplayName} · {proposal.metadata.version}</p><p>{tr("许可")}：{proposal.metadata.license}</p></div>}
     {communityCompatibilityMessages(compatibility, hello.platform, hello.versions.application).map((value, index) => <p className="muted" key={index}>{msg(value)}</p>)}
     <p className="muted">{tr("未下载时会先下载并应用；已下载时直接应用本地副本。")}</p>
     <div className="editor-actions"><button className="primary" disabled={locked || !canApply || !hello.capabilities.methods.includes(linkApplication === "codex" ? "skin.apply" : `${linkApplication}.apply`) || !version} onClick={() => { if (version) void action(() => install(version, "apply", linkApplication)); }}>{tr(`应用到 ${applicationNames[linkApplication]}`)}</button>
       <button disabled={locked || !version} onClick={() => { if (version) void action(() => install(version, "download", linkApplication)); }}>{tr("下载主题")}</button>
       {!running && <button disabled={locked || reading} onClick={() => void inspect()}>{tr("重新读取主题信息")}</button>}</div>
     {notice && <p className="notice" role="status">{msg(notice)}</p>}
-    <div className="editor-actions"><button disabled={running || pending(operation)} onClick={close}>{tr("关闭")}</button></div>
+    <div className="editor-actions"><button disabled={running} onClick={close}>{tr("关闭")}</button></div>
   </section></ConfirmationDialog>;
 }

@@ -8,6 +8,7 @@ import { ManagerClient } from "./client";
 import { MediaPreview } from "./MediaPreview";
 import { previewParameters } from "./preview-model";
 import { Select } from "./Select";
+import { importRefused } from "./import-operations";
 
 const receiptsKey = "dreamskin.manager.packages", operationKey = "dreamskin.manager.operation";
 const text = (error: unknown) => errorMessage(error, "主题包操作未完成。");
@@ -28,7 +29,7 @@ function PackagePreview({ client, source, visible }: { client: ManagerClient; so
   }, [client, source, attempt, visible]);
   return <div className="import-editor"><MediaPreview client={client} target={{ kind: "package", handle: source.handle }} name={details?.name ?? source.name}
     parameters={details ? previewParameters(details.storedParameters) : null} visible={visible} mediaKind="unknown" />
-    <div>{error && <p className="error" role="alert">{msg(error)}<button onClick={() => retry(value => value + 1)}>{tr("重新读取包信息")}</button></p>}
+    <div className="package-preview-details">{error && <p className="error" role="alert">{msg(error)}<button onClick={() => retry(value => value + 1)}>{tr("重新读取包信息")}</button></p>}
       {details && <><h3>{details.name}</h3><p className="muted">{details.format === "cdskin" ? tr("通用 .cdskin") : details.format === "official" ? tr("Mac 官方格式 ZIP") : tr("Mac 简化 ZIP")} · {details.storageCategory} · {details.tags.join(" / ") || tr("无标签")}</p>
         <p className="muted">{details.hasCss ? tr("含 Safe CSS") : tr("无附加 CSS")}{tr("。此处只预览素材；实际背景与样式需应用后核验。")}</p>
         {details.format === "official" && <p className="notice">{tr("格式校验不代表发布者身份已确认。")}{details.signatureIgnored ? tr("包中签名未验证。") : tr("此包没有已验证的签名。")}</p>}
@@ -44,7 +45,7 @@ export function PackagePanel({ client, hello, busy, visible, selectionRequest = 
   const tr = useText(), msg = useMessage();
   const [sources, setSources] = useState<SourceGrant[]>([]), [selected, setSelected] = useState("");
   const [results, setResults] = useState<ResultRow[]>([]), [notice, setNotice] = useState<UiMessage>(""), [running, setRunning] = useState(false);
-  const alive = useRef(true), activeRun = useRef(false), stop = useRef(false), attempted = useRef(new Set<string>()), receipts = useRef<Receipt[]>([]);
+  const alive = useRef(true), activeRun = useRef(false), stop = useRef(false), attempted = useRef(new Map<string, string>()), receipts = useRef<Receipt[]>([]);
   const source = sources.find(value => value.handle === selected);
   const handledSelection = useRef(0);
   useEffect(() => {
@@ -54,12 +55,17 @@ export function PackagePanel({ client, hello, busy, visible, selectionRequest = 
   }, [selectionRequest, visible, busy]);
   function update(row: ResultRow) { if (alive.current) setResults(previous => [...previous.filter(value => value.id !== row.id), row]); }
   async function track(row: Receipt, initial?: OperationSnapshot, announce = true): Promise<OperationSnapshot> {
+    const deadline = Date.now() + 180000;
     let value = initial ?? await client.call("operations.get", { operationId: row.id });
     while (true) {
       if (!alive.current) throw new UiMessageError(uiMessage("窗口已关闭；已接受的导入继续完成。"));
+      if (value.state === "failed" || value.state === "cancelled") {
+        for (const [handle, id] of attempted.current) if (id === row.id) attempted.current.delete(handle);
+      }
       update({ ...row, operation: value }); if (announce) onOperation(value);
       if (!pending(value)) return value;
-      await new Promise<void>(resolve => window.setTimeout(resolve, 1500)); value = await client.call("operations.get", { operationId: row.id });
+      if (Date.now() >= deadline) throw new UiMessageError(uiMessage("导入仍在处理，请稍后核对主题库；不会重复提交。"));
+      await new Promise<void>(resolve => window.setTimeout(resolve, 1500)); value = await client.call("operations.get", { operationId: row.id }, deadline);
     }
   }
   useEffect(() => {
@@ -101,11 +107,17 @@ export function PackagePanel({ client, hello, busy, visible, selectionRequest = 
     const row: Receipt = { name: value.name, id: `${hello.backendSessionId}:${crypto.randomUUID()}` };
     receipts.current = [...receipts.current, row].slice(-32);
     sessionStorage.setItem(receiptsKey, JSON.stringify(receipts.current)); sessionStorage.setItem(operationKey, row.id);
-    attempted.current.add(value.handle); update(row);
+    attempted.current.set(value.handle, row.id); update(row);
+    let accepted = false;
     try {
       const initial = await client.call("themes.importPackage", { operationId: row.id, handle: value.handle });
+      accepted = true;
       const result = await track(row, initial); if (result.state === "succeeded") onSaved(); return result;
-    } catch (error) { update({ ...row, error: uiMessage(" 未自动重试，请查询此操作。", undefined, { before: text(error) }) }); throw error; }
+    } catch (error) {
+      const refused = !accepted && importRefused(error);
+      if (refused) attempted.current.delete(value.handle);
+      update({ ...row, error: refused ? text(error) : uiMessage(" 未自动重试，请查询此操作。", undefined, { before: text(error) }) }); throw error;
+    }
   }
   async function run(batch: boolean) {
     if (busy || activeRun.current || (!batch && !source)) return;
@@ -125,19 +137,19 @@ export function PackagePanel({ client, hello, busy, visible, selectionRequest = 
     const handles = sources.map(value => value.handle); setSources([]); setSelected(""); attempted.current.clear();
     try { if (handles.length) await client.call("packages.release", { handles }); } catch (error) { if (alive.current) setNotice(text(error)); }
   }
-  return <section className="import-panel" aria-label={tr("主题包导入")}><h2>{tr("导入主题包")}</h2>
-    <p className="muted">{tr("支持 .cdskin{mac}，单包最多 160 MiB，每次最多 32 项。样式与许可证随包保留。", { mac: hello.platform === "macos" ? tr(" 和 Mac ZIP") : "" })}</p>
-    <div className="editor-actions"><button disabled={busy || running} onClick={() => void choose()}>{tr("选择主题包")}</button>
-      <button disabled={busy || running || !source || attempted.current.has(source.handle)} onClick={() => void run(false)}>{tr("导入当前包")}</button>
+  return <section className="import-panel package-panel" aria-label={tr("主题包导入")}><div className="package-heading"><h2>{tr("导入主题包")}</h2>
+    <p className="muted">{tr("支持 .cdskin{mac}，单包最多 160 MiB，每次最多 32 项。样式与许可证随包保留。", { mac: hello.platform === "macos" ? tr(" 和 Mac ZIP") : "" })}</p></div>
+    <div className="editor-actions package-actions"><button disabled={busy || running} onClick={() => void choose()}>{tr("选择主题包")}</button>
+      <button className="primary" disabled={busy || running || !source || attempted.current.has(source.handle)} onClick={() => void run(false)}>{tr("导入当前包")}</button>
       <button disabled={busy || running || !sources.some(value => !attempted.current.has(value.handle))} onClick={() => void run(true)}>{tr("逐项导入全部（自动去重）")}</button>
       <button disabled={!running} onClick={() => { stop.current = true; setNotice(uiMessage("将在当前项结束后停止，已接受任务继续完成。")); }}>{tr("停止后续导入")}</button>
       <button disabled={busy || running || !sources.length} onClick={() => void clear()}>{tr("清除选择")}</button></div>
     {notice && <p className="notice" role="status">{msg(notice)}</p>}
-    {!!sources.length && <label>{tr("查看包")} <Select aria-label={tr("查看包")} disabled={busy || running} value={selected}
+    {!!sources.length && <label className="package-picker">{tr("查看包")} <Select aria-label={tr("查看包")} disabled={busy || running} value={selected}
       onChange={setSelected} options={sources.map(value => ({ value: value.handle, label: value.name }))} /></label>}
     {source && <PackagePreview key={source.handle} client={client} source={source} visible={visible} />}
-    {!!results.length && <ul className="import-results" aria-label={tr("主题包逐项结果")}>{results.map(row => <li key={row.id}><strong>{row.name}</strong> · {row.error ? msg(row.error) : (row.operation ? row.operation.disposition === "duplicate" ? tr("内容与许可相同，返回已有主题") : tr(states[row.operation.state]) : tr("正在查询"))}
-      {row.operation?.error && <p className="muted">{msg(diagnosticMessage(row.operation.error))}</p>}{row.operation?.resultTheme && <small>{row.operation.resultTheme.id}</small>}
+    {!!results.length && <ul className="import-results package-results" aria-label={tr("主题包逐项结果")}>{results.map(row => <li key={row.id}><div className="package-result-copy"><strong>{row.name}</strong> · {row.error ? msg(row.error) : (row.operation ? row.operation.disposition === "duplicate" ? tr("内容与许可相同，返回已有主题") : tr(states[row.operation.state]) : tr("正在查询"))}
+      {row.operation?.error && <p className="muted">{msg(diagnosticMessage(row.operation.error))}</p>}{row.operation?.resultTheme && <small>{row.operation.resultTheme.id}</small>}</div>
       <button disabled={running} onClick={() => { void track(row, undefined, false).catch(error => update({ ...row, error: text(error) })); }}>{tr("查询记录")}</button></li>)}</ul>}
   </section>;
 }

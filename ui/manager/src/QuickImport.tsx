@@ -4,7 +4,7 @@ import type { ManagerClient } from "./client";
 import type { UiMessage } from "./ui-message";
 import { diagnosticMessage, errorMessage, joinMessages, uiMessage } from "./ui-message";
 import { importParameters } from "./preview-model";
-import { rememberImport, sourceName, trackImport } from "./import-operations";
+import { importRefused, rememberImport, sourceName, trackImport } from "./import-operations";
 import { useText } from "./desktop";
 
 // A console command, independent of the single-theme import draft.
@@ -39,6 +39,7 @@ export function QuickImport({ client, hello, request, busy, onBusy, onOperation,
         let initial: OperationSnapshot;
         try { initial = packages ? await client.call("themes.importPackage", { operationId: id, handle: source.handle })
           : await client.call("themes.create", { operationId: id, handle: source.handle, name: sourceName(source), patch: { parameters: importParameters } }); }
+        catch (error) { if (importRefused(error)) releasable.add(source.handle); throw error; }
         finally { if (alive.current) onIntent(id); }
         const result = await trackImport(client, initial, () => alive.current, onOperation);
         if (result.state === "indeterminate") { stop.current = true; failures.push(uiMessage("{name}：{detail}", { name: source.name, detail: result.error ? diagnosticMessage(result.error) : { key: "结果待核对" } })); break; }

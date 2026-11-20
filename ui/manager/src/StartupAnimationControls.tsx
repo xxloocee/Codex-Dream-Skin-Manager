@@ -5,13 +5,27 @@ import type { ManagerClient } from "./client";
 import { useMessage, useText } from "./desktop";
 import { errorMessage, joinMessages, uiMessage } from "./ui-message";
 import type { UiMessage } from "./ui-message";
+import { FilmIcon } from "./Icons";
 
-export function StartupAnimationControls({ client, theme, busy, application = "codex", onBusy }: { client: ManagerClient; theme: ThemeDetails | null; busy: boolean; application?: ApplicationTarget; onBusy?: ((value: boolean) => void) | undefined }) {
+export function StartupAnimationControls({
+  client,
+  theme,
+  busy,
+  application = "codex",
+  onBusy,
+}: {
+  client: ManagerClient;
+  theme: ThemeDetails | null;
+  busy: boolean;
+  application?: ApplicationTarget | undefined;
+  onBusy?: ((value: boolean) => void) | undefined;
+}) {
   const tr = useText(), msg = useMessage();
   const [settings, setSettings] = useState<StartupAnimationSettings | null>(null);
   const [saving, setSaving] = useState(false), [error, setError] = useState<UiMessage>("");
   const current = useRef({ client, application }), writing = useRef(false);
   current.current = { client, application };
+
   useEffect(() => {
     let active = true;
     setSettings(null); setError("");
@@ -19,6 +33,7 @@ export function StartupAnimationControls({ client, theme, busy, application = "c
       .catch(error => { if (active) setError(errorMessage(error, "启动动画设置未能读取。")); });
     return () => { active = false; };
   }, [client, application]);
+
   async function update(params: StartupAnimationUpdate) {
     if (writing.current || busy || !settings) return;
     writing.current = true; setSaving(true); onBusy?.(true); setError("");
@@ -40,21 +55,68 @@ export function StartupAnimationControls({ client, theme, busy, application = "c
         }
       }
       if (current.current.client === client && current.current.application === application) setError(notice);
+    } finally {
+      writing.current = false;
+      onBusy?.(false);
+      if (current.current.client === client && current.current.application === application) setSaving(false);
     }
-    finally { writing.current = false; onBusy?.(false); if (current.current.client === client && current.current.application === application) setSaving(false); }
   }
+
   const selected = !!theme && settings?.theme?.source === theme.ref.source && settings.theme.id === theme.ref.id;
+  const isEnabled = settings?.enabled ?? false;
   const locked = busy || saving || !settings;
-  return <section aria-label={tr("启动动画")}>
-    <h3>{tr("启动动画")}</h3>
-    <label><input type="checkbox" checked={settings?.enabled ?? false} disabled={locked}
-      onChange={event => void update({ enabled: event.target.checked })} />{tr("启用启动动画")}</label>
-    {settings && <p className="muted">{tr("当前动画")}：{settings.themeName ?? tr("内置默认动画")}</p>}
-    <div className="dashboard-actions">
-      <button disabled={locked || theme?.mediaKind !== "video" || selected} title={theme?.mediaKind !== "video" ? tr("请选择视频主题") : undefined}
-        onClick={() => { if (theme) void update({ theme: theme.ref, expectedRevision: theme.revision }); }}>{tr(selected ? "已设为启动动画" : "设为启动动画")}</button>
-      <button disabled={locked || !settings?.theme} onClick={() => void update({ theme: null })}>{tr("恢复默认动画")}</button>
-    </div>
-    {error && <p className="notice" role="status">{msg(error)}</p>}
-  </section>;
+  const isVideo = theme?.mediaKind === "video";
+
+  return (
+    <section className="startup-capsule" aria-label={tr("启动动画")}>
+      <div className="startup-capsule-row">
+        <div className="startup-info-left">
+          <FilmIcon className="startup-icon" />
+          <span className="startup-label">{tr("启动动画")}</span>
+          <span className="startup-current-name" title={settings ? settings.themeName ?? tr("内置默认动画") : undefined}>
+            {settings ? settings.themeName ?? tr("内置默认动画") : tr("正在读取…")}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={isEnabled}
+          aria-label={tr("启用启动动画")}
+          disabled={locked}
+          className={`switch-toggle ${isEnabled ? "on" : "off"}`}
+          onClick={() => void update({ enabled: !isEnabled })}
+          title={tr(isEnabled ? "点击关闭启动动画" : "点击开启启动动画")}
+        >
+          <span className="switch-thumb" />
+        </button>
+      </div>
+
+      {(isVideo || !!settings?.theme) && (
+        <div className="startup-action-row">
+          <button
+            type="button"
+            className="btn-tiny"
+            disabled={locked || !isVideo || selected}
+            title={!isVideo ? tr("请选择视频主题") : undefined}
+            onClick={() => { if (theme && isVideo) void update({ theme: theme.ref, expectedRevision: theme.revision }); }}
+          >
+            {tr(selected ? "已设为启动动画" : "设为启动动画")}
+          </button>
+          {settings?.theme && (
+            <button
+              type="button"
+              className="btn-tiny ghost"
+              disabled={locked}
+              onClick={() => void update({ theme: null })}
+            >
+              {tr("恢复默认动画")}
+            </button>
+          )}
+        </div>
+      )}
+
+      {error && <p className="notice startup-notice" role="status">{msg(error)}</p>}
+    </section>
+  );
 }

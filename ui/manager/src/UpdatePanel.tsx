@@ -23,13 +23,14 @@ export function UpdatePanel({ client, session, disabled, checkRequest = 0, onBus
   const [operations, setOperations] = useState<Record<string, UpdateOperation>>({}), [attempted, setAttempted] = useState(false);
   const [showOperation, setShowOperation] = useState(true), [queryError, setQueryError] = useState<UiMessage>("");
   const [actionError, setActionError] = useState<UiMessage>("");
+  const [observation, setObservation] = useState(0);
   const alive = useRef(true), working = useRef(false), foregroundCheck = useRef(false), busy = useRef(disabled), proposalRef = useRef<UpdateCheck | null>(null), attemptedRef = useRef(false);
-  const operationsRef = useRef(operations), records = useRef<string[]>([]), lastCheck = useRef(0), announced = useRef<Record<string, string>>({});
+  const operationsRef = useRef(operations), records = useRef<string[]>([]), lastCheck = useRef(0), announced = useRef<Record<string, string>>({}), queryFailed = useRef(false);
   busy.current = disabled; operationsRef.current = operations;
   const unresolvedId = () => [...records.current].reverse().find(id => !["installed", "failed"].includes(operationsRef.current[id]?.state ?? ""));
   const handledCheck = useRef(0);
   useEffect(() => {
-    if (checkRequest > handledCheck.current && !disabled && !running) {
+    if (checkRequest > handledCheck.current && !running) {
       handledCheck.current = checkRequest; void check(false);
     }
   }, [checkRequest, disabled, running]);
@@ -46,12 +47,12 @@ export function UpdatePanel({ client, session, disabled, checkRequest = 0, onBus
     }
   }
   async function check(background: boolean) {
-    if (working.current || busy.current || installing(operationsRef.current[unresolvedId() ?? ""])) return;
+    if (working.current) return;
     working.current = true; foregroundCheck.current = !background; lastCheck.current = Date.now();
     if (!background) { setShowOperation(false); setRunning(true); onBusy(true); setNotice(uiMessage("正在检查更新…")); }
     try { const value = await client.call("updates.check", { background }); if (alive.current) announce(value, background); }
     catch (error) { if (!background && alive.current) setNotice(uiMessage("更新检查失败：", undefined, { after: uiMessage("。未判定为最新版。", undefined, { before: message(error) }) })); }
-    finally { working.current = false; foregroundCheck.current = false; if (!background && alive.current) { setRunning(false); onBusy(installing(operationsRef.current[unresolvedId() ?? ""])); } }
+    finally { working.current = false; foregroundCheck.current = false; if (!background && alive.current) { setRunning(false); onBusy(!queryFailed.current && installing(operationsRef.current[unresolvedId() ?? ""])); } }
   }
   useEffect(() => {
     alive.current = true; lastCheck.current = 0;
@@ -70,8 +71,19 @@ export function UpdatePanel({ client, session, disabled, checkRequest = 0, onBus
     return () => { alive.current = false; window.clearTimeout(first); window.clearInterval(timer); document.removeEventListener("visibilitychange", due); };
   }, [client]);
   async function read(id: string) {
-    const value = await client.call("updates.get", { operationId: id });
-    if (alive.current) { operationsRef.current = { ...operationsRef.current, [id]: value }; setOperations(operationsRef.current); setQueryError(""); } return value;
+    let value: UpdateOperation;
+    try { value = await client.call("updates.get", { operationId: id }); }
+    catch (error) {
+      queryFailed.current = true;
+      if (alive.current && error instanceof BridgeError && error.detail.code === "OPERATION_UNKNOWN") {
+        records.current = records.current.filter(value => value !== id);
+        const next = { ...operationsRef.current }; delete next[id]; operationsRef.current = next; setOperations(next);
+        attemptedRef.current = false; setAttempted(false); setIds(records.current);
+        localStorage.setItem(recordsKey, JSON.stringify(records.current));
+      }
+      throw error;
+    }
+    if (alive.current) { queryFailed.current = false; operationsRef.current = { ...operationsRef.current, [id]: value }; setOperations(operationsRef.current); setQueryError(""); } return value;
   }
   useEffect(() => {
     if (!ids.length) return;
@@ -85,14 +97,14 @@ export function UpdatePanel({ client, session, disabled, checkRequest = 0, onBus
           onBusy(true);
           if (!cancelled) timer = window.setTimeout(() => void poll(), 1500);
         } else { onBusy(foregroundCheck.current); if (unresolvedId()) timer = window.setTimeout(() => void poll(), 5000); }
-      } catch (error) { if (!cancelled && alive.current) { setQueryError(uiMessage("更新结果暂不可用，正在重新查询；不会重复安装。", undefined, { after: message(error) })); timer = window.setTimeout(() => void poll(), 5000); } }
+      } catch (error) { if (!cancelled && alive.current) { setQueryError(message(error)); onBusy(foregroundCheck.current); } }
     };
     void poll(); return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer); };
-  }, [client, ids]);
-  async function act(work: () => Promise<void>) {
-    if (working.current || busy.current) return;
+  }, [client, ids, observation]);
+  async function act(work: () => Promise<void>, query = false) {
+    if (working.current || !query && busy.current) return;
     working.current = true; setRunning(true); setActionError("");
-    try { await work(); } catch (error) { if (alive.current) { setNotice(message(error)); setActionError(message(error)); onBusy(installing(operationsRef.current[unresolvedId() ?? ""])); } }
+    try { await work(); } catch (error) { if (alive.current) { setNotice(message(error)); setActionError(message(error)); onBusy(!query && !queryFailed.current && installing(operationsRef.current[unresolvedId() ?? ""])); } }
     finally { working.current = false; if (alive.current) setRunning(false); }
   }
   async function install() {
@@ -104,7 +116,7 @@ export function UpdatePanel({ client, session, disabled, checkRequest = 0, onBus
     // Intent is persisted before sending. A timeout leaves the same id queryable.
     try {
       const result = await client.call("updates.install", { operationId: id, handle: value.handle, accepted: true });
-      if (alive.current) { setOperations(previous => ({ ...previous, [id]: result })); setNotice(uiMessage("更新已批准，下载校验完成后才交给平台安装器。")); }
+      if (alive.current) { operationsRef.current = { ...operationsRef.current, [id]: result }; setOperations(operationsRef.current); setNotice(uiMessage("更新已批准，下载校验完成后才交给平台安装器。")); }
     } catch (error) {
       if (error instanceof BridgeError && ["BUSY", "RESOURCE_EXPIRED", "INVALID_REQUEST", "METHOD_UNSUPPORTED", "OPERATION_UNKNOWN"].includes(error.detail.code)) {
         // A definite refusal created no installer. Keep accepted/unknown ids.
@@ -149,8 +161,8 @@ export function UpdatePanel({ client, session, disabled, checkRequest = 0, onBus
     {unresolved && !showOperation && <p className="update-hint">{tr("上次更新结果待核对，可继续检查版本；不会重复安装。")}</p>}
     {canDownload && proposal.installMode !== "manual" && <p className="update-hint">{tr("下载并安装新版本？安装时需要退出管理器。")}</p>}
     <footer className="update-actions">
-      {unresolved && (latest?.state === "indeterminate" || !!queryError) && <button className="update-secondary" disabled={running} onClick={() => void act(async () => { setShowOperation(true); await read(unresolved); })}>{tr("核对结果")}</button>}
-      {!running && (attempted || unresolved || !proposal || Date.parse(proposal.expiresAt) <= Date.now()) && <button className="update-secondary" disabled={disabled || installing(latest)} onClick={() => void check(false)}>{tr(latest?.state === "failed" ? "重新检查并重试" : "重新检查")}</button>}
+      {unresolved && (latest?.state === "indeterminate" || !!queryError) && <button className="update-secondary" disabled={running} onClick={() => void act(async () => { setShowOperation(true); const value = await read(unresolved); onBusy(installing(value)); setObservation(value => value + 1); }, true)}>{tr("核对结果")}</button>}
+      {!running && (attempted || unresolved || !proposal || Date.parse(proposal.expiresAt) <= Date.now()) && <button className="update-secondary" onClick={() => void check(false)}>{tr(latest?.state === "failed" ? "重新检查并重试" : "重新检查")}</button>}
       {shown?.state === "handoff" && shown.managerMustQuit && <button className="primary" disabled={disabled || running} onClick={() => void act(async () => { await client.call("updates.quit", { operationId: latestId! }); })}>{tr("重启并更新")}</button>}
       {canDownload && (proposal.installMode === "manual" ? <button className="primary" disabled={disabled || running || Date.parse(proposal.expiresAt) <= Date.now()} onClick={() => void act(async () => {
         const result = await client.call("updates.openRelease", { handle: proposal.handle }); if (alive.current) setNotice(uiMessage(result.opened ? "已打开发布页。" : "无法打开发布页。"));

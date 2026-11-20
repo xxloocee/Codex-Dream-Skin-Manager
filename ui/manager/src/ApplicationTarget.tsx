@@ -3,16 +3,20 @@ import { useEffect, useRef } from "react";
 import codexIcon from "./assets/codex.png";
 import claudeIcon from "./assets/claude.png";
 import dshIcon from "./assets/dsh.png";
-import dshNextIcon from "./assets/dsh-next.png";
+import { ZapIcon } from "./Icons";
 
 export type ApplicationTarget = "codex" | "claude" | "dsh" | "dsh-next";
-export const applicationNames: Record<ApplicationTarget, string> = { codex: "Codex", claude: "Claude Desktop", dsh: "DSH rc", "dsh-next": "DSH Next" };
+export const applicationNames: Record<ApplicationTarget, string> = {
+  codex: "Codex",
+  claude: "Claude",
+  dsh: "DSH rc",
+  "dsh-next": "DSH Next",
+};
 
 function ApplicationIcon({ source }: { source: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     let active = true;
-    // Bundled icons decode in memory because the manager CSP excludes data: image URLs.
     const bytes = Uint8Array.from(atob(source.slice(source.indexOf(",") + 1)), value => value.charCodeAt(0));
     void createImageBitmap(new Blob([bytes], { type: "image/png" })).then(bitmap => {
       if (active) canvas.current?.getContext("2d")?.drawImage(bitmap, 0, 0, 96, 96);
@@ -23,17 +27,63 @@ function ApplicationIcon({ source }: { source: string }) {
   return <canvas ref={canvas} className="application-icon" width={96} height={96} aria-hidden="true" />;
 }
 
-export function ApplicationTargets({ value, onChange, disabled }: {
-  value: ApplicationTarget; onChange(value: ApplicationTarget): void;
+export function ApplicationTargets({
+  value,
+  onChange,
+  disabled,
+  activeStatus,
+  version,
+  upgradeAvailable = false,
+  updateAvailable = false,
+  onUpgradeOrUpdates,
+}: {
+  value: ApplicationTarget;
+  onChange(value: ApplicationTarget): void;
   disabled: boolean;
+  activeStatus?: Record<ApplicationTarget, boolean> | undefined;
+  version?: string | null | undefined;
+  upgradeAvailable?: boolean | undefined;
+  updateAvailable?: boolean | undefined;
+  onUpgradeOrUpdates?: (() => void) | undefined;
 }) {
   const tr = useText();
-  return <div className="application-targets" role="group" aria-label={tr("应用目标")}>
-      {(["codex", "claude", "dsh", "dsh-next"] as const).map(target => <button key={target} className={`application-target target-${target}`} aria-pressed={value === target}
-        aria-label={applicationNames[target]} disabled={disabled}
-        title={`${applicationNames[target]}${disabled ? ` · ${tr("请先完成当前操作或保存主题草稿。")}` : ""}`} onClick={() => onChange(target)}>
-        <ApplicationIcon source={target === "codex" ? codexIcon : target === "claude" ? claudeIcon : target === "dsh-next" ? dshNextIcon : dshIcon} />
-        {target === "dsh" && <span className="application-variant" aria-hidden="true">rc</span>}
-      </button>)}
-  </div>;
+  return (
+    <div className="application-targets" role="group" aria-label={tr("应用目标")}>
+      <div className="agent-dock-list">
+        {(["codex", "claude", "dsh", "dsh-next"] as const).map(target => {
+          const isSelected = value === target;
+          const isApplied = activeStatus?.[target];
+          return (
+            <button
+              key={target}
+              type="button"
+              className={`application-target target-${target} ${isSelected ? "is-selected" : ""}`}
+              aria-pressed={isSelected}
+              aria-label={applicationNames[target]}
+              disabled={disabled}
+              title={`${applicationNames[target]}${isApplied ? ` · ${tr("当前应用已启用皮肤")}` : ""}${disabled ? ` · ${tr("请等待当前操作结束。")}` : ""}`}
+              onClick={() => onChange(target)}
+            >
+              <ApplicationIcon source={target === "codex" ? codexIcon : target === "claude" ? claudeIcon : dshIcon} />
+              {target === "dsh" && <span className="application-variant" aria-hidden="true">rc</span>}
+              {isApplied && <span className="agent-active-dot" aria-hidden="true" />}
+            </button>
+          );
+        })}
+      </div>
+
+      {onUpgradeOrUpdates && (
+        <button
+          type="button"
+          className={`dock-version-btn ${upgradeAvailable || updateAvailable ? "has-upgrade" : ""}`}
+          disabled={disabled}
+          onClick={onUpgradeOrUpdates}
+          title={upgradeAvailable ? tr("升级皮肤运行时") : `${tr(updateAvailable ? "有新版本可用" : "检查更新")}${version ? ` · v${version.replace(/^v/i, "")}` : ""}`}
+        >
+          <ZapIcon className="dock-zap-icon" />
+          <span className="dock-version-label">{version ? `v${version.replace(/^v/i, "")}` : "APP"}</span>
+        </button>
+      )}
+    </div>
+  );
 }
