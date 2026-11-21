@@ -434,8 +434,8 @@ html[data-dream-skin="active"] aside.app-shell-left-panel svg:not([style^="color
   color: rgb(var(--ds-muted-rgb) / .96) !important;
 }
 
-html[data-dream-skin="active"] aside.app-shell-left-panel button:hover,
-html[data-dream-skin="active"] aside.app-shell-left-panel a:hover {
+/* The conversation row already paints hover and selection across its width. */
+html[data-dream-skin="active"] aside.app-shell-left-panel :is(button, a):hover:not(:where(:has([data-thread-title]))) {
   background: rgb(var(--ds-accent-rgb) / .09) !important;
   color: var(--ds-text) !important;
   transform: none !important;

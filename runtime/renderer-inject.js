@@ -1068,16 +1068,17 @@
     }
     return decorations;
   };
-  const refreshSurfaces = (parts, composerNodes) => {
+  const refreshSurfaces = (parts, composerNodes, dialogHosts) => {
     const shellParts = new Set(["root", "main", "home", "thread", "header"]);
     const sceneNodes = [...parts].filter(([, part]) => part === "main" || part === "home")
       .map(([node]) => node);
-    const decorativeNodes = composerDecorationNodes(composerNodes);
+    const clearNodes = composerDecorationNodes(composerNodes);
+    for (const host of dialogHosts) clearNodes.add(host);
     const candidates = new Set([
       ...genericNodes(NEUTRAL_SURFACE_SELECTOR), ...genericNodes(SURFACE_BOUNDARIES),
-      ...decorativeNodes,
+      ...clearNodes,
       ...composerNodes, ...selectorNodes("home-utility"),
-      ...[...parts].filter(([, part]) => part === "sidebar").map(([node]) => node),
+      ...[...parts].filter(([, part]) => part === "sidebar" || part === "dialog").map(([node]) => node),
     ].filter((node) => !shellParts.has(parts.get(node)) &&
       !node.closest?.(PROTECTED_SURFACE_CONTENT)));
     // A generic bg-surface wrapper around the entire app must not become an
@@ -1096,14 +1097,14 @@
         node.hasAttribute?.("data-composer-utility-rail");
       // Portaled and inline floating surfaces both need their own paint even
       // when their logical parent belongs to an existing panel.
-      const floating = node.matches?.('[role="dialog"], [role="menu"], [role="tooltip"]') ||
+      const floating = parts.get(node) === "dialog" || node.matches?.('[role="dialog"], [role="menu"], [role="tooltip"]') ||
         node.parentElement?.hasAttribute?.('data-radix-popper-content-wrapper') ||
         node.classList?.contains('sticky') || node.classList?.contains('fixed');
       let nested = false;
-      if (!floating && !decorativeNodes.has(node) && !composerSurface) {
+      if (!floating && !clearNodes.has(node) && !composerSurface) {
         for (let parent = node.parentElement; parent; parent = parent.parentElement) {
           if (candidates.has(parent) && !sceneWrappers.has(parent) &&
-            !decorativeNodes.has(parent)) { nested = true; break; }
+            !clearNodes.has(parent)) { nested = true; break; }
         }
       }
       if (!surfaceNodes.has(node)) surfaceNodes.set(node, node.getAttribute(SURFACE_ATTR));
@@ -1111,7 +1112,7 @@
       // Keep it in the candidate tree so neutral navigation descendants clear
       // their native paint; actual menus/dialogs inside it remain independent.
       const value = composerSurface ? "panel"
-        : decorativeNodes.has(node) ? "clear"
+        : clearNodes.has(node) ? "clear"
           : parts.get(node) === "sidebar" ? "shell"
             : nested || sceneWrappers.has(node) ? "clear" : "panel";
       if (node.getAttribute(SURFACE_ATTR) !== value) node.setAttribute(SURFACE_ATTR, value);
@@ -1136,7 +1137,15 @@
     addPart(desired, "composer-toolbar", [
       ...selectorNodes("composer-toolbar"), ...fallbackComposerToolbarNodes(composerNodes),
     ]);
-    addPart(desired, "dialog", selectorNodes("overlay-dialog"));
+    // Native anchored dialogs keep role="dialog" on a zero-size positioning
+    // host. Bind both community styles and panel glass to the visible card.
+    const dialogHosts = new Set();
+    for (const dialog of selectorNodes("overlay-dialog")) {
+      const card = dialog.hasAttribute?.("popover")
+        ? dialog.querySelector?.(':scope > [data-anchor-positioning="native"]') : null;
+      if (card) dialogHosts.add(dialog);
+      addPart(desired, "dialog", [card ?? dialog]);
+    }
     const homeHero = selectorNodes("game-source")[0] ??
       selectorNodes("home-icon")[0]?.parentElement;
     addPart(desired, "home-hero", homeHero ? [homeHero] : []);
@@ -1156,7 +1165,7 @@
       partNodes.add(node);
     }
     refreshComposerBorders(composerNodes);
-    refreshSurfaces(desired, composerNodes);
+    refreshSurfaces(desired, composerNodes, dialogHosts);
   };
 
   const removeParts = () => {
@@ -1425,7 +1434,7 @@
     partObserver.observe(node, {
       childList: true, subtree: true, attributes: true,
       // Ignore our own part/surface attributes and inline palette writes.
-      attributeFilter: ["class", "role", "data-composer-surface-variant",
+      attributeFilter: ["class", "role", "popover", "data-anchor-positioning", "data-composer-surface-variant",
         "data-composer-utility-rail",
         "data-composer-home-utility-bar-position", "data-summary-panel-variant",
         "data-radix-popper-content-wrapper", "data-testid", "contenteditable",
