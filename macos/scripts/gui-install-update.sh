@@ -28,6 +28,14 @@ write_result() {
   /usr/bin/plutil -insert message -string "$2" "$RESULT.tmp"
   /bin/mv -f "$RESULT.tmp" "$RESULT"
 }
+prune_previous_bundles() {
+  local previous
+  for previous in "$PARENT"/.dreamskin-previous-*.app; do
+    [ "$previous" = "$BACKUP" ] && continue
+    [ -d "$previous" ] && [ ! -L "$previous" ] || continue
+    /bin/rm -rf "$previous" || printf 'Warning: could not remove old rollback bundle: %s\n' "$previous" >&2
+  done
+}
 /usr/bin/ditto "$STAGED" "$TEMP_APP/Codex Dream Skin.app"
 CANDIDATE="$TEMP_APP/Codex Dream Skin.app"
 /usr/bin/codesign --verify --deep --strict "$CANDIDATE"
@@ -57,4 +65,6 @@ if ! /usr/bin/open "$TARGET"; then
   exit 6
 fi
 write_result installed "已安装 GUI ${EXPECTED_VERSION}。旧版备份：$BACKUP"
-# Keep the previous signed bundle for manual rollback; never touch the theme library.
+# Keep the immediately previous signed bundle for manual rollback, and remove
+# older rollback bundles after the new app has launched. Never touch the theme library.
+prune_previous_bundles
